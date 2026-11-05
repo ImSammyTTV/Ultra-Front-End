@@ -3857,10 +3857,26 @@ $as = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.
 function Await($op, $type) { $t = $as.MakeGenericMethod($type).Invoke($null, @($op)); $t.Wait(3000) | Out-Null; $t.Result }
 $mgrT = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager,Windows.Media.Control,ContentType=WindowsRuntime]
 $propT = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties,Windows.Media.Control,ContentType=WindowsRuntime]
+$streamT = [Windows.Storage.Streams.IRandomAccessStreamWithContentType,Windows.Storage.Streams,ContentType=WindowsRuntime]
+$inT = [Windows.Storage.Streams.IInputStream,Windows.Storage.Streams,ContentType=WindowsRuntime]
 $s = (Await ($mgrT::RequestAsync()) $mgrT).GetCurrentSession()
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
-if ($s) { $p = Await ($s.TryGetMediaPropertiesAsync()) $propT; @{ title = $p.Title; artist = $p.Artist; playing = ($s.GetPlaybackInfo().PlaybackStatus -eq 'Playing') } | ConvertTo-Json -Compress } else { '{}' }
+if ($s) {
+  $p = Await ($s.TryGetMediaPropertiesAsync()) $propT
+  $art = ''
+  try {  # the player's album art. PowerShell only reaches the stream as a .NET one through reflection, by its IInputStream side
+    if ($p.Thumbnail) {
+      $st = Await ($p.Thumbnail.OpenReadAsync()) $streamT
+      $net = [System.IO.WindowsRuntimeStreamExtensions].GetMethod('AsStreamForRead', [type[]]@($inT)).Invoke($null, @($st))
+      $ms = New-Object System.IO.MemoryStream
+      $net.CopyTo($ms)
+      if ($ms.Length -gt 0 -and $ms.Length -le 4MB) { $art = [Convert]::ToBase64String($ms.ToArray()) }
+    }
+  } catch {}
+  @{ title = $p.Title; artist = $p.Artist; playing = ($s.GetPlaybackInfo().PlaybackStatus -eq 'Playing'); art = $art } | ConvertTo-Json -Compress
+} else { '{}' }
 """
+NP_ART = {"key": "", "data": b"", "type": ""}  # the latest album art, served at /api/nowplaying/art
 
 
 def now_playing():
@@ -3869,9 +3885,23 @@ def now_playing():
     code = base64.b64encode(NOW_PLAYING.encode("utf-16-le")).decode()
     try:
         r = subprocess.run(["powershell", "-NoProfile", "-EncodedCommand", code], capture_output=True, timeout=8, creationflags=0x08000000)  # no console
-        return json.loads(r.stdout.decode("utf-8", "replace").strip() or "{}")
+        out = json.loads(r.stdout.decode("utf-8", "replace").strip() or "{}")
     except (OSError, ValueError, subprocess.TimeoutExpired):
         return {}
+    art = out.pop("art", "") or ""
+    if art:  # kept here and served by its own address: the page asks for it again only when the picture changes
+        import hashlib
+        try:
+            data = base64.b64decode(art)
+        except ValueError:
+            data = b""
+        if data:
+            key = hashlib.sha1(data).hexdigest()[:12]
+            if key != NP_ART["key"]:
+                kind = "image/png" if data[:4] == b"\x89PNG" else "image/jpeg" if data[:2] == b"\xff\xd8" else "image/bmp" if data[:2] == b"BM" else ""
+                NP_ART.update(key=key, data=data, type=kind or "application/octet-stream")
+            out["art"] = f"/api/nowplaying/art?v={key}"
+    return out
 
 
 def overlay_state():
@@ -6399,6 +6429,7 @@ def extras_view():
           "job": job_info(job) if job else None, "available": WIN}
     if exe and WIN:
         pm["rights"] = presentmon_rights()
+        pm["mode"] = hud_mode()  # Off, Compact or Full: chosen in Settings
     return {"presentmon": pm}
 
 
@@ -6604,6 +6635,15 @@ class Handler(SimpleHTTPRequestHandler):
             return self.reply(overlay_state())
         if path == "/api/nowplaying":
             return self.reply(now_playing())
+        if path == "/api/nowplaying/art":
+            if not NP_ART["data"] or not NP_ART["type"].startswith("image/"):
+                return self.send_error(404)
+            self.send_response(200)
+            self.send_header("Content-Type", NP_ART["type"])
+            self.send_header("Cache-Control", "max-age=86400")  # its address changes with the picture
+            self.send_header("Content-Length", str(len(NP_ART["data"])))
+            self.end_headers()
+            return self.wfile.write(NP_ART["data"])
         if path == "/api/spawn/next":
             return self.reply(spawn_next())
         if path == "/api/padraw":

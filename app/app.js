@@ -1839,7 +1839,6 @@ function renderHub() {
     : friends ? (HUB.items.length ? `${on} online of ${HUB.items.length}` : 'Your Steam friends') : HUB.items.length ? 'Press A to pause, resume or reorder them in Steam' : 'Steam downloads and games being unpacked';
   $('#hubpage .hub-grid').innerHTML = HUB.items.map(hubRow).join('')
     || `<div class="d-empty">${esc(HUB.loading ? 'Loading…' : HUB.error || (friends ? 'No friends to show.' : stats ? 'Play a game and it will show up here.' : 'Nothing is downloading.'))}</div>`;
-  $('#hubpage .hints span').textContent = hubConnects() ? 'A Connect Steam' : 'A Select';
   hubFocus();
 }
 const hubConnects = () => HUB.kind === 'friends' && !HUB.items.length && !HUB.loading;  // no friends to show: A goes to Steam's account page
@@ -1873,7 +1872,9 @@ $('#hubpage').addEventListener('click', e => { const r = e.target.closest('.hub-
 
 // ---------- Quick Access: the Steam button (double-press or hold) or View, on the frontend ----------
 const SP = { open: false, i: 0, rows: [], volume: null, muted: false, song: null, active: 0, p: 0, m: 1, confirm: null, battery: null, friends: '' };
-// The music controls (previous, play/pause, next), as in the in-game menu: Windows' media keys, so any player answers them
+// The music controls (previous, play/pause, next), as in the in-game menu: Windows' media keys, so any player answers them.
+// The player's album art stands in for the note when it has some.
+const ICON_MUSIC = icon('music');
 const MEDIA_ICONS = [
   '<svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg>',
   ['<svg viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></svg>', '<svg viewBox="0 0 24 24"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>'],
@@ -1892,7 +1893,6 @@ function sysRows() {
     ...(SP.volume === null ? [] : [{ id: 'volume', run: () => setSound({ mute: !SP.muted }) }]),
     { ic: 'download', label: 'Downloads', sub: SP.active ? `${SP.active} active` : '', run: () => { closeSys(); closePages(); openHub('downloads'); } },
     { ic: 'friends', label: 'Friends', sub: SP.friends || '', run: () => { closeSys(); closePages(); openHub('friends'); } },
-    ...(SP.hud && SP.hudFps ? [{ ic: 'bolt', label: 'Performance overlay', value: SP.hud[0].toUpperCase() + SP.hud.slice(1), run: cycleHud }] : []),  // an extra: once PresentMon is installed
     { ic: 'settings', label: 'Settings', run: () => { closeSys(); closePages(); openPanel(); } },
     ...(SP.song ? [{ id: 'music', run: sysMedia }] : []),  // the song, just above the power buttons
     { id: 'power', run: () => powerPick(powerChoices()[SP.p]) },
@@ -1908,9 +1908,6 @@ function closePages() {
   if (LP.open) closeLibraryPage();
   if (AL.open) closeAlbum();
 }
-async function cycleHud() {
-  try { const r = await api('/api/hud', {}); SP.hud = r.mode; if ('fps' in r) SP.hudFps = r.fps; renderSys(); } catch (e) { toast(e.message); }
-}
 function renderSys() {
   SP.rows = sysRows();
   SP.i = clamp(SP.i, 0, SP.rows.length - 1);
@@ -1920,7 +1917,7 @@ function renderSys() {
   $('#syspanel .sp-list').innerHTML = SP.rows.map((r, i) => r.id === 'volume'
     ? `<div class="sp-row sp-vol" data-i="${i}">${icon(SP.muted ? 'mute' : 'volume')}<div class="sp-text"><div>Volume<b>${SP.muted ? 'Muted' : SP.volume}</b></div><div class="hub-bar"><i style="width:${SP.muted ? 0 : SP.volume}%"></i></div></div></div>`
     : r.id === 'music'
-    ? `<div class="sp-row sp-music" data-i="${i}">${icon('music')}<div class="sp-text"><div>${esc(SP.song.title)}</div><small>${esc([SP.song.playing === false ? 'Paused' : 'Now playing', SP.song.artist].filter(Boolean).join(' · '))}</small></div>`
+    ? `<div class="sp-row sp-music" data-i="${i}">${SP.song.art ? `<img class="sp-art" src="${esc(SP.song.art)}" alt="" onerror="this.replaceWith(document.createRange().createContextualFragment(ICON_MUSIC))">` : icon('music')}<div class="sp-text"><div>${esc(SP.song.title)}</div><small>${esc([SP.song.playing === false ? 'Paused' : 'Now playing', SP.song.artist].filter(Boolean).join(' · '))}</small></div>`
       + `<div class="sp-mbtns">${[MEDIA_ICONS[0], MEDIA_ICONS[1][SP.song.playing === false ? 0 : 1], MEDIA_ICONS[2]].map((svg, j) => `<span class="sp-mb${j === SP.m ? ' on' : ''}" data-j="${j}">${svg}</span>`).join('')}</div></div>`
     : r.id === 'power'
     ? `<div class="sp-row sp-power" data-i="${i}">${powerChoices().map((p, j) => `<div class="sp-pw${j === SP.p ? ' on' : ''}${SP.confirm === p.id ? ' warn' : ''}" data-j="${j}">${icon(p.ic)}<span>${SP.confirm === p.id ? 'Press A again' : p.label}</span></div>`).join('')}</div>`
@@ -1937,9 +1934,8 @@ async function openSys() {
     SP.friends = !r.items?.length ? '' : busy ? `${busy.name} is playing ${busy.game}` : on.length ? `${on.length} online` : 'Nobody online';
     if (SP.open) renderSys();
   }).catch(() => {});
-  const [vol, song, dl, perf] = await Promise.all([api('/api/volume').catch(() => null), api('/api/nowplaying').catch(() => null), api('/api/downloads').catch(() => null), api('/api/hud').catch(() => null)]);
+  const [vol, song, dl] = await Promise.all([api('/api/volume').catch(() => null), api('/api/nowplaying').catch(() => null), api('/api/downloads').catch(() => null)]);
   if (!SP.open) return;
-  SP.hud = perf?.mode || null; SP.hudFps = perf?.fps;
   if (vol) { SP.volume = vol.volume; SP.muted = vol.muted; }
   SP.song = song?.title ? song : null;
   SP.active = dl?.items?.length || 0;
@@ -2355,8 +2351,11 @@ function extraRows(d, setup) {
   const rm = P.confirm === 'pm-rm';
   return [
     { kind: 'row', key: 'pm', ic: icon('bolt'), label: setup ? `Performance overlay: ${what}` : 'Performance overlay', value: setup ? '✓' : PM_RIGHTS[pm.rights],
-      sub: `PresentMon ${pm.version} · ${{ ready: 'Turn it on from Quick Access or the in-game menu', signout: 'Windows gives you the permission at your next sign-in',
+      sub: `PresentMon ${pm.version} · ${{ ready: 'Ready to show in games', signout: 'Windows gives you the permission at your next sign-in',
         needed: 'PresentMon needs permission to read frame times' }[pm.rights]}`, act: () => pm.rights === 'needed' ? allowPresentmon() : toast(PM_RIGHTS[pm.rights], 3000) },
+    ...(setup || !pm.mode ? [] : [{ kind: 'row', key: 'pm-mode', label: 'Show in games', value: pm.mode[0].toUpperCase() + pm.mode.slice(1),
+      sub: 'Off, Compact (FPS) or Full (frame times, CPU and GPU). Press A to change',
+      act: () => api('/api/hud', {}).then(r => { pm.mode = r.mode; renderPanel(); }).catch(e => toast(e.message)) }]),
     ...(pm.rights === 'needed' ? [{ kind: 'row', key: 'pm-allow', label: 'Give permission', value: 'Allow', act: allowPresentmon,
       sub: 'Adds you to Windows’ Performance Log Users group. Windows asks first, then you sign out and back in' }] : []),
     ...(setup ? [] : [{ kind: 'row', key: 'pm-rm', warn: rm, label: 'Remove the performance overlay', sub: rm ? 'Press A / Enter again to remove' : 'Deletes PresentMon from the data folder',
