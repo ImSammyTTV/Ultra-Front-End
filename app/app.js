@@ -1856,7 +1856,7 @@ function openFriendMenu(f) {
   $('#quick .sys-info').innerHTML = infoRow('Status', f.status);
 }
 async function messageFriend(f) {
-  try { await api('/api/friends/message', { id: f.id }); toast(`Opening Steam chat with ${f.name}`, 3000); }
+  try { await api('/api/friends/message', { id: f.id, name: f.name }); toast(`Opening Steam chat with ${f.name}`, 3000); }
   catch (e) { toast(/404/.test(e.message) ? 'This needs the latest frontend update.' : e.message); }
 }
 function hubOpen() {

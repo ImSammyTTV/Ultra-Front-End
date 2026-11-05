@@ -4132,6 +4132,74 @@ def raise_window(hwnd, seconds=10):
     threading.Thread(target=run, daemon=True).start()
 
 
+def steam_windows():
+    """Steam's own top-level windows on screen (its main window and chats): {hwnd: title}."""
+    import ctypes
+    import ctypes.wintypes as W
+    user32 = ctypes.WinDLL("user32")  # its own copy: these argtypes stay here
+    proto = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+    user32.EnumWindows.argtypes = [proto, ctypes.c_void_p]
+    user32.GetWindowThreadProcessId.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    user32.GetWindowRect.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    user32.GetWindow.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+    user32.GetWindow.restype = ctypes.c_void_p
+    user32.IsWindowVisible.argtypes = user32.IsIconic.argtypes = [ctypes.c_void_p]
+    user32.GetWindowTextW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_int]
+    found = {}
+
+    def cb(hwnd, _):
+        if not hwnd or not user32.IsWindowVisible(hwnd) or user32.GetWindow(hwnd, 4):  # on screen, top-level, not owned
+            return True
+        pid, r = ctypes.c_ulong(), W.RECT()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        user32.GetWindowRect(hwnd, ctypes.byref(r))
+        if (user32.IsIconic(hwnd) or (r.right - r.left >= 300 and r.bottom - r.top >= 200)) and process_name(pid.value).lower() == "steamwebhelper.exe":
+            buf = ctypes.create_unicode_buffer(256)
+            user32.GetWindowTextW(hwnd, buf, 256)
+            found[hwnd] = buf.value
+        return True
+    user32.EnumWindows(proto(cb), 0)
+    return found
+
+
+def open_in_steam(target, title="Steam", timeout=8):
+    """Open a steam:// page and bring its window in front of the frontend. The helper isn't the program in front, so Windows
+    opens Steam's window behind the fullscreen frontend, and pressing A seemed to do nothing. title: the window wanted (a
+    friend's name for a chat; Steam's main window is called Steam). A window that wasn't there before wins: Steam made it for this."""
+    if not WIN:
+        return open_target(target)
+    import ctypes
+    user32 = ctypes.WinDLL("user32")  # its own copy: these argtypes stay here
+    user32.IsIconic.argtypes = [ctypes.c_void_p]
+    user32.ShowWindow.argtypes = [ctypes.c_void_p, ctypes.c_int]
+    user32.GetForegroundWindow.restype = ctypes.c_void_p
+    before = steam_windows()
+    FOCUS[0] += 1  # a frontend raise still going stops, so it doesn't pull the frontend back over Steam
+    token = FOCUS[0]
+    open_target(target)
+
+    def run():
+        deadline, start, shown = time.time() + (timeout if before else 60), time.time(), None  # Steam not open yet: starting and signing in takes a while
+        while time.time() < deadline and FOCUS[0] == token:
+            time.sleep(0.25)
+            now = steam_windows()
+            new = [h for h in now if h not in before]
+            named = [h for h, t in now.items() if t == title] or [h for h, t in now.items() if title.lower() in t.lower()]
+            pick = (new or (named if time.time() - start > 0.75 else []) or [None])[0]  # an old window: once Steam has had a moment to make a new one
+            if not pick:
+                continue
+            if user32.GetForegroundWindow() == pick:
+                if shown and time.time() - shown > 1.5:  # in front and staying there
+                    return
+                shown = shown or time.time()
+                continue
+            if user32.IsIconic(pick):
+                user32.ShowWindow(pick, 9)  # SW_RESTORE
+            take_foreground(pick)
+            shown = None
+    threading.Thread(target=run, daemon=True).start()
+
+
 def open_frontend():
     """The Xbox button: bring the frontend's window to the front, or open it."""
     import ctypes
@@ -6833,7 +6901,7 @@ class Handler(SimpleHTTPRequestHandler):
                 sid = str(body.get("id") or "")
                 if not re.fullmatch(r"7656[0-9]{13}", sid):
                     raise ValueError("That friend couldn't be found")
-                open_target("steam://friends/message/" + sid)
+                open_in_steam("steam://friends/message/" + sid, str(body.get("name") or "")[:100] or "Steam")
                 return self.reply({"ok": True})
             if path == "/api/introsound":  # played here because a page can't start sound by itself
                 import winsound
@@ -7031,7 +7099,7 @@ class Handler(SimpleHTTPRequestHandler):
                 open_target(EPIC_LOGIN_URL)
                 return self.reply({"ok": True})
             if path == "/api/steam/downloads":  # pause, resume and reorder happen there
-                open_target("steam://open/downloads")
+                open_in_steam("steam://open/downloads")
                 return self.reply({"ok": True})
             if path == "/api/accounts/steam/open":
                 open_target("https://steamcommunity.com/dev/apikey")
