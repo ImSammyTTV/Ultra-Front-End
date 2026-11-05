@@ -1,5 +1,6 @@
 // Home screen: one row of covers, round shortcut buttons, source tabs.
-const ON_MAC = /Macintosh|Mac OS X/.test(navigator.userAgent), HERE = ON_MAC ? 'this Mac' : 'this PC';  // the page's word for the computer
+const ON_MAC = /Macintosh|Mac OS X/.test(navigator.userAgent), ON_ANDROID = /Android/.test(navigator.userAgent),
+  HERE = ON_MAC ? 'this Mac' : ON_ANDROID ? 'this device' : 'this PC';  // the page's word for the computer
 // Focus zones (up/down): 0 = game row, 1 = buttons, 2 = source tabs.
 const $ = q => document.querySelector(q);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -131,7 +132,7 @@ const PLATFORM_ORDER = ['PC', 'PS5', 'PS4', 'PS3', 'PS2', 'PS1', 'PSP', 'PS Vita
   'PC Engine', 'PC Engine CD', 'PC-FX', 'Neo Geo', 'Neo Geo CD', 'Neo Geo Pocket', 'Atari Jaguar', 'Atari Lynx', 'Atari 7800', 'Atari 5200', 'Atari 2600',
   'Atari ST', 'Atari 8-bit', 'WonderSwan', 'Arcade', '3DO', 'CD-i', 'ColecoVision', 'Intellivision', 'Vectrex', 'Odyssey 2', 'N-Gage',
   'DOS', 'ScummVM', 'C64', 'VIC-20', 'Amiga', 'ZX Spectrum', 'Amstrad CPC', 'MSX', 'Apple II', 'Flash'];
-const platformOf = g => g.source === 'Emulators' ? (g.system || g.group) : 'PC';
+const platformOf = g => g.source === 'Emulators' ? (g.system || g.group) : g.source === 'Android' ? 'Android' : 'PC';
 // Platform logos (Simple Icons, Wikimedia Commons) for the tab bar; consoles without a free logo of their own use their maker's.
 const SGDB_LOGO = 'steamgriddb.png';  // white-on-transparent version of SteamGridDB's logo
 const PLATFORM_LOGO = { PC: 'windows11', PS5: 'playstation5', PS4: 'playstation4', PS3: 'playstation3', PS2: 'playstation2', PS1: 'playstation',
@@ -751,7 +752,7 @@ function back() { if (S.zone !== 0) { S.zone = 0; tick(420, .06); update(); } el
 // Quick Access's last row: left and right pick one, A does it. Restart and Shut down ask for a second A.
 const POWER = [{ id: 'sleep', ic: 'moon', label: 'Sleep', done: 'Going to sleep' }, { id: 'restart', ic: 'reset', label: 'Restart', confirm: true },
   { id: 'shutdown', ic: 'power', label: 'Shut down', confirm: true }, { id: 'exit', ic: 'exit', label: 'Exit' }];
-const powerChoices = () => API ? POWER : POWER.filter(p => p.id === 'exit');
+const powerChoices = () => API && !ON_ANDROID ? POWER : POWER.filter(p => p.id === 'exit');  // Android apps can't sleep or restart the device
 function powerPick(p) {
   if (p.id === 'exit') return quitFrontend();
   if (p.confirm && SP.confirm !== p.id) {
@@ -779,6 +780,7 @@ function sysMenu(title, items) {
 function quitFrontend() {
   playOutro(() => {
     if (window.pywebview?.api?.quit) window.pywebview.api.quit();
+    else if (window.AndroidApp) window.AndroidApp.quit();
     else window.close();
   });
 }
@@ -2090,7 +2092,7 @@ const SETTINGS = [
   { id: 'pad', label: 'Controllers', icon: 'controllers' },
   { id: 'hidden', label: 'Hidden games', icon: 'eyeoff' },
   { id: 'about', label: 'About', icon: 'info' },
-];
+].filter(c => !(ON_ANDROID && c.id === 'accounts'));  // no store accounts on Android
 const GAME_SERVICES = [
   { id: 'ea', name: 'EA app', logo: 'ea' },
   { id: 'ubisoft', name: 'Ubisoft Connect', logo: 'ubisoft' },
@@ -2189,13 +2191,13 @@ function panelItems() {
   ];
   if (P.view === 'about') return [
     { kind: 'head', label: 'Ultra Front End' },
-    { kind: 'note', label: 'A fullscreen, controller-friendly launcher for Steam, Epic, your own game folders, emulators and ports.' },
+    { kind: 'note', label: ON_ANDROID ? 'A fullscreen, controller-friendly launcher for your Android games and emulators.' : 'A fullscreen, controller-friendly launcher for Steam, Epic, your own game folders, emulators and ports.' },
     ...updateRows(P.data?.update),
     // information only: these can't be highlighted, so A never seems to do nothing
     { kind: 'info', label: 'Your data', sub: `Libraries, accounts, artwork and play history are kept on ${HERE} only, in the frontend’s data folder.` },
     { kind: 'info', label: 'Artwork and info', sub: 'Steam, Epic, SteamGridDB, libretro and Wikipedia. Descriptions from Wikipedia are under CC BY-SA 4.0' },
     { kind: 'info', label: 'Trademarks', sub: 'All product names, logos and brands are the property of their owners and are used only to name platforms and stores. Ultra Front End is not affiliated with or endorsed by any of them. Valve, Steam and the Steam logo are trademarks of Valve Corporation.' },
-    { kind: 'info', label: 'Open-source licences', sub: 'MIT. Built with Python, pywebview, Pillow and pystray (LGPL-3.0), among others: see THIRD_PARTY_NOTICES.md and the licenses folder on the project’s GitHub page' },
+    { kind: 'info', label: 'Open-source licences', sub: ON_ANDROID ? 'MIT. Emulator launch details from ES-DE (MIT), among others: see THIRD_PARTY_NOTICES.md and the licenses folder on the project’s GitHub page' : 'MIT. Built with Python, pywebview, Pillow and pystray (LGPL-3.0), among others: see THIRD_PARTY_NOTICES.md and the licenses folder on the project’s GitHub page' },
     { kind: 'info', label: 'Helper', sub: API ? `Running on ${HERE} (${location.host})` : 'Not running: start the frontend with Start Frontend.bat' },
     ...(API ? [{ kind: 'row', label: 'Run the setup guide again', sub: 'Name, icon, time zone, accounts and games', act: openSetup }] : []),
     ...(API && ON_MAC ? [  // on Windows this is in Settings › Apps (the installer registers it)
@@ -2240,7 +2242,7 @@ function panelItems() {
         : [{ kind: 'note', label: 'No systems yet. Add the ones you play.' }]),
       // a ROMs subfolder named after no system: its games can't start until it's renamed
       ...odd.map(p => ({ kind: 'info', label: `ROMs › ${p.name}`, sub: 'Folder not recognised: rename it to a system’s name, for example SNES or Genesis', value: `${p.count} game${p.count === 1 ? '' : 's'}` })),
-      { kind: 'row', key: 'sys-add', label: '+ Add a system', sub: 'Installs its emulator and makes its folders', act: () => setView('add-system') },
+      { kind: 'row', key: 'sys-add', label: '+ Add a system', sub: ON_ANDROID ? 'Makes its folders in your ROMs folder' : 'Installs its emulator and makes its folders', act: () => setView('add-system') },
       { kind: 'row', ic: '⌕', label: 'Find installed emulators', sub: `Looks for emulators already on ${HERE}`, act: () => work(api('/api/emulators/find', {})).then(r => r && toast(r.found ? `Found ${r.found} emulator${r.found === 1 ? '' : 's'}` : 'No new emulators found', 3000)) },
     ];
   }
@@ -2269,8 +2271,8 @@ function panelItems() {
       ...(!p.emulator && p.install ? [{ kind: 'row', key: 'sys-install', ic: icon('pad'), label: `Install ${p.install}`, value: job && job.state !== 'failed' ? jobValue(job) : job ? 'Try again' : 'Install',
         sub: job ? jobText(p) : 'Downloads it from the emulator’s own project. It can take a few minutes: watch for Windows prompts.', ...jobBar(p),
         act: () => job && job.state !== 'failed' ? toast('It’s on its way', 2500) : work(api('/api/emulators/install', { system: p.name })).then(r => { if (r) { toast(`Installing ${p.install}…`, 3000); watchQueue(); } }) }] : []),
-      ...(p.site ? [{ kind: 'row', ic: icon('link'), label: `${p.recommended} project page`, sub: p.site.replace(/^https:\/\/(www\.)?/, '').replace(/\/$/, ''), value: 'Open',
-        act: () => api('/api/emulators/site', { system: p.name }).then(() => toast('Opened in your browser', 3000), e => toast(e.message)) }] : []),
+      ...(p.site ? [{ kind: 'row', ic: icon('link'), label: ON_ANDROID ? `Get ${p.recommended}` : `${p.recommended} project page`, sub: ON_ANDROID ? 'From Google Play, or from its own website' : p.site.replace(/^https:\/\/(www\.)?/, '').replace(/\/$/, ''), value: 'Open',
+        act: () => api('/api/emulators/site', { system: p.name }).then(() => toast(ON_ANDROID ? 'Opened Google Play' : 'Opened in your browser', 3000), e => toast(e.message)) }] : []),
       { kind: 'row', key: 'sys-choose', ic: icon('folder'), label: 'Choose program', sub: p.emulator || `Select an emulator already on ${HERE}`, value: p.emulator ? 'Change' : 'Choose',
         act: () => work(api('/api/emulators/set', { system: p.name })).then(r => { const e = r?.platforms?.find(x => x.name === p.name)?.emulator; if (e) toast(`${p.name} games will start in ${e}`, 3000); }) },
       // a second A to stop, like every removal
@@ -2412,19 +2414,20 @@ function panelItems() {
     { kind: 'head', label: 'ROMs folder' },
     { kind: 'row', ic: icon('folder'), label: d.romRoot ? 'ROMs folder' : 'Set up a ROMs folder', value: d.romRoot ? 'Change' : 'Choose',
       sub: d.romRoot || 'One folder with a subfolder for each console. Drop ROMs and ISOs into the matching folder.', act: chooseRomRoot },
-    ...(d.romRoot ? [{ kind: 'row', label: 'Open ROMs folder', sub: 'Opens it in File Explorer so you can add games', act: () => api('/api/romroot/open', {}).then(() => toast('Opened in File Explorer')) }] : []),
+    ...(d.romRoot ? [{ kind: 'row', label: 'Open ROMs folder', sub: `Opens it in ${ON_ANDROID ? 'Files' : 'File Explorer'} so you can add games`, act: () => api('/api/romroot/open', {}).then(() => toast(ON_ANDROID ? 'Opened in Files' : 'Opened in File Explorer')) }] : []),
+    ...(ON_ANDROID ? [{ kind: 'note', label: 'Android games on this device show up by themselves.' }] : [
     { kind: 'head', label: 'Other libraries' },
     ...d.libraries.map(l => removable(l.id, l.name, `${typeName[l.type]} · ${l.path} · ${l.count} game${l.count === 1 ? '' : 's'}`, '/api/libraries/remove', { id: l.id })),
     ...(d.libraries.length ? [{ kind: 'note', label: 'Select a library twice to remove it (your files are not touched).' }] : []),
     { kind: 'row', label: '+ Add a folder of PC games', sub: 'Each subfolder becomes a game, e.g. decompiled ports or DRM-free games', act: () => addLib('pc') },
     { kind: 'row', label: '+ Add a ROM folder and emulator', sub: 'Pick the ROM folder, then the emulator’s .exe', act: () => addLib('roms') },
-    { kind: 'row', label: '+ Add a single game', sub: 'Pick any game’s .exe', act: () => addLib('game') },
+    { kind: 'row', label: '+ Add a single game', sub: 'Pick any game’s .exe', act: () => addLib('game') }]),
   ];
   if (P.view === 'artwork') return [
     { kind: 'row', ic: icon('bolt'), label: 'Intro and outro', value: onOff(introOn()), sub: 'The short animation and sound when the frontend opens and closes', act: () => { try { localStorage.setItem('fe-intro', introOn() ? 'off' : 'on'); } catch {} renderPanel(); } },
     { kind: 'row', ic: icon('wide'), label: 'Full-screen game art', value: onOff(d.options.artBackground), sub: 'The selected game’s art fills the home screen behind the row, instead of the night scenery', act: () => setOpt('artBackground').then(() => { S.artBg = P.data.options.artBackground; applyBackgroundMode(); }) },
     { kind: 'row', label: 'Find artwork & info online', value: onOff(d.options.onlineCovers), sub: 'Covers, logos, backgrounds and descriptions for games that don’t have them', act: () => setOpt('onlineCovers') },
-    { kind: 'row', img: SGDB_LOGO, label: 'SteamGridDB', value: acc.sgdb ? 'Connected' : 'Optional', sub: 'More artwork to choose from, animated covers and backgrounds', act: () => acc.sgdb ? toast('SteamGridDB is connected') : setView('sgdb') },
+    ...(ON_ANDROID ? [] : [{ kind: 'row', img: SGDB_LOGO, label: 'SteamGridDB', value: acc.sgdb ? 'Connected' : 'Optional', sub: 'More artwork to choose from, animated covers and backgrounds', act: () => acc.sgdb ? toast('SteamGridDB is connected') : setView('sgdb') }]),
     { kind: 'note', label: 'To change one game’s art, select it and press Y (or O) for its quick menu.' },
   ];
   return [  // general
@@ -2434,17 +2437,17 @@ function panelItems() {
       act: () => setStartup(startupMode(d) === 'open' ? 'off' : 'open') }] : []),
     ...autologonRows(d),
     ...(/Windows/.test(navigator.userAgent) ? [{ kind: 'row', ic: icon('pad'), label: 'Open with the Xbox button', value: onOff(d.options.guideOpens), sub: 'The Xbox button on a controller opens Ultra Front End, or brings it to the front; so does holding View + Start, which also works through Steam (Steam keeps the Xbox and Steam buttons for itself while it runs). A Steam Controller’s Steam button does it with a double-press or a hold. In a game, they open the overlay.', act: () => setOpt('guideOpens') }] : []),
-    { kind: 'row', label: 'Installed Steam games', value: d.steamDetected ? onOff(d.options.steamLocal) : 'Steam not found',
+    ...(ON_ANDROID ? [] : [{ kind: 'row', label: 'Installed Steam games', value: d.steamDetected ? onOff(d.options.steamLocal) : 'Steam not found',
       sub: !d.steamDetected ? '' : d.options.steamLocal ? `${d.localSteamCount} found on ${HERE}` : 'Off: your installed Steam games are hidden', act: () => d.steamDetected && setOpt('steamLocal') },
     { kind: 'row', label: 'Show games that aren’t installed', value: onOff(d.options.showUninstalled),
-      sub: acc.steam || acc.epic ? 'Owned games from your accounts' : 'Owned games from connected accounts (none connected)', act: () => setOpt('showUninstalled') },
+      sub: acc.steam || acc.epic ? 'Owned games from your accounts' : 'Owned games from connected accounts (none connected)', act: () => setOpt('showUninstalled') }]),
     { kind: 'row', label: 'UI scale', value: `${Math.round(uiScale() * 100)}%`, sub: 'Press left or right to make everything bigger or smaller', bar: (uiScale() - SCALE.min) / (SCALE.max - SCALE.min) * 100,
       adjust: dx => setUiScale(dx * SCALE.step), act: () => setUiScale(uiScale() >= SCALE.max ? SCALE.min - uiScale() : SCALE.step) },
     { kind: 'row', label: 'Platform icons', value: onOff(S.tabIcons !== false), sub: 'Logos next to All Games, PC, PlayStation, Xbox, Switch… in the bottom bar', act: () => { S.tabIcons = S.tabIcons === false; save(); renderTabs(); renderPanel(); } },
     { kind: 'row', label: 'Sounds', value: onOff(S.sound), act: () => { S.sound = !S.sound; save(); renderPanel(); } },
     { kind: 'row', label: 'UI sounds volume', value: `${S.uiVolume ?? 60}`, sub: 'Press left or right to change it', bar: S.uiVolume ?? 60, adjust: dx => setUiVolume(dx * 10), act: () => setUiVolume((S.uiVolume ?? 60) >= 100 ? -100 : 10) },
     // the app's own window is always full screen (and a page can't go full screen from a controller press)
-    ...(window.pywebview ? [] : [{ kind: 'row', label: 'Fullscreen', value: onOff(!!document.fullscreenElement), act: () => { toggleFS(); setTimeout(renderPanel, 300); } }]),
+    ...(window.pywebview || ON_ANDROID ? [] : [{ kind: 'row', label: 'Fullscreen', value: onOff(!!document.fullscreenElement), act: () => { toggleFS(); setTimeout(renderPanel, 300); } }]),
     { kind: 'row', label: 'Rescan everything', sub: 'Look for new games in every library and account', act: () => work(api('/api/rescan', {}), 'Library updated') },
     ...(d.extras?.presentmon?.available || d.extras?.recorder?.available ? [{ kind: 'head', label: 'Extras' }, ...recorderRows(d), ...extraRows(d)] : []),
     ...d.errors.map(e => ({ kind: 'note', warn: true, label: e })),
@@ -2650,7 +2653,8 @@ async function chooseRomRoot(useDefault) {
 // ---------- first-time setup guide ----------
 // Runs inside the panel as a centred card: welcome, profile, time zone, accounts, games, done.
 // a Mac has no Windows-only extras (the performance overlay) or start-with-Windows step
-const SETUP_STEPS = ['setup-welcome', 'setup-profile', 'setup-time', 'setup-accounts', 'setup-games', 'setup-systems', ...(ON_MAC ? [] : ['setup-extras', 'setup-startup']), 'setup-done'];
+const SETUP_STEPS = ['setup-welcome', 'setup-profile', 'setup-time', ...(ON_ANDROID ? [] : ['setup-accounts']), 'setup-games', 'setup-systems',
+  ...(ON_MAC || ON_ANDROID ? [] : ['setup-extras', 'setup-startup']), 'setup-done'];
 const SETUP_TITLES = { 'setup-welcome': 'Ultra Front End', 'setup-profile': 'Your profile', 'setup-time': 'Time zone', 'setup-accounts': 'Accounts',
   'setup-games': 'Emulators & games', 'setup-systems': 'Your systems', 'setup-extras': 'Extras', 'setup-startup': 'Starting up', 'setup-done': 'All done' };
 // Start with Windows: the choices, in Settings and in the setup guide
@@ -2749,11 +2753,12 @@ function setupItems(d, prof) {
       return [
         { kind: 'note', label: 'Emulated games: pick one ROMs folder and the frontend makes a subfolder for every console. Drop your ROMs and ISOs into the right one.' },
         ...(d.romRoot ? [{ kind: 'row', label: 'ROMs folder', sub: d.romRoot, value: '✓ Change', act: chooseRomRoot }]
-          : [{ kind: 'row', label: ON_MAC ? 'Use the ROMs folder in your home folder (recommended)' : 'Use C:\\ROMs (recommended)', sub: ON_MAC ? '~/ROMs, with a folder for each system you play inside' : 'A folder for each system you play goes inside', value: 'Use', act: () => chooseRomRoot(true) },
+          : [{ kind: 'row', label: ON_ANDROID ? 'Use the ROMs folder on this device (recommended)' : ON_MAC ? 'Use the ROMs folder in your home folder (recommended)' : 'Use C:\\ROMs (recommended)',
+            sub: ON_ANDROID ? 'Internal storage › ROMs, with a folder for each system you play inside' : ON_MAC ? '~/ROMs, with a folder for each system you play inside' : 'A folder for each system you play goes inside', value: 'Use', act: () => chooseRomRoot(true) },
             { kind: 'row', label: 'Choose a different folder', sub: 'Somewhere else, like another drive', value: 'Choose', act: chooseRomRoot }]),
         { kind: 'row', label: 'Find installed emulators', sub: withEmu.length ? `Ready: ${withEmu.map(p => `${p.name} (${p.emulator})`).join(', ')}` : `Looks for emulators already on ${HERE}`, act: () => work(api('/api/emulators/find', {})).then(r => r && toast(r.found ? `Found ${r.found} emulator${r.found === 1 ? '' : 's'}` : 'No new emulators found', 3000)) },
-        { kind: 'row', label: '+ Add a folder of PC games', act: () => addLib('pc'), value: pc.length ? '✓ Add another' : '',  // what's been added stays on show
-          sub: pc.length ? pc.map(l => `${l.path} · ${l.count} game${l.count === 1 ? '' : 's'}`).join('; ') : 'Optional: decompiled ports or DRM-free games' },
+        ...(ON_ANDROID ? [{ kind: 'note', label: 'Android games on this device show up by themselves.' }] : [{ kind: 'row', label: '+ Add a folder of PC games', act: () => addLib('pc'), value: pc.length ? '✓ Add another' : '',  // what's been added stays on show
+          sub: pc.length ? pc.map(l => `${l.path} · ${l.count} game${l.count === 1 ? '' : 's'}`).join('; ') : 'Optional: decompiled ports or DRM-free games' }]),
         next,
       ];
     }
@@ -2768,7 +2773,7 @@ function setupItems(d, prof) {
         sub: todo.length ? `Installs the emulators for ${todo.length} ticked system${todo.length === 1 ? '' : 's'}` : P.pick.size ? `${P.pick.size} system${P.pick.size === 1 ? '' : 's'} ticked` : '',
         act: async () => { if (await save(todo.length > 0)) { if (todo.length) { toast('Installing… Windows may ask once for permission. You can carry on', 5000); watchQueue(); } setupGo(1); } } };
       return [
-        { kind: 'note', label: 'Which systems do you play? Press A to tick or untick one. Each gets its own folder in your ROMs folder, and its emulator is installed for you.' },
+        { kind: 'note', label: 'Which systems do you play? Press A to tick or untick one. Each gets its own folder in your ROMs folder' + (ON_ANDROID ? '. Get its emulator from Google Play: Settings › Systems shows which one.' : ', and its emulator is installed for you.') },
         ...queueLine(d.queue),
         ...(todo.length ? [{ kind: 'row', key: 'pick-install', primary: true, label: `Install emulators for ${todo.length} system${todo.length === 1 ? '' : 's'}`,
           sub: 'One at a time, from each emulator’s own project. You can carry on while they install',
