@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Ultra Front End</title>
+<link rel="icon" href="icon.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="idle">
+  <div id="intro"><canvas id="introwave"></canvas></div>
+  <div id="world">
+    <canvas id="sky"></canvas>
+    <div class="layer" id="planet"></div>
+    <div class="layer" id="far"></div>
+    <div class="layer" id="mid"></div>
+    <div class="layer" id="lake"></div>
+    <canvas id="water"></canvas>
+    <div class="layer" id="near"></div>
+    <div id="gamebg"></div>
+    <div id="tint"></div>
+    <div id="vignette"></div>
+  </div>
+
+  <header>
+    <div class="user"><span class="avatar"></span><span class="uname"></span></div>
+    <div class="status"><span id="running"></span><span id="pad" title="Controller"></span><span id="clock"></span></div>
+  </header>
+
+  <main>
+    <div id="title"></div>
+    <div id="row"><div id="strip"></div></div>
+    <nav id="buttons"></nav>
+  </main>
+
+  <footer>
+    <div id="tabs"></div>
+  </footer>
+
+  <div id="details">
+    <div class="d-hero"></div>
+    <div class="d-shade"></div>
+    <div class="d-left">
+      <div class="d-logo"></div>
+      <div class="d-meta"></div>
+      <p class="d-desc"></p>
+      
+      <div class="d-stats"></div>
+      <div class="d-actions"></div>
+      <div class="d-shots"></div>
+    </div>
+    <div class="d-right"><div class="d-newshead">News</div><div class="d-news"></div></div>
+  </div>
+  <div id="newspage"><div class="np-head"><h1>News</h1><div class="np-sub">The latest from your Steam games</div></div><div class="np-grid"></div></div>
+  <div id="achpage"><div class="ap-head"></div><div class="al-tabs"></div><div class="ap-grid"></div></div>
+  <div id="libpage"><div class="lp-head"></div><div class="lp-cats"></div><div class="lp-grid"></div></div>
+  <div id="search"><div class="sr-field"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg><input id="srq" placeholder="Search your games" readonly tabindex="-1"></div><div class="sr-body"><div class="sr-kb"></div><div class="sr-results"></div></div></div>
+  <div id="albumpage"><div class="np-head"><h1>Album</h1><div class="np-sub"></div></div><div class="al-tabs"></div><div class="al-grid"></div></div>
+  <div id="quick"><div class="q-inner"><div class="q-cover"></div><div class="q-side"><div class="sys-time"></div><div class="q-meta"></div><h2 class="q-title"></h2><div class="q-list"></div><div class="sys-info"></div></div></div></div>
+  <div id="viewer"><div class="v-stage"></div><div class="v-arrow l" aria-label="Previous media"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></div><div class="v-arrow r" aria-label="Next media"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 6 6 6-6 6"/></svg></div><div class="v-cap"><div class="v-label"></div><div class="v-strip"></div></div></div>
+  <div id="reader"><div class="r-scroll"><article class="r-article"></article></div></div>
+  <div id="panel"><div class="pbox"><div class="pside"></div><div class="pmain"><div class="ptop"><h2 class="ptitle"></h2><div class="pbusy">Working…</div></div><div class="plist"></div></div></div></div>
+  <div id="hubpage"><div class="np-head"><h1></h1><div class="np-sub"></div></div><div class="hub-grid"></div></div>
+  <div id="syspanel"><div class="sp-box"><h2>Quick Access</h2><div class="sp-time"></div><div class="sp-list"></div></div></div>
+  <div id="toast"></div>
+  <div id="launch"><div class="lbg"></div><div class="lshade"></div><div class="lbox"><img class="llogo" alt=""><div class="lt"></div><div class="ls">Launching</div><div class="bar"><i></i></div><div class="ln"></div></div></div>
+  <div id="backbtn" role="button" aria-label="Back" title="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 5.5L8 12l6.5 6.5"/></svg></div>
+
+  <script src="library.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
