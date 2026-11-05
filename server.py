@@ -7907,6 +7907,11 @@ class Handler(SimpleHTTPRequestHandler):
                     threading.Thread(target=update_step, args=[body["action"]], daemon=True).start()
                     time.sleep(0.3)
                 return self.reply(update_view())
+            if path == "/api/uninstall" and MAC:  # Settings > About > Uninstall: to the Trash, then the app quits
+                failed, data = uninstall_mac(bool(body.get("wipe")))
+                if not failed:
+                    threading.Timer(2.5, lambda: (data(), os._exit(0))).start()  # long enough for the page to say so
+                return self.reply({"ok": not failed, "failed": failed})
             if path == "/api/quit":  # a newer build is taking over
                 threading.Timer(0.2, QUIT[0]).start()
                 return self.reply({"ok": True})
@@ -8768,6 +8773,36 @@ def set_autostart_mac(mode):
             os.remove(LAUNCH_AGENT)
         except OSError:
             pass
+
+
+def uninstall_mac(wipe):
+    """Settings > About > Uninstall on a Mac: the app, its leftover update copies and its open-at-login entry go to the
+    Trash (so they can be put back), and with wipe its settings, artwork, captures and WebKit data too. Emulators it
+    installed are apps of their own and stay. Returns what couldn't be moved and a function that trashes the data: the
+    caller runs it as the app quits, so nothing writes a new data folder after it's gone."""
+    from Foundation import NSFileManager, NSURL
+    bundle = mac_bundle()
+    if not bundle or "/AppTranslocation/" in bundle or bundle.startswith("/Volumes/"):
+        return ["Ultra Front End is running from the disk image, not Applications. Quit it and drag it from Applications to the Trash"], None
+    ident = "com.imsammyttv.ultrafrontend"
+    lib = os.path.expanduser("~/Library")
+    paths = [LAUNCH_AGENT, bundle, *update_paths(), bundle[:-4] + ".old.app"]
+    data = []
+    if wipe:
+        data = [DATA, os.path.join(lib, "WebKit", ident), os.path.join(lib, "Caches", ident), os.path.join(lib, "HTTPStorages", ident),
+                  os.path.join(lib, "Saved Application State", ident + ".savedState"), os.path.join(lib, "Preferences", ident + ".plist")]
+    subprocess.run(["launchctl", "bootout", f"gui/{os.getuid()}/{ident}"], capture_output=True)  # loaded at sign-in; harmless if not
+    fm = NSFileManager.defaultManager()
+
+    def trash(items):
+        failed = []
+        for p in items:
+            if os.path.lexists(p):
+                ok, _, _ = fm.trashItemAtURL_resultingItemURL_error_(NSURL.fileURLWithPath_(p), None, None)
+                if not ok:
+                    failed.append(os.path.basename(p))
+        return failed
+    return trash(paths), lambda: trash(data)
 
 
 # The controller, read through macOS' GameController framework (any pad the Mac knows: Xbox, PlayStation, Switch Pro, MFi).
