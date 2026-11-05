@@ -154,6 +154,14 @@ and a UI scale setting.
    (on older macOS: right-click the app and choose **Open**). It opens normally from then on and updates itself.
 3. **Follow the setup guide** as above. Emulators install into your Applications folder from their own projects. The in-game menu, screenshots and recording are Windows-only for now.
 
+**Linux and Steam Deck** (x86-64)
+
+1. **Download** `UltraFrontEnd-linux-x86_64.AppImage` from the [latest release](https://github.com/ImSammyTTV/Ultra-Front-End/releases/latest).
+   On a Steam Deck, do this in **Desktop Mode**. Put it in a folder of your own (`~/Applications` is a good place), then right-click it → **Properties → Permissions → Is executable**.
+2. **Steam Deck Game Mode:** in Desktop Mode, right-click the AppImage → **Add to Steam**. It then shows in your Steam library under Non-Steam, and Steam gives it the Deck's controls.
+3. **Follow the setup guide** as above. Your ROMs go in `~/ROMs` unless you choose another folder (an SD card works). Emulators install from Flathub for your account, no password needed;
+   emulators you already have from Flathub, EmuDeck (`~/Applications`) or your distribution are found too. The in-game menu, screenshots and recording are Windows-only for now.
+
 > [!TIP]
 > **Windows says it "protected your PC"?** The app isn't signed yet, so SmartScreen warns about it. Click **More info → Run anyway**.
 
