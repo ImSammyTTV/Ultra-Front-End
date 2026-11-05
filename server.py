@@ -71,7 +71,7 @@ PORT = int(sys.argv[sys.argv.index("--port") + 1]) if "--port" in sys.argv else 
 # This copy's build, noted at start: an update swaps the exe while the old build can still be running in the tray
 BUILD = "%d-%d" % (int(os.path.getmtime(sys.executable)), os.path.getsize(sys.executable)) if getattr(sys, "frozen", False) else "source"
 QUIT = [lambda: os._exit(0)]  # how this helper leaves when a newer build takes over; Game Frontend.exe takes its tray icon down too
-VERSION = "1.1.1"  # the release this is; tools/release.py publishes it as tag v<VERSION>
+VERSION = "1.1.2"  # the release this is; tools/release.py publishes it as tag v<VERSION>
 UPDATE_REPO = "ImSammyTTV/Ultra-Front-End"  # whose GitHub releases a copy of the exe keeps itself current from
 os.makedirs(DATA, exist_ok=True)
 
@@ -1333,7 +1333,10 @@ def online_cover(title):
     if key not in cache:
         try:
             items = http_json("https://store.steampowered.com/api/storesearch/?" + urllib.parse.urlencode({"term": title, "l": "english", "cc": "US"}), timeout=6).get("items", [])
-            hit = next((i for i in items if norm(i["name"]) == key), None) or next((i for i in items[:1] if key in norm(i["name"]) or norm(i["name"]) in key), None)
+            # the same name, or the top result when one name holds the other and they're nearly the same length
+            # ("Retail" is no "Retail Hell": only names close in length count)
+            close = lambda x, y: (x in y or y in x) and min(len(x), len(y)) >= .75 * max(len(x), len(y))
+            hit = next((i for i in items if norm(i["name"]) == key), None) or next((i for i in items[:1] if close(key, norm(i["name"]))), None)
             cache[key] = (steam_store_art([str(hit["id"])]).get(str(hit["id"])) or STEAM_CDN.format(hit["id"])) if hit else ""
         except (urllib.error.URLError, ValueError, KeyError, TimeoutError):
             return ""
@@ -1479,12 +1482,39 @@ def rom_title(stem, system):
     return t or stem
 
 
+# Folders a game's program sits in that say nothing about the game (007 First Light keeps its exe in Retail\, Hades II in Ship\)
+GENERIC_DIRS = re.compile(r"bin(32|64)?|binaries|win(32|64|dows)?|(x(64|86)|amd64)([ _-]?(dx\d+|vk|vulkan))?|release|retail|final|gold|live|"
+                          r"ship(ping)?|game|client|build(s)?|exe|app|program|data|pc|dx(9|11|12)|vulkan|windowsnoeditor|windowsclient|"
+                          r"steam|gog|epic|current|latest|default|main|launcher|public|ptr|beta", re.I)
+# Folders that hold many games: a game named after one of them is named after nothing
+SHELF_DIRS = re.compile(r"games?|pc ?games|my games|pc ports|ports|common|steamapps|steamlibrary|program files( \(x86\))?|"
+                        r"epic games|gog games|apps|software|downloads|desktop", re.I)
+
+
+def exe_name_title(exe):
+    """A game's name from its program's: "007FirstLight-Win64-Shipping.exe" -> "007 First Light"."""
+    stem = os.path.splitext(os.path.basename(exe))[0]
+    stem = re.sub(r"[-_ ](win(32|64)|x(64|86)|shipping|dx\d+|vk|steam|gog|epic|release|retail)\b.*$", "", stem, flags=re.I)
+    stem = re.sub(r"(?<=[a-z])(?=[A-Z])|(?<=[A-Za-z])(?=\d)|(?<=\d)(?=[A-Za-z]{2})", " ", stem)  # FirstLight -> First Light
+    return clean_title(stem.replace("-", " ").replace("_", " "))
+
+
 def title_for_exe(exe):
-    """Name a game after its folder, skipping generic ones like bin\\ or Win64\\."""
-    d = os.path.dirname(exe)
-    while re.fullmatch(r"bin|binaries|win(32|64)|x(64|86)|release|game|shipping", os.path.basename(d), re.I) and os.path.dirname(d) != d:
+    """Name a game after its folder, skipping generic ones (bin, Win64, Retail...). Unreal Engine games keep their
+    program in <game>/<project>/Binaries/Win64, where the project folder is often a code name: the game's folder above
+    it names it. A folder that's still no name (a drive, a folder of many games) gives way to the program's own name."""
+    d, skipped = os.path.dirname(exe), []
+    while GENERIC_DIRS.fullmatch(os.path.basename(d)) and os.path.dirname(d) != d:
+        skipped.append(os.path.basename(d).lower())
         d = os.path.dirname(d)
-    return clean_title(os.path.basename(d))
+    if "binaries" in skipped:  # Unreal Engine: d is the project folder; its parent is the game's own
+        parent = os.path.dirname(d)
+        if parent != d and os.path.dirname(parent) != parent and not SHELF_DIRS.fullmatch(os.path.basename(parent)):
+            d = parent
+    name = os.path.basename(d)
+    if not name or os.path.dirname(d) == d or SHELF_DIRS.fullmatch(name) or GENERIC_DIRS.fullmatch(name):
+        return exe_name_title(exe) or clean_title(name)
+    return clean_title(name)
 
 
 def exe_game(title, exe, group, cfg, folder=None):
@@ -1648,7 +1678,10 @@ def scan_library(lib, cfg):
     if kind == "game":
         if not os.path.isfile(path):
             return []
-        g = exe_game(lib.get("title") or title_for_exe(path), path, lib["name"], cfg)
+        title = lib.get("title") or ""
+        if not title or GENERIC_DIRS.fullmatch(title) or SHELF_DIRS.fullmatch(title):  # a name kept from before folders like Retail were skipped
+            title = title_for_exe(path)
+        g = exe_game(title, path, lib["name"], cfg)
         if lib.get("args"):
             g["launch"]["args"] = list(lib["args"])
         if lib.get("system"):  # an emulator set up for one game (PlayStation Home in its own RPCS3): listed with that console
@@ -5619,6 +5652,15 @@ def add_library(kind, provider=None):
         lib["name"] = LOCAL_PROVIDERS[provider]
         lib["provider"] = provider
     lib["id"] = gid("lib", lib["type"] + lib["path"])
+    if kind == "game":  # adding a game means seeing it: one hidden earlier (by this name or another) is shown again
+        overrides = load("overrides.json", {})
+        o = overrides.get(gid("pc", path))
+        if o and o.pop("hidden", None):
+            if not o:
+                overrides.pop(gid("pc", path))
+            store("overrides.json", overrides)
+            if any(x["id"] == lib["id"] for x in cfg["libraries"]):
+                return next(x for x in cfg["libraries"] if x["id"] == lib["id"])
     if any(x["id"] == lib["id"] for x in cfg["libraries"]):
         raise ValueError("That library is already added")
     cfg["libraries"].append(lib)
