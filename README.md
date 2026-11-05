@@ -5,8 +5,8 @@
 <p align="center">
   <a href="https://github.com/ImSammyTTV/Ultra-Front-End/releases/latest"><img src="https://img.shields.io/github/v/release/ImSammyTTV/Ultra-Front-End?style=for-the-badge&color=3aa0ff&label=Download" alt="Latest release"></a>
   <a href="https://github.com/ImSammyTTV/Ultra-Front-End/releases"><img src="https://img.shields.io/github/downloads/ImSammyTTV/Ultra-Front-End/total?style=for-the-badge&color=f5b400&label=Downloads" alt="Downloads"></a>
-  <img src="https://img.shields.io/badge/Windows%2010%20%2B%2011-2f2f35?style=for-the-badge" alt="Windows 10 and 11">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-00c46a?style=for-the-badge" alt="MIT license"></a>
+  <img src="assets/badges/windows.svg" alt="Windows 10 and 11">
+  <a href="LICENSE"><img src="assets/badges/license.svg" alt="MIT license"></a>
 </p>
 
 <p align="center">
