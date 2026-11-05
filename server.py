@@ -4134,6 +4134,11 @@ def raise_window(hwnd, seconds=10):
 
 def steam_windows():
     """Steam's own top-level windows on screen (its main window and chats): {hwnd: title}."""
+    return windows_of("steamwebhelper.exe")
+
+
+def windows_of(exe):
+    """A program's top-level windows on screen, by its .exe name: {hwnd: title}."""
     import ctypes
     import ctypes.wintypes as W
     user32 = ctypes.WinDLL("user32")  # its own copy: these argtypes stay here
@@ -4153,7 +4158,7 @@ def steam_windows():
         pid, r = ctypes.c_ulong(), W.RECT()
         user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
         user32.GetWindowRect(hwnd, ctypes.byref(r))
-        if (user32.IsIconic(hwnd) or (r.right - r.left >= 300 and r.bottom - r.top >= 200)) and process_name(pid.value).lower() == "steamwebhelper.exe":
+        if (user32.IsIconic(hwnd) or (r.right - r.left >= 300 and r.bottom - r.top >= 200)) and process_name(pid.value).lower() == exe:
             buf = ctypes.create_unicode_buffer(256)
             user32.GetWindowTextW(hwnd, buf, 256)
             found[hwnd] = buf.value
@@ -5194,7 +5199,7 @@ def settings_view():
             "errors": STATE["errors"], "steamDetected": bool(steam_path()), "steamSuggestedId": steam_suggested_id(),
             "localSteamCount": STATE["counts"].get("Steam (installed)", 0), "romRoot": cfg.get("romRoot") or "", "platforms": platforms,
             "queue": queue_view(), "profile": profile(), "update": update_view(), "extras": extras_view(),
-            "launchers": launchers_view() if WIN else []}
+            "launchers": launchers_view() if WIN else [], "autologon": autologon_view() if WIN else {"available": False}}
 
 
 def profile():
@@ -6439,7 +6444,7 @@ def presentmon_rights():
         return "needed"
 
 
-def run_elevated(program, params):
+def run_elevated(program, params, wait=120000):
     """Run a program through Windows' administrator prompt (UAC), hidden, and wait for it: its exit code."""
     import ctypes
     import ctypes.wintypes as W
@@ -6460,11 +6465,208 @@ def run_elevated(program, params):
         raise ValueError("Windows' permission prompt couldn't open")
     code = W.DWORD(1)
     try:
-        kernel.WaitForSingleObject(info.hProcess, 120000)
+        kernel.WaitForSingleObject(info.hProcess, wait)
         kernel.GetExitCodeProcess(info.hProcess, ctypes.byref(code))
     finally:
         kernel.CloseHandle(info.hProcess)
     return code.value
+
+
+# ---------- signing in to Windows automatically (an option: the setup guide's start-up step and Settings > General) ----------
+# The app never sees a password. An account without one is set up here; for one with a password, Windows' own User
+# Accounts window (netplwiz) asks for it and keeps it encrypted. Either way waking from sleep stops asking too.
+WINLOGON = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
+
+
+def my_sign_in_names():
+    """The names Windows may use for this account in its auto sign-in setting: the account name, its Microsoft account
+    email (netplwiz writes that for a Microsoft account) and its work or school sign-in (UPN). Lower case."""
+    import ctypes
+    import winreg
+    names = {os.environ.get("USERNAME", "").lower()}
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\IdentityCRL\UserExtendedProperties") as k:
+            i = 0
+            while True:
+                try:
+                    names.add(winreg.EnumKey(k, i).lower())
+                except OSError:
+                    break
+                i += 1
+    except OSError:
+        pass
+    try:
+        sec = ctypes.WinDLL("secur32")
+        size = ctypes.c_ulong(512)
+        buf = ctypes.create_unicode_buffer(512)
+        if sec.GetUserNameExW(8, buf, ctypes.byref(size)):  # NameUserPrincipal
+            names.add(buf.value.lower())
+    except (OSError, AttributeError):
+        pass
+    names.discard("")
+    return names
+
+
+def autologon_view():
+    """Read only: whether Windows signs this account in by itself, or another one."""
+    import winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, WINLOGON) as k:
+            def get(name):
+                try:
+                    return str(winreg.QueryValueEx(k, name)[0])
+                except OSError:
+                    return ""
+            on, user = get("AutoAdminLogon") == "1", get("DefaultUserName")
+    except OSError:
+        return {"available": False}
+    mine = bool(user) and user.split("\\")[-1].lower() in my_sign_in_names()
+    return {"available": True, "on": on and mine, "other": user if on and user and not mine else "", "user": os.environ.get("USERNAME", "")}
+
+
+def blank_password():
+    """Whether this account has no password: True, False, or None when it can't tell. Asked once, only when the option is
+    turned on: Windows answers a blank-password sign-in with 'account restriction' (1327) or lets it in when there's none,
+    and 'wrong password' (1326) when there is one."""
+    import ctypes
+    import ctypes.wintypes as W
+    adv, k32 = ctypes.WinDLL("advapi32", use_last_error=True), ctypes.WinDLL("kernel32")
+    adv.LogonUserW.argtypes = [W.LPCWSTR, W.LPCWSTR, W.LPCWSTR, W.DWORD, W.DWORD, ctypes.POINTER(W.HANDLE)]
+    k32.CloseHandle.argtypes = [W.HANDLE]
+    token = W.HANDLE()
+    if adv.LogonUserW(os.environ.get("USERNAME", ""), ".", "", 2, 0, ctypes.byref(token)):  # LOGON32_LOGON_INTERACTIVE
+        k32.CloseHandle(token)
+        return True
+    err = ctypes.get_last_error()
+    return True if err == 1327 else False if err == 1326 else None
+
+
+def ps_text(text):
+    """A string for the administrator script, passed as data (base64) so no name can break out of it."""
+    return "([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('" + base64.b64encode(str(text).encode("utf-16-le")).decode() + "')))"
+
+
+AUTOLOGON_HEAD = r"""$ErrorActionPreference = 'Stop'
+trap { exit 1 }
+$w = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
+$d = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\PasswordLess\Device'
+$keep = 'HKLM:\SOFTWARE\Ultra Front End'
+function Get-Value($key, $name) { $v = Get-ItemProperty $key -Name $name -ErrorAction SilentlyContinue; if ($v) { $v.$name } }
+function Set-Wake($lock) {  # asking for the sign-in on wake, in every power plan (a laptop's modes switch plans)
+  $plans = (powercfg /list | Select-String '[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}' -AllMatches).Matches.Value | Select-Object -Unique
+  foreach ($g in $plans) { powercfg /setacvalueindex $g SUB_NONE CONSOLELOCK $lock; powercfg /setdcvalueindex $g SUB_NONE CONSOLELOCK $lock }
+  powercfg /setactive SCHEME_CURRENT
+}
+function Hello-Off {  # 'only allow Windows Hello sign-in' hides netplwiz's tick box: noted first, so it can be put back
+  if (-not (Test-Path $keep)) { New-Item $keep -Force | Out-Null }
+  if ($null -eq (Get-Value $keep 'HelloBefore')) { Set-ItemProperty $keep HelloBefore ([string](Get-Value $d 'DevicePasswordLessBuildVersion')) -Type String }
+  if (-not (Test-Path $d)) { New-Item $d -Force | Out-Null }
+  Set-ItemProperty $d DevicePasswordLessBuildVersion 0 -Type DWord
+}
+function Hello-Back {
+  $b = Get-Value $keep 'HelloBefore'
+  if ($null -eq $b) { return }
+  if ($b -eq '') { Remove-ItemProperty $d DevicePasswordLessBuildVersion -ErrorAction SilentlyContinue }
+  else { Set-ItemProperty $d DevicePasswordLessBuildVersion ([int]$b) -Type DWord }
+  Remove-ItemProperty $keep HelloBefore
+}
+"""
+AUTOLOGON_FORGET = r"""
+Add-Type -TypeDefinition @'
+using System; using System.Runtime.InteropServices;
+public static class UfeLsa {
+  [StructLayout(LayoutKind.Sequential)] struct U { public ushort Length; public ushort MaximumLength; public IntPtr Buffer; }
+  [StructLayout(LayoutKind.Sequential)] struct A { public int Length; public IntPtr RootDirectory; public IntPtr ObjectName; public uint Attributes; public IntPtr SecurityDescriptor; public IntPtr SecurityQualityOfService; }
+  [DllImport("advapi32.dll")] static extern uint LsaOpenPolicy(IntPtr system, ref A attributes, uint access, out IntPtr policy);
+  [DllImport("advapi32.dll")] static extern uint LsaStorePrivateData(IntPtr policy, ref U key, IntPtr data);
+  [DllImport("advapi32.dll")] static extern uint LsaClose(IntPtr policy);
+  public static uint Forget(string name) {
+    A a = new A(); a.Length = Marshal.SizeOf(typeof(A)); IntPtr policy;
+    uint r = LsaOpenPolicy(IntPtr.Zero, ref a, 0x00F0FFF, out policy);
+    if (r != 0) return r;
+    U key = new U(); key.Buffer = Marshal.StringToHGlobalUni(name); key.Length = (ushort)(name.Length * 2); key.MaximumLength = (ushort)(key.Length + 2);
+    try { return LsaStorePrivateData(policy, ref key, IntPtr.Zero); } finally { Marshal.FreeHGlobal(key.Buffer); LsaClose(policy); }
+  }
+}
+'@
+[void][UfeLsa]::Forget('DefaultPassword')
+"""
+AUTOLOGON_CANCELLED = 3  # the User Accounts window was closed without turning it on: everything was put back
+
+
+def autologon_script(on, blank):
+    """The administrator script: no file on disk, so nothing can swap it before Windows' prompt. The account is named as
+    data: the person approving Windows' prompt can be a different administrator, so the script can't ask who it runs as."""
+    user = os.environ.get("USERNAME", "")
+    domain = os.environ.get("USERDOMAIN", "") or os.environ.get("COMPUTERNAME", "")
+    head = AUTOLOGON_HEAD + f"$u = {ps_text(user)}\n$dom = {ps_text(domain)}\n"
+    if not on:  # off: the saved sign-in goes too, wherever Windows kept it, whoever it was for
+        return head + ("Set-ItemProperty $w AutoAdminLogon '0'\n"
+                       "foreach ($n in 'DefaultPassword', 'AutoLogonCount') { Remove-ItemProperty $w $n -ErrorAction SilentlyContinue }\n"
+                       + AUTOLOGON_FORGET + "Set-Wake 1\nHello-Back\nexit 0\n")
+    if blank:
+        return head + (AUTOLOGON_FORGET  # a password Windows keeps from another account's auto sign-in would be tried first
+                       + "Set-ItemProperty $w DefaultUserName $u\n"
+                       "Set-ItemProperty $w DefaultDomainName $dom\n"
+                       "Set-ItemProperty $w DefaultPassword ''\n"
+                       "Remove-ItemProperty $w AutoLogonCount -ErrorAction SilentlyContinue\n"  # it would turn itself off after that many
+                       "Set-ItemProperty $w AutoAdminLogon '1'\n"
+                       "Set-Wake 0\nexit 0\n")
+    # A password: Windows' User Accounts window asks for it. Waited for: done, the rest follows; closed, all is put back.
+    return head + ("Hello-Off\n"
+                   "$was = @{ on = (Get-Value $w 'AutoAdminLogon'); user = (Get-Value $w 'DefaultUserName'); dom = (Get-Value $w 'DefaultDomainName') }\n"
+                   "if ($was.on -ne '1') { Set-ItemProperty $w DefaultUserName $u; Set-ItemProperty $w DefaultDomainName $dom }  # its name box starts on this account\n"
+                   "$p = Start-Process \"$env:SystemRoot\\System32\\netplwiz.exe\" -PassThru\n"
+                   "$p.WaitForExit()\n"
+                   "$now = @{ on = (Get-Value $w 'AutoAdminLogon'); user = (Get-Value $w 'DefaultUserName') }\n"
+                   "if ($now.on -eq '1' -and ($was.on -ne '1' -or $now.user -ne $was.user)) {\n"
+                   "  Remove-ItemProperty $w AutoLogonCount -ErrorAction SilentlyContinue\n"
+                   "  Set-Wake 0\n  exit 0\n}\n"
+                   "if ($was.on -ne '1') {\n"
+                   "  foreach ($n in 'user', 'dom') { $name = @{ user = 'DefaultUserName'; dom = 'DefaultDomainName' }[$n]\n"
+                   "    if ($null -eq $was[$n]) { Remove-ItemProperty $w $name -ErrorAction SilentlyContinue } else { Set-ItemProperty $w $name $was[$n] } }\n"
+                   "}\n"
+                   f"Hello-Back\nexit {AUTOLOGON_CANCELLED}\n")
+
+
+def set_autologon(on):
+    """Turn signing in automatically on or off, after Windows' administrator prompt: 'on', 'off', or 'cancelled' when
+    Windows' User Accounts window was closed without turning it on."""
+    if not WIN:
+        raise ValueError("Signing in automatically is a Windows setting")
+    blank = blank_password() if on else None
+    powershell = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+    encoded = base64.b64encode(autologon_script(on, blank).encode("utf-16-le")).decode()
+    window = on and not blank
+    if window:  # Windows opens it behind the fullscreen frontend
+        bring_forward("netplwiz.exe", "User Accounts", timeout=90)
+    code = run_elevated(powershell, f"-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {encoded}", wait=900000 if window else 120000)
+    if window and code == AUTOLOGON_CANCELLED:
+        return "cancelled"
+    if code:
+        raise ValueError("Windows couldn't change the sign-in setting")
+    return "on" if on else "off"
+
+
+def bring_forward(exe, title="", timeout=10):
+    """Bring a program's window in front of the fullscreen frontend once it shows (Windows opens it behind). By its .exe,
+    or by its title when the program runs as another account (an administrator who approved the prompt) and can't be read."""
+    import ctypes
+    user32 = ctypes.WinDLL("user32")
+    user32.FindWindowW.restype = ctypes.c_void_p
+    user32.FindWindowW.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p]
+    FOCUS[0] += 1
+    token = FOCUS[0]
+
+    def run():
+        deadline = time.time() + timeout
+        while time.time() < deadline and FOCUS[0] == token:
+            time.sleep(0.3)
+            found = list(windows_of(exe)) or ([user32.FindWindowW("#32770", title)] if title else [])
+            if found and found[0]:
+                take_foreground(found[0])
+                return
+    threading.Thread(target=run, daemon=True).start()
 
 
 def presentmon_permission():
@@ -6919,6 +7121,9 @@ class Handler(SimpleHTTPRequestHandler):
             if path == "/api/launchers/install":  # a missing game launcher, through the install queue
                 queue_launcher(body.get("id") or "")
                 return self.reply(settings_view())
+            if path == "/api/autologon":  # after Windows' administrator prompt
+                state = set_autologon(bool(body.get("on")))
+                return self.reply({**settings_view(), "autologonState": state})
             if path in ("/api/extras/install", "/api/extras/remove", "/api/extras/permission"):
                 if body.get("name") not in EXTRAS or not WIN:
                     raise ValueError("No such extra")

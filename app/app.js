@@ -2295,6 +2295,7 @@ function panelItems() {
   return [  // general
     ...(/Windows/.test(navigator.userAgent) ? [{ kind: 'row', label: 'Start with Windows', value: STARTUP.find(s => s.mode === startupMode(d)).label.replace(/^Don’t start with Windows$/, 'Off'),
       sub: STARTUP.find(s => s.mode === startupMode(d)).sub, act: () => setStartup(STARTUP[(STARTUP.findIndex(s => s.mode === startupMode(d)) + 1) % STARTUP.length].mode) }] : []),
+    ...autologonRows(d),
     ...(/Windows/.test(navigator.userAgent) ? [{ kind: 'row', ic: icon('pad'), label: 'Open with the Xbox button', value: onOff(d.options.guideOpens), sub: 'The Xbox button on a controller opens Ultra Front End, or brings it to the front; so does holding View + Start, which also works through Steam (Steam keeps the Xbox and Steam buttons for itself while it runs). A Steam Controller’s Steam button does it with a double-press or a hold. In a game, they open the overlay.', act: () => setOpt('guideOpens') }] : []),
     { kind: 'row', label: 'Installed Steam games', value: d.steamDetected ? onOff(d.options.steamLocal) : 'Steam not found',
       sub: !d.steamDetected ? '' : d.options.steamLocal ? `${d.localSteamCount} found on this PC` : 'Off: your installed Steam games are hidden', act: () => d.steamDetected && setOpt('steamLocal') },
@@ -2501,6 +2502,31 @@ const STARTUP = [
   { mode: 'off', label: 'Don’t start with Windows', sub: 'Open it yourself when you want it' },
 ];
 const startupMode = d => d?.options?.startup || 'background';
+// Signing in to Windows by itself, so the PC goes straight to the frontend. Windows asks for administrator permission;
+// an account with a password types it into Windows' own User Accounts window, never into this app.
+function autologonRows(d, setup) {
+  const al = d.autologon;
+  if (!al?.available) return [];
+  const sure = P.confirm === 'autologon';
+  const sub = al.on ? 'Windows skips its sign-in screen when the PC starts and when it wakes from sleep'
+    : sure ? 'Anyone who turns on this PC is signed in as you. Press A again to turn it on'
+    : al.other ? `Windows signs in ${al.other} by itself now. Turn it on to sign in ${al.user} instead`
+    : 'Skip Windows’ sign-in screen, so the PC goes straight to Ultra Front End. Windows asks for permission first';
+  return [
+    { kind: 'row', key: 'autologon', warn: sure, label: 'Sign in to Windows automatically', value: setup ? (al.on ? '✓' : '') : al.other && !al.on ? 'Another account' : onOff(al.on), sub,
+      act: () => al.on || sure ? setAutologon(!al.on, al) : (P.confirm = 'autologon', renderPanel()) },
+    ...(al.other && !al.on ? [{ kind: 'row', key: 'autologon-off', label: `Stop signing in ${al.other} automatically`, sub: 'Windows asks for the sign-in again', act: () => setAutologon(false, al) }] : []),
+  ];
+}
+async function setAutologon(on, al) {
+  P.confirm = null;
+  toast(on ? `Answer Windows’ prompt. If your account has a password, Windows’ User Accounts window opens: select ${al.user}, untick “Users must enter a user name and password”, choose OK, then type your Windows password` : 'Answer Windows’ prompt…', on ? 20000 : 6000);
+  const r = await work(api('/api/autologon', { on }));
+  if (!r) return;
+  // a password goes into Windows' own window: it was open (and waited for) by the time this answer came
+  if (r.autologonState === 'cancelled') toast('Nothing changed: the User Accounts window was closed', 5000);
+  else toast(on ? 'Windows will sign you in by itself' : 'Windows will ask you to sign in again', 4000);
+}
 async function setStartup(mode) {
   try { P.data = { ...P.data, ...(await api('/api/options', { startup: mode })) }; } catch (e) { toast(e.message); }
   renderPanel();
@@ -2607,6 +2633,7 @@ function setupItems(d, prof) {
       { kind: 'note', label: 'Should Ultra Front End start when you sign in to Windows? You can change this later in Settings › General, or from its tray icon.' },
       ...STARTUP.map(s => ({ kind: 'row', label: s.label + (s.mode === 'background' ? ' (recommended)' : ''), sub: s.sub,
         value: startupMode(d) === s.mode ? '✓' : '', act: () => setStartup(s.mode) })),
+      ...autologonRows(d, true),
       next,
     ];
     default: return [
