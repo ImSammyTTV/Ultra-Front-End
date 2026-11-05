@@ -1131,3 +1131,13 @@ body.zone-2 #tabs, body.tabs-peek #tabs { pointer-events: auto; }
 #syspanel .sp-box, #quick .q-inner { background: rgba(24, 25, 28, .66); -webkit-backdrop-filter: blur(30px) saturate(1.5); backdrop-filter: blur(30px) saturate(1.5);
   box-shadow: inset 1px 0 0 rgba(255, 255, 255, .08); }
 #syspanel .sp-list .sp-power { margin-top: auto; }  /* power sits at the bottom of the panel */
+#syspanel .sp-list .sp-music { margin-top: auto; }  /* the song sits just above it */
+#syspanel .sp-list .sp-music + .sp-power { margin-top: 1.4vh; }
+.sp-music .sp-text { flex: 1; min-width: 0; }
+.sp-music .sp-text > div, .sp-music .sp-text small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-mbtns { display: flex; gap: .6vh; flex: none; }
+.sp-mb { width: 5.4vh; height: 4.6vh; border-radius: 2.3vh; display: grid; place-items: center; }
+.sp-mb svg { width: 2.2vh; height: 2.2vh; fill: currentColor; }
+.sp-row.sel.sp-music { background: none; color: inherit; }
+.sp-row.sel.sp-music .sp-text small { color: rgba(255, 255, 255, .62); }  /* as when not selected: the highlight is on a button */
+.sp-row.sel .sp-mb.on { background: #fff; color: var(--menu-ink); }

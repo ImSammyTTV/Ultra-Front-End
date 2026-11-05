@@ -1873,18 +1873,29 @@ function hubOpen() {
 $('#hubpage').addEventListener('click', e => { const r = e.target.closest('.hub-row'); if (r) { HUB.i = +r.dataset.i; hubFocus(); hubOpen(); } else if (e.target.closest('.d-empty') && hubConnects()) connectSteam(); });
 
 // ---------- Quick Access: the Steam button (double-press or hold) or View, on the frontend ----------
-const SP = { open: false, i: 0, rows: [], volume: null, muted: false, song: null, active: 0, p: 0, confirm: null, battery: null, friends: '' };
+const SP = { open: false, i: 0, rows: [], volume: null, muted: false, song: null, active: 0, p: 0, m: 1, confirm: null, battery: null, friends: '' };
+// The music controls (previous, play/pause, next), as in the in-game menu: Windows' media keys, so any player answers them
+const MEDIA_ICONS = [
+  '<svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg>',
+  ['<svg viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></svg>', '<svg viewBox="0 0 24 24"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>'],
+  '<svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg>'];
+async function sysMedia() {
+  const action = ['media-prev', 'media-play', 'media-next'][SP.m];
+  try { await api('/api/overlay', { action }); } catch (e) { return toast(e.message); }
+  if (action === 'media-play' && SP.song) { SP.song.playing = !SP.song.playing; renderSys(); }  // shown at once; Windows' word follows
+  clearTimeout(sysMedia.t);
+  sysMedia.t = setTimeout(() => api('/api/nowplaying').then(s => { if (SP.open) { SP.song = s?.title ? s : null; renderSys(); } }).catch(() => {}), 900);
+}
 function sysRows() {
   const now = LIB.find(g => RUN.has(g.id));
   return [
     ...(now ? [{ ic: 'pad', label: now.title, sub: 'Running · A resumes', run: () => { closeSys(); resumeGame(now); } }] : []),
     ...(SP.volume === null ? [] : [{ id: 'volume', run: () => setSound({ mute: !SP.muted }) }]),
-    ...(SP.song ? [{ ic: 'music', label: SP.song.title, sub: SP.song.artist ? `Now playing · ${SP.song.artist}` : 'Now playing' }] : []),
     { ic: 'download', label: 'Downloads', sub: SP.active ? `${SP.active} active` : '', run: () => { closeSys(); closePages(); openHub('downloads'); } },
     { ic: 'friends', label: 'Friends', sub: SP.friends || '', run: () => { closeSys(); closePages(); openHub('friends'); } },
-    { ic: 'star', label: 'Play Stats', run: () => { closeSys(); closePages(); openHub('stats'); } },
     ...(SP.hud && SP.hudFps ? [{ ic: 'bolt', label: 'Performance overlay', value: SP.hud[0].toUpperCase() + SP.hud.slice(1), run: cycleHud }] : []),  // an extra: once PresentMon is installed
     { ic: 'settings', label: 'Settings', run: () => { closeSys(); closePages(); openPanel(); } },
+    ...(SP.song ? [{ id: 'music', run: sysMedia }] : []),  // the song, just above the power buttons
     { id: 'power', run: () => powerPick(powerChoices()[SP.p]) },
   ];
 }
@@ -1909,6 +1920,9 @@ function renderSys() {
   SP.p = clamp(SP.p || 0, 0, powerChoices().length - 1);
   $('#syspanel .sp-list').innerHTML = SP.rows.map((r, i) => r.id === 'volume'
     ? `<div class="sp-row sp-vol" data-i="${i}">${icon(SP.muted ? 'mute' : 'volume')}<div class="sp-text"><div>Volume<b>${SP.muted ? 'Muted' : SP.volume}</b></div><div class="hub-bar"><i style="width:${SP.muted ? 0 : SP.volume}%"></i></div></div></div>`
+    : r.id === 'music'
+    ? `<div class="sp-row sp-music" data-i="${i}">${icon('music')}<div class="sp-text"><div>${esc(SP.song.title)}</div><small>${esc([SP.song.playing === false ? 'Paused' : 'Now playing', SP.song.artist].filter(Boolean).join(' · '))}</small></div>`
+      + `<div class="sp-mbtns">${[MEDIA_ICONS[0], MEDIA_ICONS[1][SP.song.playing === false ? 0 : 1], MEDIA_ICONS[2]].map((svg, j) => `<span class="sp-mb${j === SP.m ? ' on' : ''}" data-j="${j}">${svg}</span>`).join('')}</div></div>`
     : r.id === 'power'
     ? `<div class="sp-row sp-power" data-i="${i}">${powerChoices().map((p, j) => `<div class="sp-pw${j === SP.p ? ' on' : ''}${SP.confirm === p.id ? ' warn' : ''}" data-j="${j}">${icon(p.ic)}<span>${SP.confirm === p.id ? 'Press A again' : p.label}</span></div>`).join('')}</div>`
     : `<div class="sp-row${r.run ? '' : ' info'}" data-i="${i}">${icon(r.ic)}<div class="sp-text">${r.over ? `<small>${esc(r.over)}</small>` : ''}<div>${esc(r.label)}</div>${r.sub ? `<small>${esc(r.sub)}</small>` : ''}</div>${r.value ? `<b class="sp-value">${esc(r.value)}</b>` : ''}</div>`).join('');
@@ -1943,6 +1957,7 @@ async function setSound(change) {
 function sysSide(dir) {
   const row = SP.rows[SP.i]?.id;
   if (row === 'volume') return setSound({ delta: dir * 5 });
+  if (row === 'music') { const n = clamp(SP.m + dir, 0, 2); if (n !== SP.m) { SP.m = n; tick(700, .03); renderSys(); } return; }
   if (row !== 'power') return;
   const n = clamp(SP.p + dir, 0, powerChoices().length - 1);
   if (n !== SP.p) { SP.p = n; SP.confirm = null; tick(700, .03); renderSys(); }
@@ -1952,6 +1967,8 @@ $('#syspanel').addEventListener('click', e => {
   const r = e.target.closest('.sp-row');
   const pw = e.target.closest('.sp-pw'), bar = e.target.closest('.sp-vol') && !e.target.closest('svg') && $('#syspanel .sp-vol .hub-bar').getBoundingClientRect();
   if (pw) SP.p = +pw.dataset.j;
+  const mb = e.target.closest('.sp-mb');
+  if (mb) SP.m = +mb.dataset.j;
   if (bar && r) {  // a tap on the bar sets the level there (as a step from now, which every helper understands); on the icon, mute
     SP.i = +r.dataset.i; sysFocus();
     return setSound({ delta: Math.round(clamp((e.clientX - bar.left) / bar.width, 0, 1) * 100) - SP.volume, ...(SP.muted && { mute: false }) });
