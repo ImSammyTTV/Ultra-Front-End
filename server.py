@@ -108,7 +108,7 @@ PORT = int(sys.argv[sys.argv.index("--port") + 1]) if "--port" in sys.argv else 
 # This copy's build, noted at start: an update swaps the exe while the old build can still be running in the tray
 BUILD = "%d-%d" % (int(os.path.getmtime(sys.executable)), os.path.getsize(sys.executable)) if getattr(sys, "frozen", False) else "source"
 QUIT = [lambda: os._exit(0)]  # how this helper leaves when a newer build takes over; Game Frontend.exe takes its tray icon down too
-VERSION = "1.2.0"  # the release this is; tools/release.py publishes it as tag v<VERSION>
+VERSION = "1.2.1"  # the release this is; tools/release.py publishes it as tag v<VERSION>
 UPDATE_REPO = "ImSammyTTV/Ultra-Front-End"  # whose GitHub releases a copy of the exe keeps itself current from
 os.makedirs(DATA, exist_ok=True)
 
@@ -3735,11 +3735,32 @@ def autostart_copy():
     return (WIN or MAC) and getattr(sys, "frozen", False) and not os.path.isdir(os.path.join(ROOT, ".git")) and PORT == 8137
 
 
+SETUP_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\{F96F918D-9F0D-43DC-8972-28EAB3FEC1EE}_is1"  # UltraFrontEnd-Setup's Apps entry
+
+
+def note_installed_version():
+    """Settings > Apps shows the version Setup installed: after this copy updates itself, it shows this one instead."""
+    if not getattr(sys, "frozen", False):
+        return
+    import winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, SETUP_KEY, 0, winreg.KEY_READ | winreg.KEY_SET_VALUE) as k:
+            where = str(winreg.QueryValueEx(k, "InstallLocation")[0]).rstrip("\\/")
+            if os.path.normcase(os.path.abspath(where)) == os.path.normcase(os.path.abspath(ROOT)):
+                winreg.SetValueEx(k, "DisplayVersion", 0, winreg.REG_SZ, VERSION)
+    except OSError:
+        pass
+
+
 def uninstall_app():
     """Settings > Apps > Uninstall (UltraFrontEnd-Setup.exe registers this as --uninstall): asks, stops the app, takes away
     its shortcuts, start-with-Windows entry and Apps entry, then deletes its folder once this program has left. Settings,
     captures and recordings stay unless the user says to delete them too."""
     import winreg
+    own = os.path.join(os.path.dirname(frontend_exe()), "unins000.exe")
+    if os.path.isfile(own):  # installed by Setup: its own uninstaller does it
+        subprocess.Popen([own], close_fds=True)
+        return
     if message_box("Uninstall Ultra Front End?", 0x1 | 0x20) != 1:
         return
     wipe = message_box("Also delete your settings, artwork, captures and recordings?\n\nChoose No to keep them, so they're there if you "
@@ -8989,6 +9010,7 @@ def main():
             import hud
             hud.start(DATA, hud_visible, load("hud.json", {}).get("mode") if hud.presentmon(DATA) else "off")  # an extra: off until installed
             sync_autostart()
+            note_installed_version()
         warm_details()
     threading.Thread(target=start, daemon=True).start()
     if "--auto-exit" in sys.argv:
