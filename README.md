@@ -95,10 +95,6 @@ and a UI scale setting.
 </tr>
 </table>
 
-> [!NOTE]
-> **Private by design.** No account, no tracking. Your library, settings and artwork stay in a `data` folder beside the app.
-> It only goes online for things you use: store libraries, artwork and game info, emulator downloads and update checks.
-
 ---
 
 ## 🚀 Quick start
