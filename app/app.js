@@ -1831,7 +1831,7 @@ function quickItems(g) {
     { label: 'Collections', ic: svg('library'), run: () => openCollections(g) },
     { label: 'Artwork', ic: svg('image'), run: () => openArtMenu(g) },
     { label: 'Rename', ic: svg('keyboard'), run: () => renameGame(g) },
-    { label: 'Game info', ic: svg('info'), run: () => openInfoMenu(g) },
+    { label: 'Game info', ic: svg('news'), run: () => openInfoMenu(g) },
     ...(g.renamed ? [{ label: 'Restore original name', ic: svg('reset'), run: () => setGameName(g, '') }] : []),
     ...(g.source !== 'Emulators' || g.appPath ? [{ label: 'App location', ic: svg('folder'), run: () => openLocationMenu(g) }] : []),
     { label: g.hidden ? 'Unhide game' : 'Hide game', ic: svg(g.hidden ? 'eye' : 'eyeoff'), run: () => setHidden(g, !g.hidden) },
