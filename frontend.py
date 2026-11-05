@@ -255,6 +255,11 @@ def tray_icon():
 
     def quit_(*_):
         icon.stop()
+        try:  # the closing animation first, when the window is open
+            if webview.windows and webview.windows[0].evaluate_js("window.playOutro ? (playOutro(), true) : false"):
+                time.sleep(1.8)
+        except Exception:
+            pass
         for w in webview.windows:
             w.destroy()
         import ctypes
@@ -544,6 +549,11 @@ def main():
     window_log(f"start {' '.join(sys.argv[1:]) or '(window)'} from parent {os.getppid()}")
     if "--overlay" in sys.argv:
         return overlay()
+    if "--uninstall" in sys.argv:  # Settings > Apps > Uninstall: no window, no helper
+        return server.uninstall_app()
+    if "--install-broker" in sys.argv:  # the elevated install helper for setup (one administrator prompt): no window, no tray
+        i = sys.argv.index("--install-broker")
+        return server.install_broker(sys.argv[i + 1], sys.argv[i + 2])
     if "--background" in sys.argv:  # started at sign-in: the helper only, so the Xbox button or the tray can open the window
         if not helper_up() or replace_old_helper():
             helper = threading.Thread(target=server.main, daemon=True)

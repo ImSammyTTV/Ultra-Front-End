@@ -53,12 +53,46 @@ if WIN and not getattr(subprocess.Popen.__init__, "no_window", False):
 APP = shipped("app")
 
 
+# Where the settings in use live, noted in the user's app data, so a new copy of the exe saved somewhere else (a fresh
+# download in Downloads) finds them instead of starting over
+DATA_NOTE = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "Ultra Front End", "settings-folder.txt")
+
+
+def set_up_in(folder):
+    """Whether a data folder holds a finished setup."""
+    try:
+        with open(os.path.join(folder, "config.json"), encoding="utf-8") as f:
+            return bool((json.load(f).get("profile") or {}).get("setupDone"))
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def note_data_folder(folder):
+    if WIN and getattr(sys, "frozen", False) and "--port" not in sys.argv and set_up_in(folder):  # (not a test copy's)
+        try:
+            os.makedirs(os.path.dirname(DATA_NOTE), exist_ok=True)
+            with open(DATA_NOTE, "w", encoding="utf-8") as f:
+                f.write(os.path.abspath(folder))
+        except OSError:
+            pass
+
+
 def data_folder():
     """Beside the exe, so a copy and its settings stay together, unless Windows won't let it write there (Program Files):
-    then the user's own app data. The Mac app runs from a read-only disk image or /Applications: Application Support."""
+    then the user's own app data. A copy with no finished setup beside it uses the settings the last copy used, when they
+    still exist (the same person with a new download). The Mac app runs from a read-only disk image or /Applications:
+    Application Support."""
     if MAC and getattr(sys, "frozen", False):
         return os.path.expanduser("~/Library/Application Support/Ultra Front End")
     here = os.path.join(ROOT, "data")
+    if WIN and getattr(sys, "frozen", False) and "--port" not in sys.argv and not set_up_in(here):
+        try:
+            with open(DATA_NOTE, encoding="utf-8") as f:
+                before = f.read().strip()
+        except OSError:
+            before = ""
+        if before and os.path.normcase(os.path.abspath(before)) != os.path.normcase(os.path.abspath(here)) and set_up_in(before):
+            return before
     try:
         import tempfile
         os.makedirs(here, exist_ok=True)
@@ -69,11 +103,12 @@ def data_folder():
 
 
 DATA = data_folder()
+note_data_folder(DATA)
 PORT = int(sys.argv[sys.argv.index("--port") + 1]) if "--port" in sys.argv else 8137  # --port: a second copy for testing
 # This copy's build, noted at start: an update swaps the exe while the old build can still be running in the tray
 BUILD = "%d-%d" % (int(os.path.getmtime(sys.executable)), os.path.getsize(sys.executable)) if getattr(sys, "frozen", False) else "source"
 QUIT = [lambda: os._exit(0)]  # how this helper leaves when a newer build takes over; Game Frontend.exe takes its tray icon down too
-VERSION = "1.1.0"  # the release this is; tools/release.py publishes it as tag v1.0.0
+VERSION = "1.1.4"  # the release this is; tools/release.py publishes it as tag v<VERSION>
 UPDATE_REPO = "ImSammyTTV/Ultra-Front-End"  # whose GitHub releases a copy of the exe keeps itself current from
 os.makedirs(DATA, exist_ok=True)
 
@@ -88,6 +123,11 @@ def load(name, default):
 
 
 STORE_LOCK = threading.Lock()
+
+
+def secrets_equal(a, b):
+    import hmac
+    return hmac.compare_digest(str(a), str(b))
 
 
 def store(name, obj):
@@ -317,6 +357,15 @@ def scan_steam_local():
             st = ci(vdf(read(acf)), "AppState") or {}
             appid, name = ci(st, "appid"), ci(st, "name")
             if not appid or not name or appid in seen or STEAM_SKIP.search(name):
+                continue
+            # Steam also keeps a record for a game it hasn't finished installing (queued, a demo or playtest it never
+            # downloaded): only the ones flagged fully installed, with their folder there, can start
+            try:
+                flags = int(ci(st, "StateFlags") or 0)
+            except ValueError:
+                flags = 0
+            folder = ci(st, "installdir") and os.path.join(lib, "steamapps", "common", ci(st, "installdir"))
+            if not flags & 4 or not (folder and os.path.isdir(folder)):
                 continue
             seen.add(appid)
             s = stats.get(appid, {})
@@ -925,6 +974,10 @@ def winget_install(package_id, name):
     winget = shutil.which("winget")
     if not winget:
         raise ValueError("Install Microsoft App Installer from the Microsoft Store first, then restart the frontend")
+    if package_id in broker_packages() and start_broker():  # one administrator prompt for all of setup's installs
+        code, text = winget_via_broker(package_id, name)
+        if code != BROKER_NO_WINGET:  # (it couldn't find winget where only administrators can change it: the usual way)
+            return winget_result(package_id, name, code, [text])
     proc = subprocess.Popen(
         [winget, "install", "--id", package_id, "--exact", "--source", "winget", *WINGET_ARGS.get(package_id, []),
          "--accept-source-agreements", "--accept-package-agreements", "--disable-interactivity", "--silent"],
@@ -954,12 +1007,173 @@ def winget_install(package_id, name):
         raise
     finally:
         reader.join(30)
+    return winget_result(package_id, name, code, out)
+
+
+def winget_result(package_id, name, code, out):
     if code & 0xffffffff not in (0, 0x8A15002B):  # already installed with no upgrade is also success
         with open(os.path.join(DATA, "emulator-install.log"), "a", encoding="utf-8") as log:
             log.write(f"--- {time.strftime('%Y-%m-%d %H:%M')} winget install {package_id}: code {code & 0xffffffff:#x}\n"
                       f"{''.join(out)}\n")
         raise ValueError(f"{name} didn't install (winget code {code & 0xffffffff:#x}). Try again, or use its "
                          "project page. Details are in emulator-install.log in the data folder.")
+
+
+# ---------- one administrator prompt for setup's installs ----------
+# Some winget installers (the game launchers, several emulators) each ask Windows for administrator rights, sometimes behind
+# the full-screen frontend. Instead, Windows asks once: an elevated copy of this program (--install-broker) runs the
+# installs, then closes. It only ever runs "winget install" for a package in the app's own tables, so nothing else on the
+# PC can use it to run something as administrator. Not for standard accounts: if another person's administrator account
+# approved it, the installs would land in that person's user folder.
+BROKER = {"token": "", "seen": 0.0, "jobs": [], "next": 0, "out": {}, "done": {}, "declined": 0.0}
+BROKER_COND = threading.Condition()
+ADMINISTRATORS = "S-1-5-32-544"
+BROKER_NO_WINGET = 0x8A15FFF0  # the elevated helper's answer when there's no winget it can trust
+
+
+def protected_winget():
+    """winget.exe in its own package folder in Program Files › WindowsApps, which only administrators can change; never
+    the copy found through PATH (the user's own PATH and WindowsApps alias folder are theirs to change, so a planted
+    winget there would run as administrator). The newest version, or ""."""
+    root = os.path.join(os.environ.get("ProgramW6432") or os.environ.get("ProgramFiles") or r"C:\Program Files", "WindowsApps")
+    found = []
+    for folder in glob.glob(os.path.join(glob.escape(root), "Microsoft.DesktopAppInstaller_*__8wekyb3d8bbwe")):
+        exe = os.path.join(folder, "winget.exe")
+        real = os.path.realpath(exe)
+        if os.path.isfile(real) and os.path.normcase(real).startswith(os.path.normcase(os.path.realpath(root)) + os.sep):
+            found.append((version_key(os.path.basename(folder).split("_")[1]), real))
+    return max(found)[1] if found else ""
+
+
+def broker_packages():
+    """The winget packages the elevated helper may install: the launchers' and the emulators' (MAME's needs a folder in the
+    user's own home, so it installs the usual way)."""
+    ids = {wid for _, _, wid in LAUNCHERS} | {"Libretro.RetroArch"}
+    ids |= {p[1] for p in EMU_INSTALL.values() if p and re.fullmatch(r"[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+", p[1] or "")}
+    return ids - set(WINGET_ARGS)
+
+
+def broker_alive():
+    return bool(BROKER["token"]) and time.time() - BROKER["seen"] < 40
+
+
+def start_broker():
+    """Windows' prompt, once, for the elevated install helper. False if it can't be used (then installers ask as usual)."""
+    if not WIN or broker_alive():
+        return broker_alive()
+    if time.time() - BROKER["declined"] < 600 or ADMINISTRATORS not in token_groups():
+        return False
+    import secrets
+    token = secrets.token_hex(16)
+    with BROKER_COND:
+        BROKER.update(token=token, seen=0.0)
+    exe = frontend_exe()
+    args = f"--install-broker {PORT} {token}"
+    if not getattr(sys, "frozen", False):  # from source: Python runs frontend.py
+        exe, args = sys.executable, subprocess.list2cmdline([os.path.join(ROOT, "frontend.py")]) + " " + args
+    try:
+        shell_runas(exe, args)
+    except ValueError:
+        BROKER["declined"] = time.time()  # no for now: the installers ask as usual, and setup can offer again later
+        return False
+    deadline = time.time() + 30
+    while time.time() < deadline and not broker_alive():
+        time.sleep(0.3)
+    return broker_alive()
+
+
+def shell_runas(program, params):
+    """Start a program through Windows' administrator prompt without waiting for it."""
+    import ctypes
+    import ctypes.wintypes as W
+
+    class Info(ctypes.Structure):
+        _fields_ = [("cbSize", W.DWORD), ("fMask", W.ULONG), ("hwnd", W.HWND), ("lpVerb", W.LPCWSTR), ("lpFile", W.LPCWSTR), ("lpParameters", W.LPCWSTR),
+                    ("lpDirectory", W.LPCWSTR), ("nShow", ctypes.c_int), ("hInstApp", W.HINSTANCE), ("lpIDList", ctypes.c_void_p), ("lpClass", W.LPCWSTR),
+                    ("hkeyClass", W.HKEY), ("dwHotKey", W.DWORD), ("hIcon", W.HANDLE), ("hProcess", W.HANDLE)]
+    shell = ctypes.WinDLL("shell32", use_last_error=True)
+    shell.ShellExecuteExW.argtypes = [ctypes.POINTER(Info)]
+    info = Info(cbSize=ctypes.sizeof(Info), fMask=0x100, lpVerb="runas", lpFile=program, lpParameters=params, nShow=0)  # NOASYNC, hidden
+    if not shell.ShellExecuteExW(ctypes.byref(info)):
+        raise ValueError("Windows' permission prompt was cancelled" if ctypes.get_last_error() == 1223 else "Windows' permission prompt couldn't open")
+
+
+def winget_via_broker(package_id, name):
+    """winget install through the elevated helper: its output comes back as it runs, for the progress bar. Returns winget's exit code."""
+    with BROKER_COND:
+        BROKER["next"] += 1
+        job = BROKER["next"]
+        BROKER["jobs"].append({"id": job, "package": package_id})
+        BROKER["out"][job] = []
+        BROKER_COND.notify_all()
+    seen, recent, deadline, everything = {"installing": False}, "", time.time() + 1800, []
+    while True:
+        with BROKER_COND:
+            BROKER_COND.wait_for(lambda: BROKER["out"][job] or job in BROKER["done"] or not broker_alive(), timeout=5)
+            chunks, BROKER["out"][job] = BROKER["out"][job], []
+            code = BROKER["done"].pop(job, None)
+        for text in chunks:
+            everything.append(text)
+            recent = (recent + text)[-400:]
+            winget_progress(recent, seen)
+        if code is not None:
+            BROKER["out"].pop(job, None)
+            return code, "".join(everything)
+        if not broker_alive() or time.time() > deadline:
+            with BROKER_COND:
+                BROKER["jobs"] = [j for j in BROKER["jobs"] if j["id"] != job]
+            raise ValueError(f"{name}: the installer helper stopped. Try again.")
+
+
+def install_broker(port, token):
+    """The elevated side (--install-broker): asks the helper for installs, runs winget for each, sends the output back.
+    Leaves after ten idle minutes, or once the helper is gone."""
+    try:
+        broker_loop(port, token)
+    except Exception:  # whatever happens, it just goes (an error box from a hidden administrator process would only confuse)
+        pass
+
+
+def broker_loop(port, token):
+    import codecs
+    base, last_job, last_answer = f"http://127.0.0.1:{int(port)}/api/broker", time.time(), time.time()
+    allowed, system32 = broker_packages(), os.path.join(os.environ.get("SystemRoot") or r"C:\Windows", "System32")
+
+    def post(path, body):
+        try:
+            req = urllib.request.Request(base + path, data=json.dumps({**body, "token": token}).encode(), headers={"Content-Type": "application/json", "X-Frontend": "1"})
+            urllib.request.urlopen(req, timeout=15).read()
+        except (OSError, ValueError):
+            pass
+    while time.time() - last_job < 600 and time.time() - last_answer < 60:
+        try:
+            with urllib.request.urlopen(f"{base}/next?token={token}", timeout=40) as r:
+                job = json.loads(r.read() or b"{}")
+            last_answer = time.time()
+        except (OSError, ValueError):
+            time.sleep(2)
+            continue
+        if not isinstance(job, dict) or not job:
+            continue
+        last_job = time.time()
+        if not isinstance(job.get("package"), str) or job["package"] not in allowed:  # only the app's own packages, whatever is asked
+            post("/done", {"job": job.get("id"), "exit": 1})
+            continue
+        winget = protected_winget()
+        if not winget:
+            post("/done", {"job": job.get("id"), "exit": BROKER_NO_WINGET})
+            continue
+        proc = subprocess.Popen([winget, "install", "--id", job["package"], "--exact", "--source", "winget", "--accept-source-agreements",
+                                 "--accept-package-agreements", "--disable-interactivity", "--silent"], cwd=system32,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        decoder = codecs.getincrementaldecoder("utf-8")("replace")
+        while True:
+            chunk = proc.stdout.read1(65536)
+            if not chunk:
+                break
+            post("/out", {"job": job["id"], "text": decoder.decode(chunk)})
+        post("/done", {"job": job["id"], "exit": proc.wait() & 0xffffffff})
+        last_answer = last_job = time.time()  # a long install isn't the helper going quiet
 
 
 def connect_emulator(package, exe=None):
@@ -1184,7 +1398,10 @@ def online_cover(title):
     if key not in cache:
         try:
             items = http_json("https://store.steampowered.com/api/storesearch/?" + urllib.parse.urlencode({"term": title, "l": "english", "cc": "US"}), timeout=6).get("items", [])
-            hit = next((i for i in items if norm(i["name"]) == key), None) or next((i for i in items[:1] if key in norm(i["name"]) or norm(i["name"]) in key), None)
+            # the same name, or the top result when one name holds the other and they're nearly the same length
+            # ("Retail" is no "Retail Hell": only names close in length count)
+            close = lambda x, y: (x in y or y in x) and min(len(x), len(y)) >= .75 * max(len(x), len(y))
+            hit = next((i for i in items if norm(i["name"]) == key), None) or next((i for i in items[:1] if close(key, norm(i["name"]))), None)
             cache[key] = (steam_store_art([str(hit["id"])]).get(str(hit["id"])) or STEAM_CDN.format(hit["id"])) if hit else ""
         except (urllib.error.URLError, ValueError, KeyError, TimeoutError):
             return ""
@@ -1330,12 +1547,39 @@ def rom_title(stem, system):
     return t or stem
 
 
+# Folders a game's program sits in that say nothing about the game (007 First Light keeps its exe in Retail\, Hades II in Ship\)
+GENERIC_DIRS = re.compile(r"bin(32|64)?|binaries|win(32|64|dows)?|(x(64|86)|amd64)([ _-]?(dx\d+|vk|vulkan))?|release|retail|final|gold|live|"
+                          r"ship(ping)?|game|client|build(s)?|exe|app|program|data|pc|dx(9|11|12)|vulkan|windowsnoeditor|windowsclient|"
+                          r"steam|gog|epic|current|latest|default|main|launcher|public|ptr|beta", re.I)
+# Folders that hold many games: a game named after one of them is named after nothing
+SHELF_DIRS = re.compile(r"games?|pc ?games|my games|pc ports|ports|common|steamapps|steamlibrary|program files( \(x86\))?|"
+                        r"epic games|gog games|apps|software|downloads|desktop", re.I)
+
+
+def exe_name_title(exe):
+    """A game's name from its program's: "007FirstLight-Win64-Shipping.exe" -> "007 First Light"."""
+    stem = os.path.splitext(os.path.basename(exe))[0]
+    stem = re.sub(r"[-_ ](win(32|64)|x(64|86)|shipping|dx\d+|vk|steam|gog|epic|release|retail)\b.*$", "", stem, flags=re.I)
+    stem = re.sub(r"(?<=[a-z])(?=[A-Z])|(?<=[A-Za-z])(?=\d)|(?<=\d)(?=[A-Za-z]{2})", " ", stem)  # FirstLight -> First Light
+    return clean_title(stem.replace("-", " ").replace("_", " "))
+
+
 def title_for_exe(exe):
-    """Name a game after its folder, skipping generic ones like bin\\ or Win64\\."""
-    d = os.path.dirname(exe)
-    while re.fullmatch(r"bin|binaries|win(32|64)|x(64|86)|release|game|shipping", os.path.basename(d), re.I) and os.path.dirname(d) != d:
+    """Name a game after its folder, skipping generic ones (bin, Win64, Retail...). Unreal Engine games keep their
+    program in <game>/<project>/Binaries/Win64, where the project folder is often a code name: the game's folder above
+    it names it. A folder that's still no name (a drive, a folder of many games) gives way to the program's own name."""
+    d, skipped = os.path.dirname(exe), []
+    while GENERIC_DIRS.fullmatch(os.path.basename(d)) and os.path.dirname(d) != d:
+        skipped.append(os.path.basename(d).lower())
         d = os.path.dirname(d)
-    return clean_title(os.path.basename(d))
+    if "binaries" in skipped:  # Unreal Engine: d is the project folder; its parent is the game's own
+        parent = os.path.dirname(d)
+        if parent != d and os.path.dirname(parent) != parent and not SHELF_DIRS.fullmatch(os.path.basename(parent)):
+            d = parent
+    name = os.path.basename(d)
+    if not name or os.path.dirname(d) == d or SHELF_DIRS.fullmatch(name) or GENERIC_DIRS.fullmatch(name):
+        return exe_name_title(exe) or clean_title(name)
+    return clean_title(name)
 
 
 def exe_game(title, exe, group, cfg, folder=None):
@@ -1499,7 +1743,10 @@ def scan_library(lib, cfg):
     if kind == "game":
         if not (os.path.isfile(path) or MAC and path.rstrip("/").endswith(".app") and os.path.isdir(path)):
             return []
-        g = exe_game(lib.get("title") or title_for_exe(path), path, lib["name"], cfg)
+        title = lib.get("title") or ""
+        if not title or GENERIC_DIRS.fullmatch(title) or SHELF_DIRS.fullmatch(title):  # a name kept from before folders like Retail were skipped
+            title = title_for_exe(path)
+        g = exe_game(title, path, lib["name"], cfg)
         if lib.get("args"):
             g["launch"]["args"] = list(lib["args"])
         if lib.get("system"):  # an emulator set up for one game (PlayStation Home in its own RPCS3): listed with that console
@@ -2689,10 +2936,16 @@ def warm_details():
 def game_details(g):
     """Everything the details screen shows except news (fetched separately so the screen fills in at once)."""
     cfg = config()
-    appid = steam_appid_for(g) if g.get("appid") or cfg["onlineCovers"] else None
+    own = load("overrides.json", {}).get(g["id"], {})
+    look = dict(g, title=own.get("infoAs") or g["title"])  # the name its description, screenshots and trailers are found by
+    if own.get("infoAs"):
+        look.pop("appid", None)  # a name the user chose wins over the store page it had
+    appid = steam_appid_for(look) if g.get("appid") or cfg["onlineCovers"] else None
     local = local_steam_art(g, appid)
     ach_f = POOL.submit(achievements, g)
-    d = dict(remote_info(g, appid, local))
+    d = dict(remote_info(look, appid, local))
+    if own.get("description"):  # one the user wrote
+        d["description"], d["descSource"], d["sourceUrl"], d["sourceTitle"] = own["description"], "Your own description", "", ""
     raw = d.get("genres") or []  # Wikipedia gives "racing video game"; show "Racing"
     d["genres"] = list(dict.fromkeys((tidy_genres([x]) or [(lambda y: y[:1].upper() + y[1:])(re.sub(r"\s+video games?$", "", x, flags=re.I))])[0] for x in raw))
     d["hero"] = local.get("hero") or d.get("hero", "")
@@ -2948,6 +3201,8 @@ def scan():
                 g["customLogo"] = True
             if g and o.get("hidden"):
                 g["hidden"] = True
+            if g and (o.get("infoAs") or o.get("description")):
+                g["customInfo"] = True
             if g and o.get("title"):
                 g["renameTo"] = o["title"]  # applied after the duplicate merge below, which goes by the game's own name
             if g and o.get("favorite"):
@@ -3153,6 +3408,8 @@ ENCODER = [None]
 
 
 def ffmpeg_path():
+    if own_ffmpeg():  # the app's own copy (Settings › General › Video recording)
+        return own_ffmpeg()
     found = shutil.which("ffmpeg")
     if found:
         return found
@@ -3165,7 +3422,8 @@ def video_encoder(ffmpeg):
     if ENCODER[0]:
         return ENCODER[0]
     for name, extra in (("h264_nvenc", ["-preset", "p3", "-cq", "23"]), ("h264_amf", ["-quality", "balanced", "-qp_i", "23", "-qp_p", "23"]),
-                        ("libx264", ["-preset", "ultrafast", "-crf", "23"])):
+                        ("h264_qsv", ["-preset", "faster", "-global_quality", "23"]), ("libx264", ["-preset", "ultrafast", "-crf", "23"]),
+                        ("h264_mf", ["-hw_encoding", "1", "-b:v", "16M"]), ("h264_mf", ["-b:v", "16M"])):
         probe = subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=black:s=320x240:d=0.1", "-c:v", name, "-f", "null", "-"],
                                capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         if probe.returncode == 0:
@@ -3192,7 +3450,13 @@ def take_capture(mode):
     ctypes.windll.user32.SetProcessDPIAware()
     os.makedirs(CAPTURES, exist_ok=True)
     stamp = f"own-{int(time.time() * 1000)}"
-    ImageGrab.grab().save(os.path.join(CAPTURES, stamp + ".png"))
+    path = os.path.join(CAPTURES, stamp + ".png")
+    shot = ImageGrab.grab()
+    if shot.convert("L").getextrema()[1] < 8 and ffmpeg_path():  # all black: some games draw past Windows' screen copy
+        subprocess.run([ffmpeg_path(), "-y", "-loglevel", "error", "-f", "lavfi", "-i", "ddagrab=framerate=10:draw_mouse=0,hwdownload,format=bgra",
+                        "-frames:v", "1", path], capture_output=True, timeout=20, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    if not os.path.isfile(path):
+        shot.save(path)
     add_capture({"id": stamp, "kind": "screenshot", "file": stamp + ".png", "created": time.time(), "game": session["game"], "duration": 0})
 
 
@@ -3271,6 +3535,9 @@ def speaker_audio(path, stop, info):
 
 def start_recording(game):
     ffmpeg = ffmpeg_path()
+    if not ffmpeg and WIN:  # the first time: the recorder is fetched (Settings › General shows it), and the next press records
+        queue_extra("recorder")
+        return
     encoder = video_encoder(ffmpeg) if ffmpeg else None
     if not encoder:
         return
@@ -3463,6 +3730,59 @@ def autostart_copy():
     return WIN and getattr(sys, "frozen", False) and not os.path.isdir(os.path.join(ROOT, ".git")) and PORT == 8137
 
 
+def uninstall_app():
+    """Settings > Apps > Uninstall (UltraFrontEnd-Setup.exe registers this as --uninstall): asks, stops the app, takes away
+    its shortcuts, start-with-Windows entry and Apps entry, then deletes its folder once this program has left. Settings,
+    captures and recordings stay unless the user says to delete them too."""
+    import winreg
+    if message_box("Uninstall Ultra Front End?", 0x1 | 0x20) != 1:
+        return
+    wipe = message_box("Also delete your settings, artwork, captures and recordings?\n\nChoose No to keep them, so they're there if you "
+                       "install Ultra Front End again.", 0x4 | 0x20 | 0x100) == 6  # No is the default
+    exe = frontend_exe()
+    folder = os.path.dirname(exe)
+    for pid in folder_processes(folder) - {os.getpid()}:  # the window and the helper in the tray
+        subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True)
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
+            for name in ("Ultra Front End", "Game Frontend"):
+                try:
+                    winreg.DeleteValue(k, name)
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    programs = os.path.join(os.environ.get("APPDATA", ""), "Microsoft", "Windows", "Start Menu", "Programs")
+    for lnk in (os.path.join(programs, "Ultra Front End.lnk"), os.path.join(os.path.expanduser("~"), "Desktop", "Ultra Front End.lnk")):
+        try:
+            os.remove(lnk)
+        except OSError:
+            pass
+    try:
+        winreg.DeleteKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Uninstall\UltraFrontEnd")
+    except OSError:
+        pass
+    if wipe:
+        try:
+            os.remove(DATA_NOTE)
+        except OSError:
+            pass
+    message_box("Ultra Front End has been uninstalled." + ("" if wipe else " Your settings and captures were kept."), 0x40)
+    # the folder goes once this program has left (a running exe can't be deleted); data stays unless asked
+    enc = lambda text: base64.b64encode(text.encode("utf-16-le")).decode()
+    script = (f"Start-Sleep -Seconds 2; $f = [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('{enc(folder)}')); "
+              + ("Remove-Item -LiteralPath $f -Recurse -Force -ErrorAction SilentlyContinue" if wipe
+                 else "Get-ChildItem -LiteralPath $f | Where-Object { $_.Name -ne 'data' } | "
+                      "ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }"))
+    subprocess.Popen([POWERSHELL, "-NoProfile", "-NonInteractive", "-EncodedCommand", enc(script)],
+                     creationflags=0x00000200 | 0x08000000, close_fds=True)  # its own process group, no window: it outlives this one
+
+
+def message_box(text, flags):
+    import ctypes
+    return ctypes.windll.user32.MessageBoxW(None, text, "Ultra Front End", flags | 0x10000 | 0x40000)  # foreground, topmost
+
+
 def set_autostart(mode):
     if not autostart_copy():
         return
@@ -3611,7 +3931,7 @@ def local_spawn(cmd, cwd):
     if MAC:
         return subprocess.Popen(cmd, cwd=cwd, env=plat_mac.child_env() if bundle else None)
     if not (WIN and bundle):
-        return subprocess.Popen(cmd, cwd=cwd)
+        return start_program(cmd, cwd)
     import ctypes
     # nor where it was unpacked: Steam started from here would hand that on to the frontend it launches, which would then run
     # from this copy's unpack folder and lose it when this copy goes
@@ -3622,9 +3942,44 @@ def local_spawn(cmd, cwd):
     with SPAWN_LOCK:
         set_dir(None)
         try:
-            return subprocess.Popen(cmd, cwd=cwd, env=env)
+            return start_program(cmd, cwd, env)
         finally:
             set_dir(bundle)
+
+
+def start_program(cmd, cwd, env=None):
+    """Popen, or for a program that insists on running as administrator (Windows refuses it with error 740), Windows'
+    "Run as administrator", which asks first. Either way the game is followed while it runs."""
+    try:
+        return subprocess.Popen(cmd, cwd=cwd, env=env)
+    except OSError as e:
+        if not WIN or getattr(e, "winerror", 0) != 740:
+            raise
+    return run_as_admin(cmd, cwd)
+
+
+def run_as_admin(cmd, cwd):
+    import ctypes
+    import ctypes.wintypes as W
+
+    class Info(ctypes.Structure):
+        _fields_ = [("cbSize", W.DWORD), ("fMask", W.ULONG), ("hwnd", W.HWND), ("lpVerb", W.LPCWSTR), ("lpFile", W.LPCWSTR), ("lpParameters", W.LPCWSTR),
+                    ("lpDirectory", W.LPCWSTR), ("nShow", ctypes.c_int), ("hInstApp", W.HINSTANCE), ("lpIDList", ctypes.c_void_p), ("lpClass", W.LPCWSTR),
+                    ("hkeyClass", W.HKEY), ("dwHotKey", W.DWORD), ("hIcon", W.HANDLE), ("hProcess", W.HANDLE)]
+    shell, k32 = ctypes.WinDLL("shell32", use_last_error=True), ctypes.WinDLL("kernel32")
+    shell.ShellExecuteExW.argtypes = [ctypes.POINTER(Info)]
+    k32.GetProcessId.argtypes = k32.CloseHandle.argtypes = [W.HANDLE]
+    info = Info(cbSize=ctypes.sizeof(Info), fMask=0x40 | 0x100, lpVerb="runas", lpFile=cmd[0], lpParameters=subprocess.list2cmdline(cmd[1:]),
+                lpDirectory=cwd or None, nShow=1)  # NOCLOSEPROCESS | NOASYNC, shown normally
+    if not shell.ShellExecuteExW(ctypes.byref(info)):
+        if ctypes.get_last_error() == 1223:
+            raise ValueError("This game needs administrator rights, and Windows' permission prompt was cancelled")
+        raise ValueError("This game needs administrator rights, and Windows couldn't start it that way")
+    try:
+        pid = k32.GetProcessId(info.hProcess)
+    finally:
+        k32.CloseHandle(info.hProcess)
+    return WindowProcess(pid)
 
 
 def folder_processes(folder):
@@ -5508,6 +5863,15 @@ def add_library(kind, provider=None):
         lib["name"] = LOCAL_PROVIDERS[provider]
         lib["provider"] = provider
     lib["id"] = gid("lib", lib["type"] + lib["path"])
+    if kind == "game":  # adding a game means seeing it: one hidden earlier (by this name or another) is shown again
+        overrides = load("overrides.json", {})
+        o = overrides.get(gid("pc", path))
+        if o and o.pop("hidden", None):
+            if not o:
+                overrides.pop(gid("pc", path))
+            store("overrides.json", overrides)
+            if any(x["id"] == lib["id"] for x in cfg["libraries"]):
+                return next(x for x in cfg["libraries"] if x["id"] == lib["id"])
     if any(x["id"] == lib["id"] for x in cfg["libraries"]):
         raise ValueError("That library is already added")
     cfg["libraries"].append(lib)
@@ -7016,7 +7380,72 @@ def presentmon_permission():
         raise ValueError(f"Windows couldn't add you to Performance Log Users (code {code})")
 
 
-EXTRAS = {"presentmon": ("Performance overlay", install_presentmon, remove_presentmon)}  # name: (what it's called, install, remove)
+# ---------- recording: the app's own copy of FFmpeg, fetched into data/tools ----------
+# FFmpeg's official Windows builds (BtbN/FFmpeg-Builds, linked from ffmpeg.org): the LGPL "shared" edition of the newest
+# stable version, about 80 MB, checked against GitHub's checksum. Only ffmpeg.exe and its DLLs are kept.
+RECORDER_REPO = "BtbN/FFmpeg-Builds"
+RECORDER_DIR = os.path.join(DATA, "tools", "ffmpeg")
+
+
+def own_ffmpeg():
+    exe = os.path.join(RECORDER_DIR, "ffmpeg.exe")
+    return exe if os.path.isfile(exe) else ""
+
+
+def install_recorder():
+    import zipfile
+    rel = http_json(f"https://api.github.com/repos/{RECORDER_REPO}/releases/latest", timeout=30)
+    pick = None
+    for a in rel.get("assets", []):
+        m = re.fullmatch(r"ffmpeg-n(\d+(?:\.\d+)*)-latest-win64-lgpl-shared-[\d.]+\.zip", a.get("name", ""))
+        if m and (not pick or version_key(m.group(1)) > version_key(pick[0])):
+            pick = (m.group(1), a)
+    if not pick:
+        raise ValueError("FFmpeg has no Windows download right now. Try again later.")
+    asset = pick[1]
+    url, digest = asset["browser_download_url"], str(asset.get("digest") or "").lower()
+    if not url.startswith(f"https://github.com/{RECORDER_REPO}/releases/download/") or not digest.startswith("sha256:"):
+        raise ValueError("FFmpeg's download couldn't be checked. Try again later.")
+    os.makedirs(os.path.dirname(RECORDER_DIR), exist_ok=True)
+    part = RECORDER_DIR + ".zip.part"
+    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=120) as response, open(part, "wb") as output:
+        copy_progress(response, output, asset.get("size") or 0)
+    job_progress("Setting up")
+    try:
+        if file_sha256(part) != digest[7:]:
+            raise ValueError("The FFmpeg download was damaged. Try again.")
+        fresh = RECORDER_DIR + ".new"
+        shutil.rmtree(fresh, ignore_errors=True)
+        os.makedirs(fresh)
+        with zipfile.ZipFile(part) as z:
+            for name in z.namelist():  # only the program and the libraries it needs, never paths from the archive
+                base = name.rsplit("/", 1)[-1]
+                if "/bin/" in name and re.fullmatch(r"ffmpeg\.exe|[\w.-]+\.dll", base, re.I):
+                    with z.open(name) as src, open(os.path.join(fresh, base), "wb") as dst:
+                        shutil.copyfileobj(src, dst)
+        exe = os.path.join(fresh, "ffmpeg.exe")
+        if not os.path.isfile(exe) or subprocess.run([exe, "-hide_banner", "-version"], capture_output=True, timeout=30).returncode:
+            raise ValueError("FFmpeg didn't start. Try again.")
+        shutil.rmtree(RECORDER_DIR, ignore_errors=True)
+        os.replace(fresh, RECORDER_DIR)
+        ENCODER[0] = None  # look for the best encoder again with this copy
+    finally:
+        try:
+            os.remove(part)
+        except OSError:
+            pass
+    return own_ffmpeg()
+
+
+def remove_recorder():
+    if RECORD["proc"]:
+        raise ValueError("Stop the recording first")
+    shutil.rmtree(RECORDER_DIR)
+    ENCODER[0] = None
+
+
+EXTRAS = {"presentmon": ("Performance overlay", install_presentmon, remove_presentmon),  # name: (what it's called, install, remove)
+          "recorder": ("Video recording", install_recorder, remove_recorder)}
 
 
 def queue_extra(name):
@@ -7037,7 +7466,9 @@ def extras_view():
     if exe and WIN:
         pm["rights"] = presentmon_rights()
         pm["mode"] = hud_mode()  # Off, Compact or Full: chosen in Settings
-    return {"presentmon": pm}
+    rjob = next((j for j in reversed(QUEUE["jobs"]) if j.get("extra") == "recorder"), None)
+    rec = {"installed": bool(own_ffmpeg()), "elsewhere": bool(not own_ffmpeg() and ffmpeg_path()), "job": job_info(rjob) if rjob else None, "available": WIN}
+    return {"presentmon": pm, "recorder": rec}
 
 
 def system_view(system, cfg, chosen):
@@ -7305,6 +7736,17 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_path(f) if f and os.path.isfile(f) else self.send_error(404)
         if path == "/api/news":
             return self.reply({"news": all_news()})
+        if path == "/api/broker/next":  # the elevated install helper asking for work (it waits here up to 25 s)
+            token = (urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("token") or [""])[0]
+            if not BROKER["token"] or not secrets_equal(token, BROKER["token"]):
+                return self.reply({"error": "Not the install helper"}, 403)
+            with BROKER_COND:
+                BROKER["seen"] = time.time()
+                BROKER_COND.notify_all()
+                BROKER_COND.wait_for(lambda: BROKER["jobs"], timeout=25)
+                BROKER["seen"] = time.time()
+                job = BROKER["jobs"].pop(0) if BROKER["jobs"] else {}
+            return self.reply(job)
         if path == "/api/whatsnew":
             items, error = whats_new()
             return self.reply({"items": items, "error": error, "version": VERSION, "unseen": whats_new_unseen()})
@@ -7369,6 +7811,18 @@ class Handler(SimpleHTTPRequestHandler):
             if path == "/api/spawn/done":
                 spawn_done(body.get("id"), int(body.get("pid") or 0))
                 return self.reply({"ok": True})
+            if path in ("/api/broker/out", "/api/broker/done"):  # the elevated install helper's output and result
+                if not BROKER["token"] or not secrets_equal(str(body.get("token") or ""), BROKER["token"]):
+                    return self.reply({"error": "Not the install helper"}, 403)
+                with BROKER_COND:
+                    BROKER["seen"] = time.time()
+                    job = body.get("job")  # (numbers: the request check wants "id" and "code" to be text)
+                    if path.endswith("out") and job in BROKER["out"]:
+                        BROKER["out"][job].append(str(body.get("text") or ""))
+                    elif path.endswith("done") and isinstance(job, int):
+                        BROKER["done"][job] = int(body.get("exit") or 0)
+                    BROKER_COND.notify_all()
+                return self.reply({"ok": True})
             if path == "/api/whatsnew":  # this version's notes were read: the News button's dot goes
                 store("whatsnew.json", {**load("whatsnew.json", {}), "seen": VERSION})
                 return self.reply({"unseen": False})
@@ -7410,6 +7864,27 @@ class Handler(SimpleHTTPRequestHandler):
                         overrides.pop(g["id"])
                 store("overrides.json", overrides)
                 g["hidden"] = bool(body.get("hidden"))
+                return self.reply({"ok": True})
+            if path == "/api/game/info":  # look it up by another name, write its description, or both back to automatic
+                g = STATE["byId"].get(body.get("id"))
+                if not g:
+                    raise ValueError("Game not found")
+                overrides = load("overrides.json", {})
+                o = overrides.setdefault(g["id"], {})
+                for field, limit in (("infoAs", 120), ("description", 3000)):
+                    if body.get("reset"):
+                        o.pop(field, None)
+                    elif field in body:
+                        text = " ".join(str(body.get(field) or "").split())[:limit]
+                        if text:
+                            o[field] = text
+                        else:
+                            o.pop(field, None)
+                if not o:
+                    overrides.pop(g["id"])
+                store("overrides.json", overrides)
+                g["customInfo"] = bool(o.get("infoAs") or o.get("description"))
+                DETAILS.pop(g["id"], None)
                 return self.reply({"ok": True})
             if path == "/api/game/rename":  # a name of the user's own; an empty one goes back to the game's own name
                 g = STATE["byId"].get(body.get("id"))
@@ -7473,8 +7948,9 @@ class Handler(SimpleHTTPRequestHandler):
             if path == "/api/introsound":  # played here because a page can't start sound by itself
                 import winsound
                 if body.get("play"):
-                    own = os.path.join(DATA, "intro.wav")  # put your own sound there to replace the one that ships
-                    winsound.PlaySound(own if os.path.isfile(own) else os.path.join(APP, "assets", "intro.wav"), winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT)
+                    name = "outro.wav" if body.get("outro") else "intro.wav"  # the closing sound, or the opening one
+                    own = os.path.join(DATA, name)  # put your own sound there to replace the one that ships
+                    winsound.PlaySound(own if os.path.isfile(own) else os.path.join(APP, "assets", name), winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT)
                 else:
                     winsound.PlaySound(None, 0)
                 return self.reply({"ok": True})
@@ -7540,6 +8016,7 @@ class Handler(SimpleHTTPRequestHandler):
                 if "setupDone" in body:
                     p["setupDone"] = bool(body["setupDone"])
                 store("config.json", cfg)
+                note_data_folder(DATA)  # a finished setup is the one a new copy should find
                 return self.reply(profile())
             if path == "/api/profile/picture":
                 src = pick("file", "Choose a profile picture", [("Images", "*.png *.jpg *.jpeg *.webp *.gif")])
@@ -7772,9 +8249,28 @@ class Handler(SimpleHTTPRequestHandler):
 # the newest release's exe is downloaded beside this one and checked against GitHub's SHA-256, then swapped in once nothing is
 # open or running. The new copy takes over from this one (frontend.py replace_old_helper); if it never starts, the old exe goes
 # back and that version waits a day.
-UPDATE = {"state": "", "latest": None, "error": "", "checked": 0.0, "retry": 0.0, "done": None}
+UPDATE = {"state": "", "latest": None, "error": "", "checked": 0.0, "retry": 0.0, "done": None, "quick": 0.0}
+QUICK_EVERY = 60  # how often github.com is asked which release is the latest: a tiny request, not the API (no hourly limit)
+
+
+def latest_tag():
+    """The newest release's version, from github.com's own "latest release" redirect, or "" if it can't tell. Asked every
+    minute, so an update starts downloading within a minute of being published; the API is asked only when this changes."""
+    class Stay(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *args, **kwargs):
+            return None  # read where it points instead of going there
+    req = urllib.request.Request(f"https://github.com/{UPDATE_REPO}/releases/latest", method="HEAD", headers={"User-Agent": UA})
+    try:
+        urllib.request.build_opener(Stay).open(req, timeout=10)
+    except urllib.error.HTTPError as e:
+        where = e.headers.get("Location", "") if e.code in (301, 302, 303, 307, 308) else ""
+        m = re.search(r"/releases/tag/v?([0-9][\w.-]*)$", where)
+        return m.group(1) if m else ""
+    except (OSError, ValueError):
+        return ""
+    return ""
 UPDATE_LOCK = threading.Lock()
-UPDATE_EVERY = 6 * 3600  # GitHub is asked this often; an unchanged answer (ETag) doesn't count against its hourly limit
+UPDATE_EVERY = 3600  # GitHub is asked this often (fixes reach everyone within the hour); an unchanged answer (ETag) doesn't count against its hourly limit
 UPDATE_ASSET = "UltraFrontEnd.exe"  # the release file tools/release.py uploads
 
 
@@ -7961,7 +8457,13 @@ def update_step(action=None):
         now = time.time()
         if not action and now < UPDATE["retry"]:
             return
-        if action or now - UPDATE["checked"] > UPDATE_EVERY:
+        newer = False
+        if not action and now - UPDATE["quick"] >= QUICK_EVERY - 1:  # each minute: has a newer release appeared?
+            UPDATE["quick"] = now
+            tag = latest_tag()
+            known = (UPDATE["latest"] or {}).get("version") or VERSION
+            newer = bool(tag) and version_key(tag) > version_key(known)
+        if action or newer or now - UPDATE["checked"] > UPDATE_EVERY:
             UPDATE["checked"], UPDATE["state"] = now, "checking"
             UPDATE["latest"] = latest_release()
         rel, saved = UPDATE["latest"], load("update.json", {})
@@ -8032,7 +8534,7 @@ def watch_updates():
     time.sleep(90)  # after the first scan, and after a takeover has settled
     while True:
         update_step()
-        time.sleep(120)  # a waiting update goes in within a couple of minutes of the frontend closing
+        time.sleep(QUICK_EVERY)  # new releases are noticed, and a waiting update goes in, within a minute
 
 
 def update_view():
