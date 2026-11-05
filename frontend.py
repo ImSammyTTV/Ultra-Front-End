@@ -193,6 +193,111 @@ def take_focus(overlay_hwnd, seconds=0.0, game_hwnd=None):
         time.sleep(0.02)  # often: a game that minimizes is back before it shows
 
 
+def game_still(x, y, w, h):
+    """The game's screen as it is now (a PIL image), for freeze_cover, or None."""
+    try:
+        from PIL import ImageGrab
+        return ImageGrab.grab(bbox=(x, y, x + w, y + h), all_screens=True).convert("RGB")
+    except Exception:
+        return None
+
+
+def freeze_cover(img, x, y, w, h, overlay_hwnd):
+    """A still of the game over the whole screen, just under the overlay, while the focus moves to the overlay. Games that
+    minimize themselves when they lose the focus (Hades II) would show the frontend behind them for a frame or two; with
+    this up, what shows is the game as it was. A layered window made from the finished picture: Windows composites it
+    as it is, with no painting and no fade. Returns an Event that takes it away once set, or None."""
+    shown, done = threading.Event(), threading.Event()
+    threading.Thread(target=cover_window, args=[img, x, y, w, h, overlay_hwnd, shown, done], daemon=True).start()
+    return done if shown.wait(0.5) else None
+
+
+def cover_window(img, x, y, w, h, overlay_hwnd, shown, done):
+    import ctypes
+    import ctypes.wintypes as W
+    user32, gdi32 = ctypes.WinDLL("user32"), ctypes.WinDLL("gdi32")
+
+    class BIH(ctypes.Structure):
+        _fields_ = [("biSize", W.DWORD), ("biWidth", W.LONG), ("biHeight", W.LONG), ("biPlanes", W.WORD), ("biBitCount", W.WORD),
+                    ("biCompression", W.DWORD), ("biSizeImage", W.DWORD), ("biXPelsPerMeter", W.LONG), ("biYPelsPerMeter", W.LONG),
+                    ("biClrUsed", W.DWORD), ("biClrImportant", W.DWORD)]
+
+    class Blend(ctypes.Structure):
+        _fields_ = [("op", ctypes.c_ubyte), ("flags", ctypes.c_ubyte), ("alpha", ctypes.c_ubyte), ("format", ctypes.c_ubyte)]
+    user32.CreateWindowExW.restype = ctypes.c_void_p
+    user32.CreateWindowExW.argtypes = [W.DWORD, W.LPCWSTR, W.LPCWSTR, W.DWORD, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                       ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+    user32.GetDC.restype = gdi32.CreateCompatibleDC.restype = gdi32.CreateDIBSection.restype = gdi32.SelectObject.restype = ctypes.c_void_p
+    user32.GetDC.argtypes = [ctypes.c_void_p]
+    user32.ReleaseDC.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    gdi32.CreateCompatibleDC.argtypes = [ctypes.c_void_p]
+    gdi32.CreateDIBSection.argtypes = [ctypes.c_void_p, ctypes.POINTER(BIH), W.UINT, ctypes.POINTER(ctypes.c_void_p), ctypes.c_void_p, W.DWORD]
+    gdi32.SelectObject.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    gdi32.DeleteObject.argtypes = gdi32.DeleteDC.argtypes = [ctypes.c_void_p]
+    user32.UpdateLayeredWindow.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(W.POINT), ctypes.POINTER(W.SIZE), ctypes.c_void_p,
+                                           ctypes.POINTER(W.POINT), W.DWORD, ctypes.POINTER(Blend), W.DWORD]
+    user32.ShowWindow.argtypes = [ctypes.c_void_p, ctypes.c_int]
+    user32.SetWindowPos.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, W.UINT]
+    user32.DestroyWindow.argtypes = [ctypes.c_void_p]
+    user32.PeekMessageW.argtypes = [ctypes.c_void_p, ctypes.c_void_p, W.UINT, W.UINT, W.UINT]
+    user32.TranslateMessage.argtypes = user32.DispatchMessageW.argtypes = [ctypes.c_void_p]
+    hwnd = screen = mem = bmp = None
+    try:
+        # layered, a tool window (no taskbar button), never activated, topmost; a plain popup: no caption, no animation
+        hwnd = user32.CreateWindowExW(0x80000 | 0x80 | 0x08000000 | 0x8, "Static", None, 0x80000000, x, y, w, h, None, None, None, None)
+        if not hwnd:
+            return
+        off = ctypes.c_int(1)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(ctypes.c_void_p(hwnd), 3, ctypes.byref(off), 4)  # DWMWA_TRANSITIONS_FORCEDISABLED
+        pic = img.resize((w, h)) if img.size != (w, h) else img
+        r, g, b = pic.split()
+        from PIL import Image
+        data = Image.merge("RGBA", (b, g, r, Image.new("L", pic.size, 255))).tobytes()  # BGRA, opaque
+        info = BIH(ctypes.sizeof(BIH), w, -h, 1, 32, 0, 0, 0, 0, 0, 0)  # top-down
+        screen = user32.GetDC(None)
+        mem = gdi32.CreateCompatibleDC(screen)
+        bits = ctypes.c_void_p()
+        bmp = gdi32.CreateDIBSection(mem, ctypes.byref(info), 0, ctypes.byref(bits), None, 0)
+        ctypes.memmove(bits, data, len(data))
+        old = gdi32.SelectObject(mem, bmp)
+        user32.UpdateLayeredWindow(hwnd, screen, ctypes.byref(W.POINT(x, y)), ctypes.byref(W.SIZE(w, h)), mem, ctypes.byref(W.POINT(0, 0)),
+                                   0, ctypes.byref(Blend(0, 0, 255, 1)), 2)  # AC_SRC_OVER, opaque, AC_SRC_ALPHA; ULW_ALPHA
+        gdi32.SelectObject(mem, old)
+        user32.ShowWindow(hwnd, 4)  # SW_SHOWNOACTIVATE
+        user32.SetWindowPos(ctypes.c_void_p(overlay_hwnd), ctypes.c_void_p(-1), 0, 0, 0, 0, 0x0013)  # the overlay stays above it
+        shown.set()
+        msg = W.MSG()
+        while not done.wait(0.01):  # this thread owns the window: it answers Windows while the still is up
+            while user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, 1):
+                user32.TranslateMessage(ctypes.byref(msg))
+                user32.DispatchMessageW(ctypes.byref(msg))
+    except Exception:
+        pass
+    finally:
+        if hwnd:
+            user32.DestroyWindow(hwnd)
+        if bmp:
+            gdi32.DeleteObject(bmp)
+        if mem:
+            gdi32.DeleteDC(mem)
+        if screen:
+            user32.ReleaseDC(None, screen)
+
+
+def lift_cover(done, game_hwnd, longest=2.0):
+    """Take the still away once the game is back on screen behind the overlay (at least a moment, at most two seconds)."""
+    import ctypes
+    user32 = ctypes.windll.user32
+    start, steady = time.time(), 0
+    time.sleep(0.3)
+    while time.time() - start < longest:
+        steady = steady + 1 if not (game_hwnd and user32.IsIconic(ctypes.c_void_p(game_hwnd))) else 0
+        if steady >= 5:  # back for a tenth of a second
+            break
+        time.sleep(0.02)
+    done.set()
+
+
 def overlay_slide(show, ms=190):
     """Slide the overlay in from (or out to) the right edge of the game's screen, as Quick Access does in the frontend. The
     window moves and a region clips it to that screen, so no part of it shows on a monitor beside this one. Moving a window
@@ -354,6 +459,14 @@ def overlay():
     game = user32.GetForegroundWindow()  # the game's window, for games that can't give up the focus (below)
     # A blurred snapshot of the game, taken before the overlay covers it: the backdrop wherever Windows' live glass can't be
     frost = frosted_backdrop(x, y, ow, h)
+    screen = game_screen()
+    still = game_still(*screen)  # the whole screen as it is, for the moment the focus moves (freeze_cover)
+    # up first, before any window of this program exists: one of them can take the focus as it's made, and a game that
+    # minimizes itself then shows the frontend (or the desktop) instead of itself; with the still up, the game shows
+    t0 = time.perf_counter()
+    cover = freeze_cover(still, *screen, 0) if still is not None else None
+    window_log(f"overlay: still {'up' if cover else 'missing' if still is None else 'too slow'} after {(time.perf_counter() - t0) * 1000:.0f} ms; "
+               f"game {'minimized' if game and ctypes.windll.user32.IsIconic(ctypes.c_void_p(game)) else 'on screen'}")
     window = webview.create_window("Ultra Front End Overlay", URL + "/overlay.html", x=int(x / scale), y=int(y / scale), width=int(ow / scale), height=int(h / scale),
                                    on_top=True, frameless=True, easy_drag=False, background_color="#1c1d1f", hidden=True, js_api=Api())
 
@@ -375,17 +488,29 @@ def overlay():
         ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(no_border), ctypes.sizeof(no_border))
         snapshot()  # the first frame; live_frost keeps it moving with the game once the overlay is up
         OVL.update(hwnd=raw, rect=(x, y, ow, h))
-        user32.SetWindowRgn(hwnd, ctypes.windll.gdi32.CreateRectRgn(0, 0, 0, 0), False)  # nothing on screen yet
-        user32.SetWindowPos(hwnd, ctypes.c_void_p(-1), x, y, ow, h, 0x0010)  # HWND_TOPMOST, SWP_NOACTIVATE, still hidden
+        # at the screen's right edge with only a sliver in its region: showing it (below) can't put a dark, still empty
+        # panel in view; the slide brings it in once the page has drawn (a window wholly off screen wouldn't draw at all)
+        user32.SetWindowRgn(hwnd, ctypes.windll.gdi32.CreateRectRgn(0, 0, 2, h), False)
+        user32.SetWindowPos(hwnd, ctypes.c_void_p(-1), x + ow - 2, y, ow, h, 0x0010)  # HWND_TOPMOST, SWP_NOACTIVATE, still hidden
         try:  # shown through WinForms, so the page inside starts drawing (a window shown by Windows alone stays blank);
             from System import Func, Type  # not window.show(), which would take the focus from the game
             window.native.Invoke(Func[Type](lambda: window.native.Show()))
         except Exception:
             window.show()
-        window.evaluate_js("document.body.classList.add('on')")
-        time.sleep(0.15)  # its first frame, with the backdrop, before any of it comes into view
-        # now, so the game stops taking the controls as the panel slides in; watched for a while, alongside the slide
+        # from now: the game stops taking the controls, and if it minimized it goes straight back behind the still
         threading.Thread(target=take_focus, args=[raw, 3, game], daemon=True).start()
+        window.evaluate_js("document.body.classList.add('on')")
+        deadline = time.time() + 0.8  # drawn, frosted and faded in before any of it comes into view (else a dark block shows)
+        while time.time() < deadline:
+            try:
+                if window.evaluate_js("(!document.body.style.backgroundImage || document.body.classList.contains('glass')) && getComputedStyle(document.body).opacity === '1'"):
+                    break
+            except Exception:
+                break
+            time.sleep(0.03)
+        time.sleep(0.05)  # that frame on screen
+        if cover:  # away once the game is steady behind the overlay again
+            threading.Thread(target=lift_cover, args=[cover, game], daemon=True).start()
         try:
             overlay_slide(True)
         except Exception:

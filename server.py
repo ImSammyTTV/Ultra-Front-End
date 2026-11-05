@@ -4586,6 +4586,47 @@ def overlay_state():
 MEDIA_KEYS = {"media-prev": 0xB1, "media-play": 0xB3, "media-next": 0xB0}  # VK_MEDIA_PREV_TRACK, _PLAY_PAUSE, _NEXT_TRACK
 
 
+def bring_back_game(pids):
+    """The game's main window to the front, restored if it minimized itself: the biggest window of the game's processes,
+    or a minimized one (which focus_process doesn't see). True if there was one."""
+    if not WIN or not pids:
+        return False
+    import ctypes
+    import ctypes.wintypes as W
+    user32 = ctypes.WinDLL("user32")
+    proto = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+    user32.EnumWindows.argtypes = [proto, ctypes.c_void_p]
+    for f in (user32.IsWindowVisible, user32.IsIconic):
+        f.argtypes = [ctypes.c_void_p]
+    user32.GetWindow.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+    user32.GetWindow.restype = ctypes.c_void_p
+    user32.GetWindowThreadProcessId.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    user32.GetWindowRect.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    user32.ShowWindow.argtypes = [ctypes.c_void_p, ctypes.c_int]
+    tree = set()
+    for p in pids:
+        tree |= process_tree(p) or {p}
+    found = []
+
+    def cb(hwnd, _):
+        if hwnd and user32.IsWindowVisible(hwnd) and not user32.GetWindow(hwnd, 4):
+            pid, r = ctypes.c_ulong(), W.RECT()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            if pid.value in tree:
+                user32.GetWindowRect(hwnd, ctypes.byref(r))
+                iconic = bool(user32.IsIconic(hwnd))
+                found.append((not iconic, (r.right - r.left) * (r.bottom - r.top) if not iconic else 0, hwnd, iconic))
+        return True
+    user32.EnumWindows(proto(cb), 0)
+    if not found:
+        return False
+    _, _, hwnd, iconic = max(found)
+    if iconic:
+        user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+    take_foreground(hwnd)
+    return True
+
+
 def overlay_action(action):
     proc, game, pids = OVERLAY["proc"], OVERLAY["game"], list(OVERLAY["pids"])
     if action in MEDIA_KEYS:  # the music in Windows' media controls (Spotify, a browser, ...): the keys work whatever has the focus
@@ -4600,6 +4641,9 @@ def overlay_action(action):
         return None
     if proc is None:
         return
+    if action != "close" and pids:  # the game in front first, so closing the overlay doesn't hand the focus to some other window
+        bring_back_game(pids)
+        time.sleep(0.1)
     subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True)
     overlay_finish(proc)
     if action == "close":
