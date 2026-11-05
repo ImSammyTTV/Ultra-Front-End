@@ -387,40 +387,48 @@ def _wpctl():
 
 def audio_volume(level=None, delta=None, mute=None):
     """The default speakers: {"volume": 0-100, "muted": bool}. level, delta and mute change it first (raising it unmutes, as on
-    Windows). PipeWire (wpctl: SteamOS and most new desktops), else PulseAudio (pactl)."""
+    Windows). PipeWire (wpctl: SteamOS and most new desktops), else PulseAudio (pactl). A sound server that doesn't answer
+    is an OSError, like no sound output, rather than a wait that holds up the in-game menu."""
+    try:
+        return _audio_volume(level, delta, mute)
+    except subprocess.SubprocessError as e:
+        raise OSError("The sound system didn't answer") from e
+
+
+def _audio_volume(level=None, delta=None, mute=None):
     if _wpctl():
         sink = "@DEFAULT_AUDIO_SINK@"
-        out = run(["wpctl", "get-volume", sink]).stdout  # "Volume: 0.45" or "Volume: 0.45 [MUTED]"
+        out = run(timeout=4, cmd=["wpctl", "get-volume", sink]).stdout  # "Volume: 0.45" or "Volume: 0.45 [MUTED]"
         m = re.search(r"([\d.]+)", out)
         if not m:
             raise OSError("No sound output was found")
         vol, muted = round(float(m.group(1)) * 100), "MUTED" in out
         if level is not None or delta is not None:
             new = max(0, min(100, int(level if level is not None else vol + delta)))
-            run(["wpctl", "set-volume", sink, f"{new / 100:.2f}"])
+            run(timeout=4, cmd=["wpctl", "set-volume", sink, f"{new / 100:.2f}"])
             if new > vol and muted:
-                run(["wpctl", "set-mute", sink, "0"])
+                run(timeout=4, cmd=["wpctl", "set-mute", sink, "0"])
                 muted = False
             vol = new
         if mute is not None:
-            run(["wpctl", "set-mute", sink, "1" if mute else "0"])
+            run(timeout=4, cmd=["wpctl", "set-mute", sink, "1" if mute else "0"])
             muted = bool(mute)
         return {"volume": vol, "muted": muted}
     if shutil.which("pactl"):
         sink = "@DEFAULT_SINK@"
-        m = re.search(r"(\d+)%", run(["pactl", "get-sink-volume", sink]).stdout)
+        m = re.search(r"(\d+)%", run(timeout=4, cmd=["pactl", "get-sink-volume", sink]).stdout)
         if not m:
             raise OSError("No sound output was found")
-        vol, muted = int(m.group(1)), "yes" in run(["pactl", "get-sink-mute", sink]).stdout
+        vol, muted = int(m.group(1)), "yes" in run(timeout=4, cmd=["pactl", "get-sink-mute", sink]).stdout
         if level is not None or delta is not None:
             new = max(0, min(100, int(level if level is not None else vol + delta)))
-            run(["pactl", "set-sink-volume", sink, f"{new}%"])
+            run(timeout=4, cmd=["pactl", "set-sink-volume", sink, f"{new}%"])
             if new > vol and muted:
-                run(["pactl", "set-sink-mute", sink, "0"])
+                run(timeout=4, cmd=["pactl", "set-sink-mute", sink, "0"])
                 muted = False
             vol = new
         if mute is not None:
-            run(["pactl", "set-sink-mute", sink, "1" if mute else "0"])
+            run(timeout=4, cmd=["pactl", "set-sink-mute", sink, "1" if mute else "0"])
             muted = bool(mute)
         return {"volume": vol, "muted": muted}
     raise OSError("The volume can't be changed here: neither PipeWire's wpctl nor PulseAudio's pactl is installed")

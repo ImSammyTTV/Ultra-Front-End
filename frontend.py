@@ -758,6 +758,8 @@ def main():
             server.WINDOW_PICK[:] = [lambda kind, title: window_pick(window, kind)]
         # the Linux build carries Qt's web engine (SteamOS has no WebKitGTK to rely on); from source, whichever is installed
         gui = "qt" if server.LINUX and getattr(sys, "frozen", False) else None
+        if gui:  # X11 first (on a Wayland desktop through XWayland), so plat_linux can see and raise windows; Wayland if that's all there is
+            os.environ.setdefault("QT_QPA_PLATFORM", "xcb;wayland")
         webview.start(gui=gui, private_mode=False, storage_path=os.path.join(server.DATA, "webview"))
     window_log("window closed")
     if server.WIN and TRAY.get("mutex"):  # window closed: if this stays in the tray, the next start must be free to open one
