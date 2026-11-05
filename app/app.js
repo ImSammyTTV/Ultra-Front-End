@@ -2670,13 +2670,13 @@ function setupItems(d, prof) {
       const save = install => work(api('/api/systems/choose', { systems: [...P.pick], install }));
       const go = { ...next, key: 'pick-next', primary: !todo.length,
         sub: todo.length ? `Installs the emulators for ${todo.length} ticked system${todo.length === 1 ? '' : 's'}` : P.pick.size ? `${P.pick.size} system${P.pick.size === 1 ? '' : 's'} ticked` : '',
-        act: async () => { if (await save(todo.length > 0)) { if (todo.length) { toast('Installing… you can carry on', 3000); watchQueue(); } setupGo(1); } } };
+        act: async () => { if (await save(todo.length > 0)) { if (todo.length) { toast('Installing… Windows may ask once for permission. You can carry on', 5000); watchQueue(); } setupGo(1); } } };
       return [
         { kind: 'note', label: 'Which systems do you play? Press A to tick or untick one. Each gets its own folder in your ROMs folder, and its emulator is installed for you.' },
         ...queueLine(d.queue),
         ...(todo.length ? [{ kind: 'row', key: 'pick-install', primary: true, label: `Install emulators for ${todo.length} system${todo.length === 1 ? '' : 's'}`,
           sub: 'One at a time, from each emulator’s own project. You can carry on while they install',
-          act: async () => { if (await save(true)) { toast('Installing… you can carry on', 3000); watchQueue(); } } }] : []),
+          act: async () => { if (await save(true)) { toast('Installing… Windows may ask once for permission. You can carry on', 5000); watchQueue(); } } }] : []),
         go,
         ...groupRows(known, p => ({ kind: 'row', key: 'pick-' + p.name, ...sysLogo(p.name), label: p.name, value: P.pick.has(p.name) ? '✓' : '', ...jobBar(p),
           sub: jobText(p) || [p.emulator ? `${p.emulator} · Ready` : p.recommended, p.count ? `${p.count} game${p.count === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · '),
