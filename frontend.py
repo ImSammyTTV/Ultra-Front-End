@@ -623,6 +623,14 @@ def cover_screen_mac(window):
         window_log(f"window {w.frame().size.width:.0f}x{w.frame().size.height:.0f}; page {[f'{v.frame().size.width:.0f}x{v.frame().size.height:.0f}' for v in content.subviews()]}; "
                    f"screen {(w.screen() or AppKit.NSScreen.mainScreen()).frame().size.height:.0f} high; key {w.isKeyWindow()}")  # for checking the result remotely
     AppHelper.callAfter(apply)
+    time.sleep(3)
+    try:  # what the page itself measures, for checking the result remotely (the web view can size its page apart from the window)
+        window_log("page sees " + str(window.evaluate_js(
+            "JSON.stringify({inner: innerWidth + 'x' + innerHeight, doc: document.documentElement.clientHeight, screen: screen.width + 'x' + screen.height,"
+            " dpr: devicePixelRatio, body: getComputedStyle(document.body).height, layers: [...document.querySelectorAll('#sky,#far,#near,#water,#buttons')]"
+            ".map(e => e.id + ':' + Math.round(e.getBoundingClientRect().bottom)).join(' ')})")))
+    except Exception as e:
+        window_log(f"page size: couldn't ask ({e})")
 
 
 if __name__ == "__main__":

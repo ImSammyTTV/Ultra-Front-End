@@ -980,7 +980,7 @@ body.hub-open #hubpage { opacity: 1; pointer-events: auto; }
 .btn .ring { border: .18vh solid rgba(255, 255, 255, .7); background: rgba(8, 12, 20, .35); box-shadow: none; backdrop-filter: none; }
 .btn.sel .ring { transform: scale(1.06); border-color: #fff; background: #fff; color: #0e1014; box-shadow: none; }
 /* bottom bar: no strip, just a thin line over the background, as in concept 36 */
-footer { background: none; backdrop-filter: none; box-shadow: none; border-top: 0; }
+footer, .webkit footer { background: none; -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; border-top: 0; }  /* (.webkit: an older Mac rule gave it a solid band) */
 .tab { text-shadow: 0 .2vh .8vh rgba(0, 0, 0, .7); }
 #tabs { opacity: 0; transition: opacity .16s ease-out; }
 body.zone-2 #tabs, body.tabs-peek #tabs { opacity: 1; }
