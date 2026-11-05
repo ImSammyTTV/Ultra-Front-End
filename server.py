@@ -35,6 +35,8 @@ def shipped(name):
 
 
 WIN, MAC = os.name == "nt", sys.platform == "darwin"
+if MAC:
+    import plat_mac  # the Mac side of every Windows-only piece below
 if WIN and not getattr(subprocess.Popen.__init__, "no_window", False):
     # No console window flashing over the frontend or a game: a child started with no flags of its own (subprocess.run and
     # check_output too) gets CREATE_NO_WINDOW. One that sets any (DETACHED_PROCESS, CREATE_NEW_CONSOLE...) keeps them.
@@ -55,7 +57,7 @@ def data_folder():
     """Beside the exe, so a copy and its settings stay together, unless Windows won't let it write there (Program Files):
     then the user's own app data. The Mac app runs from a read-only disk image or /Applications: Application Support."""
     if MAC and getattr(sys, "frozen", False):
-        return os.path.expanduser("~/Library/Application Support/Game Frontend")
+        return os.path.expanduser("~/Library/Application Support/Ultra Front End")
     here = os.path.join(ROOT, "data")
     try:
         import tempfile
@@ -1014,8 +1016,13 @@ def system_info(name):
     return next(({"system": s, "thumbs": t, "exts": e.split(), "cores": c} for _, s, t, e, c in SYSTEMS if s == name), None)
 
 
+EMU_FIND_MAC = {"DOS": ["dosbox*.app"], "Saturn": ["ymir*.app"], "C64": ["vice*.app"], "VIC-20": ["vice*.app"], "N-Gage": ["eka2l1*.app"],
+                "ColecoVision": ["openmsx*.app"], "MSX": ["openmsx*.app"]}  # Mac app names that differ from the Windows exe's
+BREW_BIN = ("/opt/homebrew/bin", "/usr/local/bin")  # Homebrew's command-line emulators (mame, mednafen, atari800...)
+
+
 def find_emulators_mac():
-    """Known emulators installed as Mac apps (Dolphin.app, PCSX2.app, RetroArch.app...)."""
+    """Known emulators installed as Mac apps (Dolphin.app, PCSX2.app, RetroArch.app...), or as Homebrew commands."""
     import fnmatch
     home, found = os.path.expanduser("~"), {}
     for root in ("/Applications", os.path.join(home, "Applications"), os.path.join(home, "Emulators"), os.path.join(home, "Downloads"),
@@ -1029,10 +1036,20 @@ def find_emulators_mac():
             for a in sorted(apps, key=str.lower):
                 al = a.lower()
                 for platform, pats in EMU_FIND.items():
-                    if platform not in found and any(fnmatch.fnmatch(al, p.replace(".exe", ".app")) for p in pats):
+                    pats = [p.replace(".exe", ".app") for p in pats] + EMU_FIND_MAC.get(platform, [])
+                    if platform not in found and any(fnmatch.fnmatch(al, p) for p in pats):
                         found[platform] = os.path.join(dirpath, a)
                 if al == "retroarch.app":
                     found.setdefault("_retroarch", os.path.join(dirpath, a))
+    for platform, pats in EMU_FIND.items():
+        if platform in found:
+            continue
+        for d in BREW_BIN:
+            names = os.listdir(d) if os.path.isdir(d) else []
+            hit = next((n for n in sorted(names) for p in pats if fnmatch.fnmatch(n.lower(), p.lower().replace(".exe", ""))), None)
+            if hit:
+                found[platform] = os.path.join(d, hit)
+                break
     return found
 
 
@@ -1127,6 +1144,19 @@ def emulator_args(emu, cores, system=None):
         if re.search(pat, name):
             return list(args)
     return ["{rom}"]
+
+
+def best_app(folder):
+    """A Mac game in a folder: the .app named most like the folder, else the shallowest (an .app is a folder: not looked inside)."""
+    apps, base = [], folder.rstrip("/").count(os.sep)
+    for dirpath, dirs, _ in os.walk(folder):
+        found = [d for d in dirs if d.lower().endswith(".app")]
+        apps += [os.path.join(dirpath, d) for d in found]
+        dirs[:] = [] if dirpath.count(os.sep) - base >= 2 else [d for d in dirs if d not in found]
+    if not apps:
+        return None
+    want = norm(os.path.basename(folder))
+    return max(apps, key=lambda p: (bool(want) and (want in norm(os.path.basename(p)) or norm(os.path.splitext(os.path.basename(p))[0]) in want), -p.count(os.sep)))
 
 
 def best_exe(folder, exts=(".exe",)):
@@ -1366,7 +1396,7 @@ def switch_titles():
 def scan_library(lib, cfg):
     path, kind = lib["path"], lib["type"]
     if kind == "game":
-        if not os.path.isfile(path):
+        if not (os.path.isfile(path) or MAC and path.rstrip("/").endswith(".app") and os.path.isdir(path)):
             return []
         g = exe_game(lib.get("title") or title_for_exe(path), path, lib["name"], cfg)
         if lib.get("args"):
@@ -1376,6 +1406,15 @@ def scan_library(lib, cfg):
         return [g]
     if not os.path.isdir(path):
         raise FileNotFoundError(f"{path} isn't available")
+    if kind == "pc" and MAC:
+        games = []
+        for sub in sorted(os.listdir(path)):
+            full = os.path.join(path, sub)
+            app = full if sub.lower().endswith(".app") else os.path.isdir(full) and best_app(full)
+            if app:
+                games.append(exe_game(clean_title(os.path.splitext(sub)[0] if sub.lower().endswith(".app") else sub), app, lib["name"], cfg,
+                                      None if app == full else full))
+        return games
     if kind == "pc":
         games = []
         for sub in sorted(os.listdir(path)):
@@ -3027,6 +3066,8 @@ def add_capture(entry):
 
 def take_capture(mode):
     """The frontend's own screenshots and video, kept in data/captures. Nothing here touches Still or any other capture tool."""
+    if MAC:
+        return None  # screenshots and recording from the in-game menu: not on a Mac yet
     session = open_session()
     if not session:
         return
@@ -3189,6 +3230,8 @@ def stop_recording():
 
 def recycle(path):
     """To the Recycle Bin, so anything deleted from the album can be brought back."""
+    if MAC:
+        return trash_mac(path)
     import ctypes
     import ctypes.wintypes as W
 
@@ -3342,6 +3385,8 @@ SEEN_PIDS = {}  # that process' pid -> {every descendant seen: when it started},
 
 def process_birth(pid):
     """When this process started, or 0 if it has gone. Windows reuses pids, so a pid alone doesn't say it is still the same program."""
+    if MAC:
+        return plat_mac.process_birth(pid)
     import ctypes
     k32 = ctypes.WinDLL("kernel32")
     k32.OpenProcess.restype = ctypes.c_void_p
@@ -3361,6 +3406,8 @@ def process_birth(pid):
 
 def process_tree(pid):
     """The launched process and its descendants that are still running (launchers hand over to the game itself)."""
+    if MAC:
+        return plat_mac.process_tree(pid)
     import ctypes
     import ctypes.wintypes as W
 
@@ -3447,6 +3494,8 @@ def local_spawn(cmd, cwd):
     """Start a game. The packaged exe's unpack folder is on its DLL search path and children inherit it, so an emulator would
     load our vcruntime140.dll instead of the system's (RPCS3 refuses to run on it): clear that for the moment of starting."""
     bundle = getattr(sys, "_MEIPASS", None)
+    if MAC:
+        return subprocess.Popen(cmd, cwd=cwd, env=plat_mac.child_env() if bundle else None)
     if not (WIN and bundle):
         return subprocess.Popen(cmd, cwd=cwd)
     import ctypes
@@ -3466,6 +3515,8 @@ def local_spawn(cmd, cwd):
 
 def folder_processes(folder):
     """Running programs whose exe lives in this folder or below it."""
+    if MAC:
+        return plat_mac.folder_processes(folder)
     import ctypes
     import ctypes.wintypes as W
     k32 = ctypes.windll.kernel32
@@ -3487,7 +3538,7 @@ def folder_processes(folder):
 
 def game_tree(pid):
     """Everything still running from a launch, following the game after its launcher has exited."""
-    if not WIN:
+    if not WIN and not MAC:
         return set()
     seen = SEEN_PIDS.setdefault(pid, {pid: process_birth(pid)})
 
@@ -3695,6 +3746,9 @@ def hud_mode(cycle=False):
 
 
 def running_resume(game_id):
+    if MAC:
+        entry = RUN_NOW.get(game_id)
+        return bool(entry) and plat_mac.activate(entry[1])
     import ctypes
     hwnd = (RUN_NOW.get(game_id) or (None, 0))[0]
     if hwnd:
@@ -3705,6 +3759,11 @@ def running_resume(game_id):
 
 
 def running_close(game_id):
+    if MAC:
+        entry = RUN_NOW.pop(game_id, None)
+        if entry:
+            plat_mac.kill_tree(entry[1])
+        return session_end(game_id)
     entry = RUN_NOW.pop(game_id, None)
     if entry:
         subprocess.run(["taskkill", "/T", "/F", "/PID", str(entry[1])], capture_output=True)
@@ -3766,6 +3825,8 @@ def hold_steam_launch(game_id, timeout=30):
 
 def take_foreground(hwnd):
     """Windows refuses the foreground to a background program, unless it shares input with the window that has it."""
+    if MAC:
+        return plat_mac.activate(hwnd)  # on a Mac the 'window' is the program's pid
     import ctypes
     user32, k32 = ctypes.windll.user32, ctypes.windll.kernel32
     user32.GetForegroundWindow.restype = ctypes.c_void_p
@@ -3784,6 +3845,8 @@ def take_foreground(hwnd):
 def behind_game(frontend, game):
     """Put the frontend's window just under the game's, now and again a moment later: dropping topmost lifts a window above
     every normal one, and some games make their real window after the first, so the game could end up underneath."""
+    if MAC:
+        return
     import ctypes
     user32 = ctypes.windll.user32
     user32.SetWindowPos.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_uint]
@@ -3798,6 +3861,8 @@ def focus_process(pid, timeout=120):
     """Bring the launched game's window to the front once it exists. The helper runs in the background (the tray), and
     Windows won't let a background process' children take the foreground by themselves, so a game would open behind the
     fullscreen frontend. Keeps watching a few seconds after the first window for launchers that hand over to the game."""
+    if MAC:
+        return focus_process_mac(pid, timeout)
     if not WIN:
         return
     import ctypes
@@ -3865,6 +3930,8 @@ def overlay_open():
 
 def fullscreen_process():
     """The process of the foreground window, if that window has no title bar and covers the whole screen."""
+    if MAC:
+        return plat_mac.fullscreen_pid()
     import ctypes
     import ctypes.wintypes as W
     user32 = ctypes.windll.user32
@@ -3882,6 +3949,8 @@ def fullscreen_process():
 
 def toggle_overlay():
     """View + Start: open the overlay over the game being played, close it again, or just open the frontend if no game is."""
+    if MAC:
+        return open_frontend()  # no in-game menu window on a Mac yet: the frontend's own Quick Access instead
     if overlay_open():  # the overlay slides itself out, then resumes; closed here if it doesn't within a few seconds
         proc = OVERLAY["proc"]
         pad_emit("dismiss", "helper")
@@ -3930,6 +3999,8 @@ def state_keys(game_id, table=None):
 
 def game_in_front(pids):
     """Make sure a save key would reach the game, which hands it the focus: the overlay holds it while it's up."""
+    if MAC:
+        return plat_mac.activate(pids[0]) if pids else False
     import ctypes
     user32 = ctypes.windll.user32
     user32.GetForegroundWindow.restype = ctypes.c_void_p
@@ -3959,6 +4030,8 @@ def game_in_front(pids):
 
 
 def press_keys(keys):
+    if MAC:
+        return None  # sending keys to another app needs macOS' Accessibility permission: not yet
     import ctypes
     user32 = ctypes.windll.user32
     # The modifier goes down well before the key: Dolphin takes F1 alone as Load, and one press with both at once does Save and Load.
@@ -4092,6 +4165,8 @@ def steam_shortcut_id():
 def black_cover(timeout=12):
     """A black screen while Steam starts the frontend, hiding Steam's launching popup. It lifts once the frontend's window
     is up, whose intro starts on black too. A plain Windows window, so it's there at once, and it can never outlast timeout."""
+    if MAC:
+        return
     import ctypes
     import ctypes.wintypes as W
 
@@ -4138,6 +4213,8 @@ def black_cover(timeout=12):
 
 def process_image(pid):
     """The exe a process runs, or "" if it can't be read."""
+    if MAC:
+        return plat_mac.process_image(pid)
     import ctypes
     k32 = ctypes.windll.kernel32
     k32.OpenProcess.restype = ctypes.c_void_p
@@ -4164,6 +4241,12 @@ START_ALONE = ("try { $r = Invoke-CimMethod -ClassName Win32_Process -MethodName
 def start_alone(args):
     """Start the exe as a program of its own, as if from the desktop: through WMI its parent isn't this process, so Steam
     doesn't count it as part of a window it launched, and it gets a clean environment (its own unpacked copy)."""
+    if MAC:
+        try:
+            subprocess.Popen([frontend_exe()] + list(args), start_new_session=True, env=plat_mac.child_env())
+            return True
+        except OSError:
+            return False
     env = dict(os.environ, UFE_LINE=subprocess.list2cmdline([frontend_exe()] + args), UFE_DIR=ROOT)
     try:
         r = subprocess.run([POWERSHELL, "-NoProfile", "-NonInteractive", "-EncodedCommand", base64.b64encode(START_ALONE.encode("utf-16-le")).decode()],
@@ -4177,6 +4260,8 @@ def own_window(hwnd):
     """Whether a window belongs to this program (the exe, or Python running it from source). Windows' shell keeps windows of
     its own titled like the page (Windows.Internal.Shell.TabProxyWindow, in explorer), and they outlive the frontend's
     window: looked up by title alone, one of those passes for the frontend, which then never opens."""
+    if MAC:
+        return False
     import ctypes
     pid = ctypes.c_ulong()
     ctypes.windll.user32.GetWindowThreadProcessId(ctypes.c_void_p(hwnd), ctypes.byref(pid))
@@ -4187,6 +4272,8 @@ def own_window(hwnd):
 
 def frontend_window(title="Ultra Front End"):
     """The frontend's own top-level window with this exact title, or 0."""
+    if MAC:
+        return 0
     import ctypes
     user32 = ctypes.windll.user32
     user32.FindWindowExW.restype = ctypes.c_void_p
@@ -4205,6 +4292,8 @@ def frontend_in_front():
     """Whether the frontend (or its in-game menu) is the window in front. While the frontend shows, Windows can report one of
     its shell windows with the same title as the active one (see own_window), so that counts when the frontend's own window
     is what's on screen."""
+    if MAC:
+        return plat_mac.front_pid() == os.getpid()
     if time.time() - IN_FRONT[0] < 0.25:
         return IN_FRONT[1]
     import ctypes
@@ -4218,6 +4307,8 @@ def frontend_in_front():
 
 def on_screen(hwnd):
     """Whether this window is the one showing in the middle of the screen (not minimized, nothing over it)."""
+    if MAC:
+        return False
     if not hwnd:
         return False
     import ctypes
@@ -4233,6 +4324,8 @@ def on_screen(hwnd):
 def raise_window(hwnd, seconds=10):
     """Bring the frontend's own window to the front, restoring it if it was minimized (focus_process looks for a game's biggest
     window, which a minimized one never is). Keeps at it for a few seconds: Steam's own menu can open on the same press."""
+    if MAC:
+        return plat_mac.activate(os.getpid())
     import ctypes
     user32 = ctypes.windll.user32
     user32.GetForegroundWindow.restype = ctypes.c_void_p
@@ -4327,6 +4420,8 @@ def open_in_steam(target, title="Steam", timeout=8):
 
 def open_frontend():
     """The Xbox button: bring the frontend's window to the front, or open it."""
+    if MAC:
+        return plat_mac.activate(os.getpid())  # the window lives in this process
     import ctypes
     user32 = ctypes.windll.user32
     hwnd = frontend_window()
@@ -4501,6 +4596,8 @@ def playing():
 
 def audio_volume(level=None, delta=None, mute=None):
     """The default speakers through Windows' Core Audio. Returns {"volume": 0-100, "muted": bool}. level, delta and mute change it first."""
+    if MAC:
+        return plat_mac.audio_volume(level, delta, mute)
     import ctypes
     from ctypes import wintypes as W
 
@@ -4544,6 +4641,8 @@ def audio_volume(level=None, delta=None, mute=None):
 
 def system_power(action):
     """The power menu. Restart and shut down wait a few seconds, so the frontend can say what's happening."""
+    if MAC:
+        return plat_mac.system_power(action)
     if action == "sleep":
         import ctypes
         # SetSuspendState(hibernate=False). Through rundll32 its arguments are garbage, so a PC with hibernation on hibernates.
@@ -4654,6 +4753,8 @@ def steam_button_gesture():
 
 
 def foreground_title():
+    if MAC:
+        return ""
     import ctypes
     user32 = ctypes.windll.user32
     user32.GetForegroundWindow.restype = ctypes.c_void_p
@@ -4899,6 +5000,8 @@ def unpacked_rom(game, L):
 
 def screen_size():
     """The main screen's real resolution in pixels (ignores Windows display scaling)."""
+    if MAC:
+        return plat_mac.screen_size()
     try:
         import ctypes
         user32, gdi32 = ctypes.WinDLL("user32"), ctypes.WinDLL("gdi32")
@@ -7233,6 +7336,10 @@ class Handler(SimpleHTTPRequestHandler):
                     raise ValueError("That friend couldn't be found")
                 open_in_steam("steam://friends/message/" + sid, str(body.get("name") or "")[:100] or "Steam")
                 return self.reply({"ok": True})
+            if path == "/api/introsound" and MAC:
+                own = os.path.join(DATA, "intro.wav")
+                plat_mac.play_sound(own if os.path.isfile(own) else os.path.join(APP, "assets", "intro.wav")) if body.get("play") else plat_mac.stop_sound()
+                return self.reply({"ok": True})
             if path == "/api/introsound":  # played here because a page can't start sound by itself
                 import winsound
                 if body.get("play"):
@@ -7806,10 +7913,70 @@ def update_view():
             "latest": rel.get("version") if newer else None, "notes": rel.get("notes", "") if newer else "", "updated": saved.get("updated")}
 
 
+# ---------- the Mac versions that need this module's state (the rest are in plat_mac) ----------
+def watch_running_mac():
+    """Which games have a window open, as watch_running does on Windows: by install folder, plus anything started from here.
+    The 'window' kept for each game is its pid, which running_resume brings to the front."""
+    me = os.getpid()
+    while True:
+        time.sleep(3)
+        try:
+            wins = plat_mac.windows()
+            folders, now = game_folders(), {}
+            paths = {pid: plat_mac.process_image(pid) for pid in {w[1] for w in wins} if pid != me}
+            for pid, path in paths.items():
+                hit = max((d for d in folders if path.startswith(d)), key=len, default=None)
+                if hit:
+                    now.setdefault(folders[hit], (pid, pid))
+            for game, proc in list(RUNNING.items()):
+                tree = game_tree(proc.pid)
+                if tree and game not in now:
+                    pid = next((w[1] for w in wins if w[1] in tree), proc.pid)
+                    now[game] = (pid, pid)
+            RUN_NOW.clear()
+            RUN_NOW.update(now)
+        except Exception:
+            pass
+
+
+def focus_process_mac(pid, timeout=120):
+    """Bring a launched game to the front once it has a window (a launcher hands over to the game itself)."""
+    FOCUS[0] += 1
+    token = FOCUS[0]
+
+    def run():
+        deadline = time.time() + timeout
+        while time.time() < deadline and FOCUS[0] == token:
+            tree = game_tree(pid) or plat_mac.process_tree(pid)
+            hit = next((w[1] for w in plat_mac.windows() if w[1] in tree), None)
+            if hit:
+                plat_mac.activate(hit)
+                return
+            time.sleep(0.5)
+    threading.Thread(target=run, daemon=True).start()
+
+
+def trash_mac(path):
+    """To the Trash, so anything deleted from the album can be brought back (no Finder permission needed)."""
+    trash = os.path.expanduser("~/.Trash")
+    name, ext = os.path.splitext(os.path.basename(path))
+    dest, n = os.path.join(trash, name + ext), 1
+    while os.path.exists(dest):
+        n += 1
+        dest = os.path.join(trash, f"{name} {n}{ext}")
+    try:
+        shutil.move(path, dest)
+        return True
+    except OSError:
+        return False
+
+
 def main():
     def start():
         scan()
         threading.Thread(target=watch_folders, daemon=True).start()
+        if PORT == 8137 and MAC:
+            threading.Thread(target=watch_running_mac, daemon=True).start()
         if PORT == 8137 and WIN:  # only the real helper (a test copy would fire every shortcut twice); XInput is Windows-only
             threading.Thread(target=watch_controller, daemon=True).start()
             threading.Thread(target=watch_steam_button, daemon=True).start()
