@@ -40,10 +40,11 @@ The version comes from `VERSION` in `../server.py`, so every platform shares one
 ## The release key
 
 Updates only install over a copy signed with the same key, so the key must never change or be lost. It is kept
-outside the repo: `%LocalAppData%\Ultra Front End\android-key.properties` (or the file named by `UFE_ANDROID_KEY`) with
+outside the repo, in a folder of its own that no install or uninstall touches:
+`%USERPROFILE%\.ultrafrontend-signing\android-key.properties` (or the file named by `UFE_ANDROID_KEY`) with
 
 ```
-storeFile=C:/path/to/android-release.jks
+storeFile=C:/Users/<you>/.ultrafrontend-signing/android-release.jks
 storePassword=...
 keyAlias=ultrafrontend
 keyPassword=...
