@@ -88,6 +88,11 @@ def load(name, default):
 STORE_LOCK = threading.Lock()
 
 
+def secrets_equal(a, b):
+    import hmac
+    return hmac.compare_digest(str(a), str(b))
+
+
 def store(name, obj):
     # Each write gets its own temp file (lookups for several games finish at once), and Windows briefly refuses the
     # swap while another thread is reading the file, so it retries instead of failing the whole request.
@@ -932,6 +937,10 @@ def winget_install(package_id, name):
     winget = shutil.which("winget")
     if not winget:
         raise ValueError("Install Microsoft App Installer from the Microsoft Store first, then restart the frontend")
+    if package_id in broker_packages() and start_broker():  # one administrator prompt for all of setup's installs
+        code, text = winget_via_broker(package_id, name)
+        if code != BROKER_NO_WINGET:  # (it couldn't find winget where only administrators can change it: the usual way)
+            return winget_result(package_id, name, code, [text])
     proc = subprocess.Popen(
         [winget, "install", "--id", package_id, "--exact", "--source", "winget", *WINGET_ARGS.get(package_id, []),
          "--accept-source-agreements", "--accept-package-agreements", "--disable-interactivity", "--silent"],
@@ -961,12 +970,173 @@ def winget_install(package_id, name):
         raise
     finally:
         reader.join(30)
+    return winget_result(package_id, name, code, out)
+
+
+def winget_result(package_id, name, code, out):
     if code & 0xffffffff not in (0, 0x8A15002B):  # already installed with no upgrade is also success
         with open(os.path.join(DATA, "emulator-install.log"), "a", encoding="utf-8") as log:
             log.write(f"--- {time.strftime('%Y-%m-%d %H:%M')} winget install {package_id}: code {code & 0xffffffff:#x}\n"
                       f"{''.join(out)}\n")
         raise ValueError(f"{name} didn't install (winget code {code & 0xffffffff:#x}). Try again, or use its "
                          "project page. Details are in emulator-install.log in the data folder.")
+
+
+# ---------- one administrator prompt for setup's installs ----------
+# Some winget installers (the game launchers, several emulators) each ask Windows for administrator rights, sometimes behind
+# the full-screen frontend. Instead, Windows asks once: an elevated copy of this program (--install-broker) runs the
+# installs, then closes. It only ever runs "winget install" for a package in the app's own tables, so nothing else on the
+# PC can use it to run something as administrator. Not for standard accounts: if another person's administrator account
+# approved it, the installs would land in that person's user folder.
+BROKER = {"token": "", "seen": 0.0, "jobs": [], "next": 0, "out": {}, "done": {}, "declined": 0.0}
+BROKER_COND = threading.Condition()
+ADMINISTRATORS = "S-1-5-32-544"
+BROKER_NO_WINGET = 0x8A15FFF0  # the elevated helper's answer when there's no winget it can trust
+
+
+def protected_winget():
+    """winget.exe in its own package folder in Program Files › WindowsApps, which only administrators can change; never
+    the copy found through PATH (the user's own PATH and WindowsApps alias folder are theirs to change, so a planted
+    winget there would run as administrator). The newest version, or ""."""
+    root = os.path.join(os.environ.get("ProgramW6432") or os.environ.get("ProgramFiles") or r"C:\Program Files", "WindowsApps")
+    found = []
+    for folder in glob.glob(os.path.join(glob.escape(root), "Microsoft.DesktopAppInstaller_*__8wekyb3d8bbwe")):
+        exe = os.path.join(folder, "winget.exe")
+        real = os.path.realpath(exe)
+        if os.path.isfile(real) and os.path.normcase(real).startswith(os.path.normcase(os.path.realpath(root)) + os.sep):
+            found.append((version_key(os.path.basename(folder).split("_")[1]), real))
+    return max(found)[1] if found else ""
+
+
+def broker_packages():
+    """The winget packages the elevated helper may install: the launchers' and the emulators' (MAME's needs a folder in the
+    user's own home, so it installs the usual way)."""
+    ids = {wid for _, _, wid in LAUNCHERS} | {"Libretro.RetroArch"}
+    ids |= {p[1] for p in EMU_INSTALL.values() if p and re.fullmatch(r"[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+", p[1] or "")}
+    return ids - set(WINGET_ARGS)
+
+
+def broker_alive():
+    return bool(BROKER["token"]) and time.time() - BROKER["seen"] < 40
+
+
+def start_broker():
+    """Windows' prompt, once, for the elevated install helper. False if it can't be used (then installers ask as usual)."""
+    if not WIN or broker_alive():
+        return broker_alive()
+    if time.time() - BROKER["declined"] < 600 or ADMINISTRATORS not in token_groups():
+        return False
+    import secrets
+    token = secrets.token_hex(16)
+    with BROKER_COND:
+        BROKER.update(token=token, seen=0.0)
+    exe = frontend_exe()
+    args = f"--install-broker {PORT} {token}"
+    if not getattr(sys, "frozen", False):  # from source: Python runs frontend.py
+        exe, args = sys.executable, subprocess.list2cmdline([os.path.join(ROOT, "frontend.py")]) + " " + args
+    try:
+        shell_runas(exe, args)
+    except ValueError:
+        BROKER["declined"] = time.time()  # no for now: the installers ask as usual, and setup can offer again later
+        return False
+    deadline = time.time() + 30
+    while time.time() < deadline and not broker_alive():
+        time.sleep(0.3)
+    return broker_alive()
+
+
+def shell_runas(program, params):
+    """Start a program through Windows' administrator prompt without waiting for it."""
+    import ctypes
+    import ctypes.wintypes as W
+
+    class Info(ctypes.Structure):
+        _fields_ = [("cbSize", W.DWORD), ("fMask", W.ULONG), ("hwnd", W.HWND), ("lpVerb", W.LPCWSTR), ("lpFile", W.LPCWSTR), ("lpParameters", W.LPCWSTR),
+                    ("lpDirectory", W.LPCWSTR), ("nShow", ctypes.c_int), ("hInstApp", W.HINSTANCE), ("lpIDList", ctypes.c_void_p), ("lpClass", W.LPCWSTR),
+                    ("hkeyClass", W.HKEY), ("dwHotKey", W.DWORD), ("hIcon", W.HANDLE), ("hProcess", W.HANDLE)]
+    shell = ctypes.WinDLL("shell32", use_last_error=True)
+    shell.ShellExecuteExW.argtypes = [ctypes.POINTER(Info)]
+    info = Info(cbSize=ctypes.sizeof(Info), fMask=0x100, lpVerb="runas", lpFile=program, lpParameters=params, nShow=0)  # NOASYNC, hidden
+    if not shell.ShellExecuteExW(ctypes.byref(info)):
+        raise ValueError("Windows' permission prompt was cancelled" if ctypes.get_last_error() == 1223 else "Windows' permission prompt couldn't open")
+
+
+def winget_via_broker(package_id, name):
+    """winget install through the elevated helper: its output comes back as it runs, for the progress bar. Returns winget's exit code."""
+    with BROKER_COND:
+        BROKER["next"] += 1
+        job = BROKER["next"]
+        BROKER["jobs"].append({"id": job, "package": package_id})
+        BROKER["out"][job] = []
+        BROKER_COND.notify_all()
+    seen, recent, deadline, everything = {"installing": False}, "", time.time() + 1800, []
+    while True:
+        with BROKER_COND:
+            BROKER_COND.wait_for(lambda: BROKER["out"][job] or job in BROKER["done"] or not broker_alive(), timeout=5)
+            chunks, BROKER["out"][job] = BROKER["out"][job], []
+            code = BROKER["done"].pop(job, None)
+        for text in chunks:
+            everything.append(text)
+            recent = (recent + text)[-400:]
+            winget_progress(recent, seen)
+        if code is not None:
+            BROKER["out"].pop(job, None)
+            return code, "".join(everything)
+        if not broker_alive() or time.time() > deadline:
+            with BROKER_COND:
+                BROKER["jobs"] = [j for j in BROKER["jobs"] if j["id"] != job]
+            raise ValueError(f"{name}: the installer helper stopped. Try again.")
+
+
+def install_broker(port, token):
+    """The elevated side (--install-broker): asks the helper for installs, runs winget for each, sends the output back.
+    Leaves after ten idle minutes, or once the helper is gone."""
+    try:
+        broker_loop(port, token)
+    except Exception:  # whatever happens, it just goes (an error box from a hidden administrator process would only confuse)
+        pass
+
+
+def broker_loop(port, token):
+    import codecs
+    base, last_job, last_answer = f"http://127.0.0.1:{int(port)}/api/broker", time.time(), time.time()
+    allowed, system32 = broker_packages(), os.path.join(os.environ.get("SystemRoot") or r"C:\Windows", "System32")
+
+    def post(path, body):
+        try:
+            req = urllib.request.Request(base + path, data=json.dumps({**body, "token": token}).encode(), headers={"Content-Type": "application/json", "X-Frontend": "1"})
+            urllib.request.urlopen(req, timeout=15).read()
+        except (OSError, ValueError):
+            pass
+    while time.time() - last_job < 600 and time.time() - last_answer < 60:
+        try:
+            with urllib.request.urlopen(f"{base}/next?token={token}", timeout=40) as r:
+                job = json.loads(r.read() or b"{}")
+            last_answer = time.time()
+        except (OSError, ValueError):
+            time.sleep(2)
+            continue
+        if not isinstance(job, dict) or not job:
+            continue
+        last_job = time.time()
+        if not isinstance(job.get("package"), str) or job["package"] not in allowed:  # only the app's own packages, whatever is asked
+            post("/done", {"job": job.get("id"), "exit": 1})
+            continue
+        winget = protected_winget()
+        if not winget:
+            post("/done", {"job": job.get("id"), "exit": BROKER_NO_WINGET})
+            continue
+        proc = subprocess.Popen([winget, "install", "--id", job["package"], "--exact", "--source", "winget", "--accept-source-agreements",
+                                 "--accept-package-agreements", "--disable-interactivity", "--silent"], cwd=system32,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        decoder = codecs.getincrementaldecoder("utf-8")("replace")
+        while True:
+            chunk = proc.stdout.read1(65536)
+            if not chunk:
+                break
+            post("/out", {"job": job["id"], "text": decoder.decode(chunk)})
+        post("/done", {"job": job["id"], "exit": proc.wait() & 0xffffffff})
+        last_answer = last_job = time.time()  # a long install isn't the helper going quiet
 
 
 def connect_emulator(package, exe=None):
@@ -7246,6 +7416,17 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_path(f) if f and os.path.isfile(f) else self.send_error(404)
         if path == "/api/news":
             return self.reply({"news": all_news()})
+        if path == "/api/broker/next":  # the elevated install helper asking for work (it waits here up to 25 s)
+            token = (urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("token") or [""])[0]
+            if not BROKER["token"] or not secrets_equal(token, BROKER["token"]):
+                return self.reply({"error": "Not the install helper"}, 403)
+            with BROKER_COND:
+                BROKER["seen"] = time.time()
+                BROKER_COND.notify_all()
+                BROKER_COND.wait_for(lambda: BROKER["jobs"], timeout=25)
+                BROKER["seen"] = time.time()
+                job = BROKER["jobs"].pop(0) if BROKER["jobs"] else {}
+            return self.reply(job)
         if path == "/api/whatsnew":
             items, error = whats_new()
             return self.reply({"items": items, "error": error, "version": VERSION, "unseen": whats_new_unseen()})
@@ -7309,6 +7490,18 @@ class Handler(SimpleHTTPRequestHandler):
             path = urllib.parse.urlparse(self.path).path
             if path == "/api/spawn/done":
                 spawn_done(body.get("id"), int(body.get("pid") or 0))
+                return self.reply({"ok": True})
+            if path in ("/api/broker/out", "/api/broker/done"):  # the elevated install helper's output and result
+                if not BROKER["token"] or not secrets_equal(str(body.get("token") or ""), BROKER["token"]):
+                    return self.reply({"error": "Not the install helper"}, 403)
+                with BROKER_COND:
+                    BROKER["seen"] = time.time()
+                    job = body.get("job")  # (numbers: the request check wants "id" and "code" to be text)
+                    if path.endswith("out") and job in BROKER["out"]:
+                        BROKER["out"][job].append(str(body.get("text") or ""))
+                    elif path.endswith("done") and isinstance(job, int):
+                        BROKER["done"][job] = int(body.get("exit") or 0)
+                    BROKER_COND.notify_all()
                 return self.reply({"ok": True})
             if path == "/api/whatsnew":  # this version's notes were read: the News button's dot goes
                 store("whatsnew.json", {**load("whatsnew.json", {}), "seen": VERSION})
