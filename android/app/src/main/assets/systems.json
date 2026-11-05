@@ -1,0 +1,3481 @@
+{
+ "source": "Emulator packages and launch intents: ES-DE (MIT), resources/systems/android",
+ "patterns": [
+  [
+   "wii ?u",
+   "Wii U"
+  ],
+  [
+   "\\bwii\\b",
+   "Wii"
+  ],
+  [
+   "gamecube|\\bgc\\b|\\bngc\\b",
+   "GameCube"
+  ],
+  [
+   "switch ?2",
+   "Switch 2"
+  ],
+  [
+   "switch",
+   "Switch"
+  ],
+  [
+   "3ds",
+   "3DS"
+  ],
+  [
+   "\\bn?ds\\b|nintendo ds",
+   "DS"
+  ],
+  [
+   "64 ?dd",
+   "64DD"
+  ],
+  [
+   "n64|nintendo 64",
+   "N64"
+  ],
+  [
+   "snes|super nintendo|super famicom|\\bsfc\\b",
+   "SNES"
+  ],
+  [
+   "\\bfds\\b|famicom disk|disk system",
+   "FDS"
+  ],
+  [
+   "\\bnes\\b|famicom|nintendo entertainment",
+   "NES"
+  ],
+  [
+   "gba|game ?boy advance",
+   "GBA"
+  ],
+  [
+   "gbc|game ?boy colou?r",
+   "GBC"
+  ],
+  [
+   "\\bgb\\b|game ?boy",
+   "Game Boy"
+  ],
+  [
+   "virtual ?boy|\\bvboy\\b|\\bvb\\b",
+   "Virtual Boy"
+  ],
+  [
+   "pok[eé]mon ?mini|pokemini",
+   "Pokemon Mini"
+  ],
+  [
+   "game ?(&|and|n) ?watch|\\bg ?& ?w\\b|\\bgnw\\b|\\bgw\\b",
+   "Game & Watch"
+  ],
+  [
+   "ps5|playstation 5",
+   "PS5"
+  ],
+  [
+   "ps4|playstation 4",
+   "PS4"
+  ],
+  [
+   "vita|psv\\b",
+   "PS Vita"
+  ],
+  [
+   "ps3|playstation 3",
+   "PS3"
+  ],
+  [
+   "ps2|playstation 2",
+   "PS2"
+  ],
+  [
+   "psp|playstation portable",
+   "PSP"
+  ],
+  [
+   "ps1|psx|playstation",
+   "PS1"
+  ],
+  [
+   "naomi ?2",
+   "NAOMI 2"
+  ],
+  [
+   "naomi",
+   "NAOMI"
+  ],
+  [
+   "atomis ?wave|\\bawave\\b",
+   "Atomiswave"
+  ],
+  [
+   "model ?3",
+   "Model 3"
+  ],
+  [
+   "dreamcast|\\bdc\\b",
+   "Dreamcast"
+  ],
+  [
+   "saturn",
+   "Saturn"
+  ],
+  [
+   "sega ?-?cd|mega ?-?cd",
+   "Sega CD"
+  ],
+  [
+   "32x",
+   "32X"
+  ],
+  [
+   "genesis|mega ?drive|\\bmd\\b",
+   "Genesis"
+  ],
+  [
+   "master ?system|\\bsms\\b|mark ?(iii|3)",
+   "Master System"
+  ],
+  [
+   "game ?gear|\\bgg\\b",
+   "Game Gear"
+  ],
+  [
+   "sg[- ]?1000",
+   "SG-1000"
+  ],
+  [
+   "xbox ?360|x360",
+   "Xbox 360"
+  ],
+  [
+   "xbox",
+   "Xbox"
+  ],
+  [
+   "pc-?fx",
+   "PC-FX"
+  ],
+  [
+   "(pc ?-?engine|supergrafx|\\bsgx\\b|turbo ?grafx(-?16)?|\\bpce\\b|\\btg-?16\\b) ?-?(super )?cd|turbo ?duo|\\btg-?cd\\b|\\bpce-?cd\\b|cd-?rom2",
+   "PC Engine CD"
+  ],
+  [
+   "^(?!.*\\b(cd|duo)\\b).*(pc ?-?engine|supergrafx|\\bsgx\\b|turbo ?grafx|\\bpce\\b|\\btg-?16\\b)",
+   "PC Engine"
+  ],
+  [
+   "neo ?-?geo ?pocket|\\bngpc?\\b",
+   "Neo Geo Pocket"
+  ],
+  [
+   "neo ?-?geo ?cd|\\bngcd\\b",
+   "Neo Geo CD"
+  ],
+  [
+   "neo ?-?geo|\\bmvs\\b|\\baes\\b",
+   "Neo Geo"
+  ],
+  [
+   "jaguar|\\bjag\\b",
+   "Atari Jaguar"
+  ],
+  [
+   "lynx",
+   "Atari Lynx"
+  ],
+  [
+   "atari[ -]*7800|\\b7800\\b|prosystem",
+   "Atari 7800"
+  ],
+  [
+   "atari[ -]*5200|\\b5200\\b|\\ba52\\b",
+   "Atari 5200"
+  ],
+  [
+   "atari[ -]*2600|\\b2600\\b|\\bvcs\\b",
+   "Atari 2600"
+  ],
+  [
+   "atari[ -]*ste?\\b|\\bst\\b(?=.*atari)",
+   "Atari ST"
+  ],
+  [
+   "atari[ -]*(8-?bit|800|400|xl|xe)(xl|xe)?\\b",
+   "Atari 8-bit"
+  ],
+  [
+   "wonder ?swan|\\bwsc?\\b|swan ?crystal",
+   "WonderSwan"
+  ],
+  [
+   "arcade|\\bmame\\b|\\bfbneo\\b|\\bfba\\b|final ?burn",
+   "Arcade"
+  ],
+  [
+   "\\b3do\\b",
+   "3DO"
+  ],
+  [
+   "\\bcd-?i\\b|cdimono|philips ?cd",
+   "CD-i"
+  ],
+  [
+   "coleco",
+   "ColecoVision"
+  ],
+  [
+   "intellivision|\\bintv\\b",
+   "Intellivision"
+  ],
+  [
+   "vectrex",
+   "Vectrex"
+  ],
+  [
+   "odyssey ?(2|²)|o2em|videopac|\\bg7000\\b",
+   "Odyssey 2"
+  ],
+  [
+   "n-?gage",
+   "N-Gage"
+  ],
+  [
+   "\\bdos\\b|ms-?dos|dosbox",
+   "DOS"
+  ],
+  [
+   "scumm",
+   "ScummVM"
+  ],
+  [
+   "c64|commodore[ -]*64",
+   "C64"
+  ],
+  [
+   "(commodore[ -]*)?vic-? ?20|\\bvic\\b|vc-? ?20",
+   "VIC-20"
+  ],
+  [
+   "\\bamiga\\b(?!.*cd ?32)|\\ba(500|600|1200)\\b",
+   "Amiga"
+  ],
+  [
+   "zx ?spectrum|\\bspectrum\\b|\\bzx\\b(?! ?81)",
+   "ZX Spectrum"
+  ],
+  [
+   "amstrad|\\bcpc\\b",
+   "Amstrad CPC"
+  ],
+  [
+   "\\bmsx",
+   "MSX"
+  ],
+  [
+   "apple ?(ii|2)(?! ?gs)(e|\\+|c)?\\b|apple ?\\]\\[",
+   "Apple II"
+  ],
+  [
+   "\\bflash\\b|\\bswf\\b|ruffle",
+   "Flash"
+  ]
+ ],
+ "systems": [
+  {
+   "name": "PS5",
+   "group": "PlayStation",
+   "thumbs": null,
+   "ext": [
+    ".zar",
+    "eboot.bin"
+   ],
+   "emulators": []
+  },
+  {
+   "name": "PS4",
+   "group": "PlayStation",
+   "thumbs": null,
+   "ext": [
+    ".pkg",
+    ".ps4",
+    "eboot.bin"
+   ],
+   "emulators": []
+  },
+  {
+   "name": "PS3",
+   "group": "PlayStation",
+   "thumbs": "Sony - PlayStation 3",
+   "ext": [
+    ".iso",
+    ".pkg",
+    ".ps3",
+    "eboot.bin"
+   ],
+   "emulators": [
+    {
+     "label": "aPS3e Directory",
+     "emu": "APS3E",
+     "cmd": "%ACTION%=aenu.intent.action.APS3E %EXTRA_game_dir%=%ROM%"
+    },
+    {
+     "label": "aPS3e ISO",
+     "emu": "APS3E",
+     "cmd": "%ACTION%=aenu.intent.action.APS3E %EXTRA_iso_uri%=%ROMSAF%"
+    },
+    {
+     "label": "ARMSX3 Directory or ISO",
+     "emu": "ARMSX3",
+     "cmd": "%EXTRA_path%=%ROM%"
+    },
+    {
+     "label": "EmuCoreC Directory or ISO",
+     "emu": "EMUCOREC",
+     "cmd": "%EXTRA_gamePath%=%ROM%"
+    }
+   ]
+  },
+  {
+   "name": "PS2",
+   "group": "PlayStation",
+   "thumbs": "Sony - PlayStation 2",
+   "ext": [
+    ".bin",
+    ".chd",
+    ".ciso",
+    ".cso",
+    ".dump",
+    ".elf",
+    ".gz",
+    ".img",
+    ".iso",
+    ".isz",
+    ".m3u",
+    ".mdf",
+    ".ngr",
+    ".nrg"
+   ],
+   "emulators": [
+    {
+     "label": "PCEE2",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/pcee2_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "LRPS2",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/pcsx2_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "NetherSX2",
+     "emu": "NETHERSX2",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %ACTION%=android.intent.action.MAIN %EXTRA_bootPath%=%ROMSAF%"
+    },
+    {
+     "label": "NetherSX2-Turnip",
+     "emu": "NETHERSX2-TURNIP",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %ACTION%=android.intent.action.MAIN %EXTRA_bootPath%=%ROMSAF%"
+    },
+    {
+     "label": "NetherSX2-Turnip Classic",
+     "emu": "NETHERSX2-TURNIP-CLASSIC",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %ACTION%=android.intent.action.MAIN %EXTRA_bootPath%=%ROMSAF%"
+    },
+    {
+     "label": "AetherSX2",
+     "emu": "NETHERSX2",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %ACTION%=android.intent.action.MAIN %EXTRA_bootPath%=%ROMSAF%"
+    },
+    {
+     "label": "ARMSX2",
+     "emu": "ARMSX2",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    },
+    {
+     "label": "EmuCoreX",
+     "emu": "EMUCOREX",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    },
+    {
+     "label": "Play!",
+     "emu": "PLAY!",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    }
+   ]
+  },
+  {
+   "name": "PS1",
+   "group": "PlayStation",
+   "thumbs": "Sony - PlayStation",
+   "ext": [
+    ".7z",
+    ".bin",
+    ".cbn",
+    ".ccd",
+    ".chd",
+    ".cue",
+    ".ecm",
+    ".exe",
+    ".img",
+    ".iso",
+    ".m3u",
+    ".mdf",
+    ".mds",
+    ".minipsf",
+    ".pbp",
+    ".psexe",
+    ".psf",
+    ".toc",
+    ".z",
+    ".zip",
+    ".znx"
+   ],
+   "emulators": [
+    {
+     "label": "Beetle PSX",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mednafen_psx_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Beetle PSX HW",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mednafen_psx_hw_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "PCSX ReARMed",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/pcsx_rearmed_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "SwanStation",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/swanstation_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "DuckStation",
+     "emu": "DUCKSTATION",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %EXTRABOOL_resumeState%=false %EXTRA_bootPath%=%ROMSAF%"
+    },
+    {
+     "label": "ARMSX1",
+     "emu": "ARMSX1",
+     "cmd": "%DATA%=%ROMSAF%"
+    },
+    {
+     "label": "ePSXe",
+     "emu": "EPSXE",
+     "cmd": "%ACTION%=android.intent.action.MAIN %EXTRA_com.epsxe.ePSXe.isoName%=%ROM%"
+    },
+    {
+     "label": "FPseNG",
+     "emu": "FPSE-NG",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMPROVIDER%"
+    },
+    {
+     "label": "FPse",
+     "emu": "FPSE",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMPROVIDER%"
+    }
+   ]
+  },
+  {
+   "name": "PSP",
+   "group": "PlayStation",
+   "thumbs": "Sony - PlayStation Portable",
+   "ext": [
+    ".7z",
+    ".chd",
+    ".cso",
+    ".elf",
+    ".iso",
+    ".pbp",
+    ".prx",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "PPSSPP",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/ppsspp_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "PPSSPP",
+     "emu": "PPSSPP",
+     "cmd": "%ACTION%=android.intent.action.VIEW %CATEGORY%=android.intent.category.DEFAULT %DATA%=%ROMSAF%"
+    }
+   ]
+  },
+  {
+   "name": "PS Vita",
+   "group": "PlayStation",
+   "thumbs": null,
+   "ext": [
+    ".psvita",
+    ".vpk"
+   ],
+   "emulators": []
+  },
+  {
+   "name": "Switch 2",
+   "group": "Nintendo",
+   "thumbs": "Nintendo - Switch",
+   "ext": [
+    ".nca",
+    ".nro",
+    ".nso",
+    ".nsp",
+    ".xci"
+   ],
+   "emulators": [
+    {
+     "label": "Eden",
+     "emu": "EDEN",
+     "cmd": "%ACTION%=android.nfc.action.TECH_DISCOVERED %DATA%=%ROMPROVIDER%"
+    },
+    {
+     "label": "Eden Nightly",
+     "emu": "EDEN-NIGHTLY",
+     "cmd": "%ACTION%=android.nfc.action.TECH_DISCOVERED %DATA%=%ROMPROVIDER%"
+    },
+    {
+     "label": "Kenji-NX",
+     "emu": "KENJI-NX",
+     "cmd": "%ACTION%=org.kenjinx.android.LAUNCH_GAME %EXTRA_bootPath%=%ROMSAF%"
+    },
+    {
+     "label": "Skyline",
+     "emu": "SKYLINE",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMPROVIDER%"
+    }
+   ]
+  },
+  {
+   "name": "Switch",
+   "group": "Nintendo",
+   "thumbs": "Nintendo - Switch",
+   "ext": [
+    ".nca",
+    ".nro",
+    ".nso",
+    ".nsp",
+    ".xci"
+   ],
+   "emulators": [
+    {
+     "label": "Eden",
+     "emu": "EDEN",
+     "cmd": "%ACTION%=android.nfc.action.TECH_DISCOVERED %DATA%=%ROMPROVIDER%"
+    },
+    {
+     "label": "Eden Nightly",
+     "emu": "EDEN-NIGHTLY",
+     "cmd": "%ACTION%=android.nfc.action.TECH_DISCOVERED %DATA%=%ROMPROVIDER%"
+    },
+    {
+     "label": "Kenji-NX",
+     "emu": "KENJI-NX",
+     "cmd": "%ACTION%=org.kenjinx.android.LAUNCH_GAME %EXTRA_bootPath%=%ROMSAF%"
+    },
+    {
+     "label": "Skyline",
+     "emu": "SKYLINE",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMPROVIDER%"
+    }
+   ]
+  },
+  {
+   "name": "Wii U",
+   "group": "Nintendo",
+   "thumbs": "Nintendo - Wii U",
+   "ext": [
+    ".elf",
+    ".rpx",
+    ".tmd",
+    ".wua",
+    ".wud",
+    ".wuhb",
+    ".wux"
+   ],
+   "emulators": [
+    {
+     "label": "Cemu",
+     "emu": "CEMU",
+     "cmd": "%DATA%=%ROMSAF%"
+    },
+    {
+     "label": "Cemu",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/cemu_libretro_android.so %EXTRA_ROM%=%ROM%"
+    }
+   ]
+  },
+  {
+   "name": "Wii",
+   "group": "Nintendo",
+   "thumbs": "Nintendo - Wii",
+   "ext": [
+    ".7z",
+    ".ciso",
+    ".dff",
+    ".dol",
+    ".elf",
+    ".gcm",
+    ".gcz",
+    ".iso",
+    ".json",
+    ".m3u",
+    ".rvz",
+    ".tgc",
+    ".wad",
+    ".wbfs",
+    ".wia",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Dolphin",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/dolphin_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Dolphin",
+     "emu": "DOLPHIN",
+     "cmd": "%ACTION%=android.intent.action.MAIN %CATEGORY%=android.intent.category.LEANBACK_LAUNCHER %EXTRA_AutoStartFile%=%ROMSAF%"
+    },
+    {
+     "label": "Dolphin MMJR",
+     "emu": "DOLPHIN-MMJR",
+     "cmd": "%ACTION%=android.intent.action.VIEW %EXTRA_AutoStartFile%=%ROMSAF%"
+    },
+    {
+     "label": "Dolphin MMJR2",
+     "emu": "DOLPHIN-MMJR2",
+     "cmd": "%ACTION%=android.intent.action.VIEW %EXTRA_AutoStartFile%=%ROMSAF%"
+    }
+   ]
+  },
+  {
+   "name": "GameCube",
+   "group": "Nintendo",
+   "thumbs": "Nintendo - GameCube",
+   "ext": [
+    ".7z",
+    ".ciso",
+    ".dff",
+    ".dol",
+    ".elf",
+    ".gcm",
+    ".gcz",
+    ".iso",
+    ".json",
+    ".m3u",
+    ".rvz",
+    ".tgc",
+    ".wad",
+    ".wbfs",
+    ".wia",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Dolphin",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/dolphin_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Dolphin",
+     "emu": "DOLPHIN",
+     "cmd": "%ACTION%=android.intent.action.MAIN %CATEGORY%=android.intent.category.LEANBACK_LAUNCHER %EXTRA_AutoStartFile%=%ROMSAF%"
+    },
+    {
+     "label": "Dolphin MMJR",
+     "emu": "DOLPHIN-MMJR",
+     "cmd": "%ACTION%=android.intent.action.VIEW %EXTRA_AutoStartFile%=%ROMSAF%"
+    },
+    {
+     "label": "Dolphin MMJR2",
+     "emu": "DOLPHIN-MMJR2",
+     "cmd": "%ACTION%=android.intent.action.VIEW %EXTRA_AutoStartFile%=%ROMSAF%"
+    }
+   ]
+  },
+  {
+   "name": "N64",
+   "group": "Nintendo",
+   "thumbs": "Nintendo - Nintendo 64",
+   "ext": [
+    ".7z",
+    ".app",
+    ".bin",
+    ".d64",
+    ".n64",
+    ".ndd",
+    ".u1",
+    ".v64",
+    ".z64",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Mupen64Plus-Next",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mupen64plus_next_gles3_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "M64Plus FZ",
+     "emu": "M64PLUS-FZ",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    },
+    {
+     "label": "Mupen64Plus AE",
+     "emu": "MUPEN64PLUS-AE",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    },
+    {
+     "label": "ParaLLEl N64",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/parallel_n64_libretro_android.so %EXTRA_ROM%=%ROM%"
+    }
+   ]
+  },
+  {
+   "name": "64DD",
+   "group": "Nintendo",
+   "thumbs": "Nintendo - Nintendo 64DD",
+   "ext": [
+    ".7z",
+    ".bin",
+    ".d64",
+    ".n64",
+    ".n64dd",
+    ".ndd",
+    ".u1",
+    ".v64",
+    ".z64",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Mupen64Plus-Next",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mupen64plus_next_gles3_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "M64Plus FZ",
+     "emu": "M64PLUS-FZ",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    },
+    {
+     "label": "Mupen64Plus AE",
+     "emu": "MUPEN64PLUS-AE",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    },
+    {
+     "label": "ParaLLEl N64",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/parallel_n64_libretro_android.so %EXTRA_ROM%=%ROM%"
+    }
+   ]
+  },
+  {
+   "name": "SNES",
+   "group": "Nintendo",
+   "thumbs": "Nintendo - Super Nintendo Entertainment System",
+   "ext": [
+    ".7z",
+    ".bin",
+    ".bml",
+    ".bs",
+    ".bsx",
+    ".dx2",
+    ".fig",
+    ".gd3",
+    ".gd7",
+    ".mgd",
+    ".sfc",
+    ".smc",
+    ".st",
+    ".swc",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Snes9x - Current",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/snes9x_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Snes9x 2010",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/snes9x2010_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Snes9x 2005 Plus",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/snes9x2005_plus_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Snes9x EX+",
+     "emu": "SNES9X-EXPLUS",
+     "cmd": "%DATA%=%ROMSAF%"
+    },
+    {
+     "label": "bsnes",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/bsnes_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "bsnes-hd",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/bsnes_hd_beta_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "bsnes-jg",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/bsnes-jg_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "bsnes-mercury Accuracy",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/bsnes_mercury_accuracy_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Beetle Supafaust",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mednafen_supafaust_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Mesen-S",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mesen-s_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "MesenCE",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mesen2_libretro_android.so %EXTRA_ROM%=%ROM%"
+    }
+   ]
+  },
+  {
+   "name": "NES",
+   "group": "Nintendo",
+   "thumbs": "Nintendo - Nintendo Entertainment System",
+   "ext": [
+    ".3dsen",
+    ".7z",
+    ".fds",
+    ".nes",
+    ".unf",
+    ".unif",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Mesen",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mesen_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "MesenCE",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mesen2_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Nestopia UE",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/nestopia_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "FCEUmm",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/fceumm_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "QuickNES",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/quicknes_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "RustyNES",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/rustynes_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "NES.emu",
+     "emu": "NES-EMU",
+     "cmd": "%DATA%=%ROMPROVIDER%"
+    },
+    {
+     "label": "iNES",
+     "emu": "INES",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    },
+    {
+     "label": "Nesoid",
+     "emu": "NESOID",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROM%"
+    }
+   ]
+  },
+  {
+   "name": "FDS",
+   "group": "Nintendo",
+   "thumbs": "Nintendo - Family Computer Disk System",
+   "ext": [
+    ".7z",
+    ".fds",
+    ".nes",
+    ".unf",
+    ".unif",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Mesen",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mesen_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "MesenCE",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mesen2_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Nestopia UE",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/nestopia_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "FCEUmm",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/fceumm_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "RustyNES",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/rustynes_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "NES.emu",
+     "emu": "NES-EMU",
+     "cmd": "%DATA%=%ROMPROVIDER%"
+    },
+    {
+     "label": "iNES",
+     "emu": "INES",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    },
+    {
+     "label": "Nesoid",
+     "emu": "NESOID",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROM%"
+    }
+   ]
+  },
+  {
+   "name": "3DS",
+   "group": "Nintendo",
+   "thumbs": "Nintendo - Nintendo 3DS",
+   "ext": [
+    ".3ds",
+    ".3dsx",
+    ".7z",
+    ".app",
+    ".axf",
+    ".cci",
+    ".cia",
+    ".cxi",
+    ".elf",
+    ".z3dsx",
+    ".zcci",
+    ".zcxi",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Azahar",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/azahar_libretro.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Azahar",
+     "emu": "AZAHAR",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %DATA%=%ROMSAF%"
+    },
+    {
+     "label": "AzaharPlus",
+     "emu": "AZAHARPLUS",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %DATA%=%ROMSAF%"
+    },
+    {
+     "label": "Citra",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/citra_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Citra 2018",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/citra2018_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Citra",
+     "emu": "CITRA",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %DATA%=%ROMSAF%"
+    },
+    {
+     "label": "Citra Canary",
+     "emu": "CITRA-CANARY",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %DATA%=%ROMSAF%"
+    },
+    {
+     "label": "Citra MMJ",
+     "emu": "CITRA-MMJ",
+     "cmd": "%EXTRA_GamePath%=%ROM%"
+    },
+    {
+     "label": "Mandarine",
+     "emu": "MANDARINE",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %DATA%=%ROMSAF%"
+    },
+    {
+     "label": "Lime3DS",
+     "emu": "LIME3DS",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %DATA%=%ROMSAF%"
+    },
+    {
+     "label": "Panda3DS",
+     "emu": "PANDA3DS",
+     "cmd": "%DATA%=%ROMPROVIDER%"
+    }
+   ]
+  },
+  {
+   "name": "DS",
+   "group": "Nintendo",
+   "thumbs": "Nintendo - Nintendo DS",
+   "ext": [
+    ".7z",
+    ".app",
+    ".bin",
+    ".dsi",
+    ".ids",
+    ".nds",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "melonDS DS",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/melondsds_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "melonDS",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/melonds_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "melonDS",
+     "emu": "MELONDS",
+     "cmd": "%ACTION%=me.magnum.melonds.LAUNCH_ROM %EXTRA_uri%=%ROMSAF%"
+    },
+    {
+     "label": "melonDS Nightly",
+     "emu": "MELONDS-NIGHTLY",
+     "cmd": "%ACTION%=me.magnum.melonds.nightly.LAUNCH_ROM %EXTRA_uri%=%ROMSAF%"
+    },
+    {
+     "label": "WatermelonDS",
+     "emu": "WATERMELONDS",
+     "cmd": "%ACTION%=me.magnum.melonds.LAUNCH_ROM %EXTRA_uri%=%ROMSAF%"
+    },
+    {
+     "label": "SeedlessDS",
+     "emu": "SEEDLESSDS",
+     "cmd": "%EXTRA_rom_path%=%ROM%"
+    },
+    {
+     "label": "DeSmuME",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/desmume_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "DeSmuME 2015",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/desmume2015_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "NooDS",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/noods_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "NooDS",
+     "emu": "NOODS",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %EXTRA_LaunchPath%=%ROM%"
+    },
+    {
+     "label": "DraStic",
+     "emu": "DRASTIC",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %DATA%=%ROMSAF%"
+    },
+    {
+     "label": "SkyEmu",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/skyemu_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "SkyEmu",
+     "emu": "SKYEMU",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %ACTION%=android.intent.action.VIEW %DATA%=%ROMPROVIDER%"
+    }
+   ]
+  },
+  {
+   "name": "GBA",
+   "group": "Nintendo",
+   "thumbs": "Nintendo - Game Boy Advance",
+   "ext": [
+    ".7z",
+    ".agb",
+    ".bin",
+    ".cgb",
+    ".dmg",
+    ".gb",
+    ".gba",
+    ".gbc",
+    ".gbx",
+    ".sgb",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "mGBA",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mgba_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "VBA-M",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/vbam_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "VBA Next",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/vba_next_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "gpSP",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/gpsp_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "NooDS",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/noods_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "NooDS",
+     "emu": "NOODS",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %EXTRA_LaunchPath%=%ROM%"
+    },
+    {
+     "label": "SkyEmu",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/skyemu_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "SkyEmu",
+     "emu": "SKYEMU",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %ACTION%=android.intent.action.VIEW %DATA%=%ROMPROVIDER%"
+    },
+    {
+     "label": "MesenCE",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mesen2_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "GBA.emu",
+     "emu": "GBA-EMU",
+     "cmd": "%DATA%=%ROMPROVIDER%"
+    },
+    {
+     "label": "My Boy!",
+     "emu": "MY-BOY",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    },
+    {
+     "label": "Linkboy",
+     "emu": "LINKBOY",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    },
+    {
+     "label": "Pizza Boy GBA",
+     "emu": "PIZZA-BOY-GBA",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %EXTRA_rom_uri%=%ROMSAF%"
+    }
+   ]
+  },
+  {
+   "name": "GBC",
+   "group": "Nintendo",
+   "thumbs": "Nintendo - Game Boy Color",
+   "ext": [
+    ".7z",
+    ".bs",
+    ".cgb",
+    ".dmg",
+    ".gb",
+    ".gbc",
+    ".gbx",
+    ".sfc",
+    ".sgb",
+    ".smc",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Gambatte",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/gambatte_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "SameBoy",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/sameboy_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Gearboy",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/gearboy_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "TGB Dual",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/tgbdual_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "DoubleCherryGB",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/DoubleCherryGB_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "IroGB",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/irogb_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Mesen-S",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mesen-s_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "MesenCE",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mesen2_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "bsnes",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/bsnes_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "mGBA",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mgba_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "VBA-M",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/vbam_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "SkyEmu",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/skyemu_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "SkyEmu",
+     "emu": "SKYEMU",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %ACTION%=android.intent.action.VIEW %DATA%=%ROMPROVIDER%"
+    },
+    {
+     "label": "GBC.emu",
+     "emu": "GBC-EMU",
+     "cmd": "%DATA%=%ROMPROVIDER%"
+    },
+    {
+     "label": "My OldBoy!",
+     "emu": "MY-OLDBOY",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    },
+    {
+     "label": "Linkboy",
+     "emu": "LINKBOY",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    },
+    {
+     "label": "Pizza Boy GBC",
+     "emu": "PIZZA-BOY-GBC",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %EXTRA_rom_uri%=%ROMSAF%"
+    }
+   ]
+  },
+  {
+   "name": "Game Boy",
+   "group": "Nintendo",
+   "thumbs": "Nintendo - Game Boy",
+   "ext": [
+    ".7z",
+    ".bs",
+    ".cgb",
+    ".dmg",
+    ".gb",
+    ".gbc",
+    ".gbx",
+    ".sfc",
+    ".sgb",
+    ".smc",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Gambatte",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/gambatte_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "SameBoy",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/sameboy_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Gearboy",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/gearboy_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "TGB Dual",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/tgbdual_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "DoubleCherryGB",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/DoubleCherryGB_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "IroGB",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/irogb_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Mesen-S",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mesen-s_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "MesenCE",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mesen2_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "bsnes",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/bsnes_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "mGBA",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mgba_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "VBA-M",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/vbam_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "SkyEmu",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/skyemu_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "SkyEmu",
+     "emu": "SKYEMU",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %ACTION%=android.intent.action.VIEW %DATA%=%ROMPROVIDER%"
+    },
+    {
+     "label": "GBC.emu",
+     "emu": "GBC-EMU",
+     "cmd": "%DATA%=%ROMPROVIDER%"
+    },
+    {
+     "label": "My OldBoy!",
+     "emu": "MY-OLDBOY",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    },
+    {
+     "label": "Linkboy",
+     "emu": "LINKBOY",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    },
+    {
+     "label": "Pizza Boy GBC",
+     "emu": "PIZZA-BOY-GBC",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %EXTRA_rom_uri%=%ROMSAF%"
+    }
+   ]
+  },
+  {
+   "name": "Virtual Boy",
+   "group": "Nintendo",
+   "thumbs": "Nintendo - Virtual Boy",
+   "ext": [
+    ".7z",
+    ".bin",
+    ".vb",
+    ".vboy",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Beetle VB",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mednafen_vb_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Virtual Virtual Boy",
+     "emu": "VIRTUAL-VIRTUAL-BOY",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %ACTION%=android.intent.action.VIEW %DATA%=%ROMPROVIDER%"
+    }
+   ]
+  },
+  {
+   "name": "Pokemon Mini",
+   "group": "Nintendo",
+   "thumbs": "Nintendo - Pokemon Mini",
+   "ext": [
+    ".7z",
+    ".min",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "PokeMini",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/pokemini_libretro_android.so %EXTRA_ROM%=%ROM%"
+    }
+   ]
+  },
+  {
+   "name": "Game & Watch",
+   "group": "Nintendo",
+   "thumbs": "Handheld Electronic Game",
+   "ext": [
+    ".7z",
+    ".mgw",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Multi (MESS)",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mamemess_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "MAME4droid Current",
+     "emu": "MAME4DROID-CURRENT",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMPROVIDER%"
+    },
+    {
+     "label": "Handheld Electronic (GW)",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/gw_libretro_android.so %EXTRA_ROM%=%ROM%"
+    }
+   ]
+  },
+  {
+   "name": "Xbox 360",
+   "group": "Xbox",
+   "thumbs": null,
+   "ext": [
+    ".",
+    ".iso",
+    ".xex",
+    ".zar"
+   ],
+   "emulators": [
+    {
+     "label": "aX360e",
+     "emu": "AX360E",
+     "cmd": "%ACTION%=aenu.intent.action.AX360E %EXTRA_game_uri%=%ROMSAF%"
+    },
+    {
+     "label": "XenDroid",
+     "emu": "XENDROID",
+     "cmd": "%DATA%=%ROMSAF%"
+    },
+    {
+     "label": "Xenra",
+     "emu": "XENRA",
+     "cmd": "%DATA%=%ROMSAF%"
+    }
+   ]
+  },
+  {
+   "name": "Xbox",
+   "group": "Xbox",
+   "thumbs": "Microsoft - Xbox",
+   "ext": [
+    ".iso",
+    ".xiso"
+   ],
+   "emulators": [
+    {
+     "label": "X1 BOX",
+     "emu": "X1-BOX",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    },
+    {
+     "label": "hakuX",
+     "emu": "HAKUX",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    },
+    {
+     "label": "Xenra",
+     "emu": "XENRA",
+     "cmd": "%DATA%=%ROMSAF%"
+    }
+   ]
+  },
+  {
+   "name": "Dreamcast",
+   "group": "Sega",
+   "thumbs": "Sega - Dreamcast",
+   "ext": [
+    ".7z",
+    ".cdi",
+    ".chd",
+    ".cue",
+    ".dat",
+    ".elf",
+    ".gdi",
+    ".iso",
+    ".lst",
+    ".m3u",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Flycast",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/flycast_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Flycast",
+     "emu": "FLYCAST",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    },
+    {
+     "label": "Redream",
+     "emu": "REDREAM",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    }
+   ]
+  },
+  {
+   "name": "Saturn",
+   "group": "Sega",
+   "thumbs": "Sega - Saturn",
+   "ext": [
+    ".7z",
+    ".bin",
+    ".ccd",
+    ".chd",
+    ".cue",
+    ".iso",
+    ".m3u",
+    ".mds",
+    ".toc",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Beetle Saturn",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mednafen_saturn_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "YabaSanshiro",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/yabasanshiro_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Yaba Sanshiro 2",
+     "emu": "YABASANSHIRO-2",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %ACTION%=android.intent.action.VIEW %EXTRA_org.uoyabause.android.FileNameUri%=%ROMSAF%"
+    },
+    {
+     "label": "Yabause",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/yabause_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Saturn.emu",
+     "emu": "SATURN-EMU",
+     "cmd": "%DATA%=%ROMSAF%"
+    }
+   ]
+  },
+  {
+   "name": "Sega CD",
+   "group": "Sega",
+   "thumbs": "Sega - Mega-CD - Sega CD",
+   "ext": [
+    ".68k",
+    ".7z",
+    ".bin",
+    ".bms",
+    ".chd",
+    ".cue",
+    ".gen",
+    ".gg",
+    ".iso",
+    ".m3u",
+    ".md",
+    ".mdx",
+    ".sg",
+    ".sgd",
+    ".smd",
+    ".sms",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Genesis Plus GX",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/genesis_plus_gx_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Genesis Plus GX Wide",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/genesis_plus_gx_wide_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "PicoDrive",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/picodrive_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "BlastEm",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/blastem_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "ClownMDEmu",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/clownmdemu_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "MD.emu",
+     "emu": "MD-EMU",
+     "cmd": "%DATA%=%ROMSAF%"
+    },
+    {
+     "label": "Pizza Boy SC",
+     "emu": "PIZZA-BOY-SC",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %EXTRA_rom_uri%=%ROMSAF%"
+    }
+   ]
+  },
+  {
+   "name": "32X",
+   "group": "Sega",
+   "thumbs": "Sega - 32X",
+   "ext": [
+    ".32x",
+    ".68k",
+    ".7z",
+    ".bin",
+    ".chd",
+    ".cue",
+    ".gen",
+    ".iso",
+    ".m3u",
+    ".md",
+    ".smd",
+    ".sms",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "PicoDrive",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/picodrive_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "BlastEm",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/blastem_libretro_android.so %EXTRA_ROM%=%ROM%"
+    }
+   ]
+  },
+  {
+   "name": "Genesis",
+   "group": "Sega",
+   "thumbs": "Sega - Mega Drive - Genesis",
+   "ext": [
+    ".32x",
+    ".68k",
+    ".7z",
+    ".bin",
+    ".bms",
+    ".chd",
+    ".cue",
+    ".gen",
+    ".gg",
+    ".iso",
+    ".m3u",
+    ".md",
+    ".mdx",
+    ".sg",
+    ".sgd",
+    ".smd",
+    ".sms",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Genesis Plus GX",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/genesis_plus_gx_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Genesis Plus GX Wide",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/genesis_plus_gx_wide_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "PicoDrive",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/picodrive_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "BlastEm",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/blastem_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "ClownMDEmu",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/clownmdemu_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "MD.emu",
+     "emu": "MD-EMU",
+     "cmd": "%DATA%=%ROMPROVIDER%"
+    },
+    {
+     "label": "Pizza Boy SC",
+     "emu": "PIZZA-BOY-SC",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %EXTRA_rom_uri%=%ROMSAF%"
+    }
+   ]
+  },
+  {
+   "name": "Master System",
+   "group": "Sega",
+   "thumbs": "Sega - Master System - Mark III",
+   "ext": [
+    ".68k",
+    ".7z",
+    ".bin",
+    ".bms",
+    ".chd",
+    ".col",
+    ".cue",
+    ".gen",
+    ".gg",
+    ".iso",
+    ".m3u",
+    ".md",
+    ".mdx",
+    ".rom",
+    ".sg",
+    ".sgd",
+    ".smd",
+    ".sms",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Genesis Plus GX",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/genesis_plus_gx_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Genesis Plus GX Wide",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/genesis_plus_gx_wide_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "SMS Plus GX",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/smsplus_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Gearsystem",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/gearsystem_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "PicoDrive",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/picodrive_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "BlastEm",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/blastem_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "MesenCE",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mesen2_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "MD.emu",
+     "emu": "MD-EMU",
+     "cmd": "%DATA%=%ROMPROVIDER%"
+    },
+    {
+     "label": "Pizza Boy SC",
+     "emu": "PIZZA-BOY-SC",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %EXTRA_rom_uri%=%ROMSAF%"
+    },
+    {
+     "label": "MasterGear",
+     "emu": "MASTERGEAR",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    }
+   ]
+  },
+  {
+   "name": "Game Gear",
+   "group": "Sega",
+   "thumbs": "Sega - Game Gear",
+   "ext": [
+    ".68k",
+    ".7z",
+    ".bin",
+    ".bms",
+    ".chd",
+    ".col",
+    ".cue",
+    ".gen",
+    ".gg",
+    ".iso",
+    ".m3u",
+    ".md",
+    ".mdx",
+    ".rom",
+    ".sg",
+    ".sgd",
+    ".smd",
+    ".sms",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Genesis Plus GX",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/genesis_plus_gx_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Genesis Plus GX Wide",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/genesis_plus_gx_wide_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Gearsystem",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/gearsystem_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "SMS Plus GX",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/smsplus_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "PicoDrive",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/picodrive_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "BlastEm",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/blastem_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "MesenCE",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mesen2_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Pizza Boy SC",
+     "emu": "PIZZA-BOY-SC",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %EXTRA_rom_uri%=%ROMSAF%"
+    },
+    {
+     "label": "MasterGear",
+     "emu": "MASTERGEAR",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    }
+   ]
+  },
+  {
+   "name": "SG-1000",
+   "group": "Sega",
+   "thumbs": "Sega - SG-1000",
+   "ext": [
+    ".68k",
+    ".7z",
+    ".bin",
+    ".bms",
+    ".chd",
+    ".cue",
+    ".gen",
+    ".gg",
+    ".iso",
+    ".m3u",
+    ".md",
+    ".mdx",
+    ".ri",
+    ".rom",
+    ".sg",
+    ".sgd",
+    ".smd",
+    ".sms",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Genesis Plus GX",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/genesis_plus_gx_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Genesis Plus GX Wide",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/genesis_plus_gx_wide_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Gearsystem",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/gearsystem_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "BlastEm",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/blastem_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "blueMSX",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/bluemsx_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "MasterGear",
+     "emu": "MASTERGEAR",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    }
+   ]
+  },
+  {
+   "name": "NAOMI",
+   "group": "Sega",
+   "thumbs": "Sega - Naomi",
+   "ext": [
+    ".7z",
+    ".bin",
+    ".chd",
+    ".dat",
+    ".elf",
+    ".lst",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Flycast",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/flycast_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Flycast",
+     "emu": "FLYCAST",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    }
+   ]
+  },
+  {
+   "name": "NAOMI 2",
+   "group": "Sega",
+   "thumbs": "Sega - Naomi 2",
+   "ext": [
+    ".7z",
+    ".bin",
+    ".chd",
+    ".dat",
+    ".elf",
+    ".lst",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Flycast",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/flycast_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Flycast",
+     "emu": "FLYCAST",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    }
+   ]
+  },
+  {
+   "name": "Atomiswave",
+   "group": "Sega",
+   "thumbs": "Atomiswave",
+   "ext": [
+    ".7z",
+    ".bin",
+    ".dat",
+    ".elf",
+    ".lst",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Flycast",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/flycast_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Flycast",
+     "emu": "FLYCAST",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    }
+   ]
+  },
+  {
+   "name": "Model 3",
+   "group": "Sega",
+   "thumbs": null,
+   "ext": [
+    ".7z",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Supermodel",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/supermodel_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "SUPER3",
+     "emu": "SUPER3",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    },
+    {
+     "label": "MAME - Current",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mamearcade_libretro_android.so %EXTRA_ROM%=%ROM%"
+    }
+   ]
+  },
+  {
+   "name": "PC Engine",
+   "group": "NEC",
+   "thumbs": "NEC - PC Engine - TurboGrafx 16",
+   "ext": [
+    ".7z",
+    ".ccd",
+    ".chd",
+    ".cue",
+    ".img",
+    ".iso",
+    ".m3u",
+    ".pce",
+    ".rom",
+    ".sgx",
+    ".toc",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Beetle PCE",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mednafen_pce_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Beetle PCE FAST",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mednafen_pce_fast_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Beetle SuperGrafx",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mednafen_supergrafx_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Geargrafx",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/geargrafx_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "MesenCE",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mesen2_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "PCE.emu",
+     "emu": "PCE-EMU",
+     "cmd": "%DATA%=%ROMPROVIDER%"
+    }
+   ]
+  },
+  {
+   "name": "PC Engine CD",
+   "group": "NEC",
+   "thumbs": "NEC - PC Engine CD - TurboGrafx-CD",
+   "ext": [
+    ".7z",
+    ".ccd",
+    ".chd",
+    ".cue",
+    ".img",
+    ".iso",
+    ".m3u",
+    ".pce",
+    ".sgx",
+    ".toc",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Beetle PCE",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mednafen_pce_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Beetle PCE FAST",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mednafen_pce_fast_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Beetle SuperGrafx",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mednafen_supergrafx_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Geargrafx",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/geargrafx_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "MesenCE",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mesen2_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "PCE.emu",
+     "emu": "PCE-EMU",
+     "cmd": "%DATA%=%ROMSAF%"
+    }
+   ]
+  },
+  {
+   "name": "PC-FX",
+   "group": "NEC",
+   "thumbs": "NEC - PC-FX",
+   "ext": [
+    ".7z",
+    ".ccd",
+    ".chd",
+    ".cue",
+    ".m3u",
+    ".toc",
+    ".zip",
+    "cue"
+   ],
+   "emulators": [
+    {
+     "label": "Beetle PC-FX",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mednafen_pcfx_libretro_android.so %EXTRA_ROM%=%ROM%"
+    }
+   ]
+  },
+  {
+   "name": "Neo Geo",
+   "group": "SNK",
+   "thumbs": "SNK - Neo Geo",
+   "ext": [
+    ".7z",
+    ".neo",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "FinalBurn Neo",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/fbneo_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Geolith",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/geolith_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "NEO.emu",
+     "emu": "NEO-EMU",
+     "cmd": "%DATA%=%ROMSAF%"
+    },
+    {
+     "label": "MAME - Current",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mamearcade_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "MAME4droid",
+     "emu": "MAME4DROID",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMPROVIDER%"
+    }
+   ]
+  },
+  {
+   "name": "Neo Geo CD",
+   "group": "SNK",
+   "thumbs": "SNK - Neo Geo CD",
+   "ext": [
+    ".chd",
+    ".cue",
+    ".iso",
+    ".toc"
+   ],
+   "emulators": [
+    {
+     "label": "NeoCD",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/neocd_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Geolith",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/geolith_libretro_android.so %EXTRA_ROM%=%ROM%"
+    }
+   ]
+  },
+  {
+   "name": "Neo Geo Pocket",
+   "group": "SNK",
+   "thumbs": "SNK - Neo Geo Pocket Color",
+   "ext": [
+    ".7z",
+    ".ngc",
+    ".ngp",
+    ".ngpc",
+    ".npc",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Beetle NeoPop",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mednafen_ngp_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "RACE",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/race_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "NGP.emu",
+     "emu": "NGP-EMU",
+     "cmd": "%DATA%=%ROMPROVIDER%"
+    }
+   ]
+  },
+  {
+   "name": "Atari Jaguar",
+   "group": "Atari",
+   "thumbs": "Atari - Jaguar",
+   "ext": [
+    ".7z",
+    ".abs",
+    ".bin",
+    ".cdi",
+    ".cof",
+    ".cue",
+    ".j64",
+    ".jag",
+    ".prg",
+    ".rom",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Virtual Jaguar",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/virtualjaguar_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "IrataJaguar",
+     "emu": "IRATAJAGUAR",
+     "cmd": "%DATA%=%ROMSAF%"
+    }
+   ]
+  },
+  {
+   "name": "Atari Lynx",
+   "group": "Atari",
+   "thumbs": "Atari - Lynx",
+   "ext": [
+    ".7z",
+    ".lnx",
+    ".lyx",
+    ".o",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Handy",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/handy_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Beetle Lynx",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mednafen_lynx_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Gearlynx",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/gearlynx_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Holani",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/holani_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Lynx.emu",
+     "emu": "LYNX-EMU",
+     "cmd": "%DATA%=%ROMPROVIDER%"
+    }
+   ]
+  },
+  {
+   "name": "Atari 7800",
+   "group": "Atari",
+   "thumbs": "Atari - 7800",
+   "ext": [
+    ".7z",
+    ".a78",
+    ".bin",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "ProSystem",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/prosystem_libretro_android.so %EXTRA_ROM%=%ROM%"
+    }
+   ]
+  },
+  {
+   "name": "Atari 5200",
+   "group": "Atari",
+   "thumbs": "Atari - 5200",
+   "ext": [
+    ".7z",
+    ".a52",
+    ".atr",
+    ".atx",
+    ".bin",
+    ".car",
+    ".cas",
+    ".cdm",
+    ".com",
+    ".rom",
+    ".xex",
+    ".xfd",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "a5200",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/a5200_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Atari800",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/atari800_libretro_android.so %EXTRA_ROM%=%ROM%"
+    }
+   ]
+  },
+  {
+   "name": "Atari 2600",
+   "group": "Atari",
+   "thumbs": "Atari - 2600",
+   "ext": [
+    ".7z",
+    ".a26",
+    ".bin",
+    ".rom",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Stella",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/stella_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Stella 2014",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/stella2014_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Stella 2023",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/stella2023_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Tia",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/tia_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "2600.emu",
+     "emu": "2600-EMU",
+     "cmd": "%DATA%=%ROMPROVIDER%"
+    }
+   ]
+  },
+  {
+   "name": "Atari ST",
+   "group": "Atari",
+   "thumbs": "Atari - ST",
+   "ext": [
+    ".7z",
+    ".dim",
+    ".ipf",
+    ".m3u",
+    ".msa",
+    ".st",
+    ".stx",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Hatari",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/hatari_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Hatari 2014",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/hatari2014_libretro_android.so %EXTRA_ROM%=%ROM%"
+    }
+   ]
+  },
+  {
+   "name": "Atari 8-bit",
+   "group": "Atari",
+   "thumbs": "Atari - 8-bit Family",
+   "ext": [
+    ".7z",
+    ".a52",
+    ".atr",
+    ".atx",
+    ".bin",
+    ".car",
+    ".cas",
+    ".cdm",
+    ".com",
+    ".rom",
+    ".xex",
+    ".xfd",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Atari800",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/atari800_libretro_android.so %EXTRA_ROM%=%ROM%"
+    }
+   ]
+  },
+  {
+   "name": "WonderSwan",
+   "group": "Bandai",
+   "thumbs": "Bandai - WonderSwan Color",
+   "ext": [
+    ".7z",
+    ".pc2",
+    ".ws",
+    ".wsc",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Beetle Cygne",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mednafen_wswan_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "MesenCE",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mesen2_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Swan.emu",
+     "emu": "SWAN-EMU",
+     "cmd": "%DATA%=%ROMPROVIDER%"
+    }
+   ]
+  },
+  {
+   "name": "Arcade",
+   "group": "Arcade",
+   "thumbs": "MAME",
+   "ext": [
+    ".7z",
+    ".cmd",
+    ".neo",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "MAME - Current",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mamearcade_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "MAME 2010",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mame2010_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "MAME 2003-Plus",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mame2003_plus_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "MAME 2003",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mame2003_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "MAME 2000",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/mame2000_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "HBMAME",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/hbmame_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "MAME4droid",
+     "emu": "MAME4DROID",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMPROVIDER%"
+    },
+    {
+     "label": "NEO.emu",
+     "emu": "NEO-EMU",
+     "cmd": "%DATA%=%ROMSAF%"
+    },
+    {
+     "label": "FinalBurn Neo",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/fbneo_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "FB Alpha 2012",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/fbalpha2012_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Geolith",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/geolith_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Flycast",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/flycast_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Flycast",
+     "emu": "FLYCAST",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    },
+    {
+     "label": "DICE",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/dice_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Supermodel",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/supermodel_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "SUPER3",
+     "emu": "SUPER3",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    }
+   ]
+  },
+  {
+   "name": "3DO",
+   "group": "Other consoles",
+   "thumbs": "The 3DO Company - 3DO",
+   "ext": [
+    ".7z",
+    ".bin",
+    ".chd",
+    ".cue",
+    ".iso",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Opera",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/opera_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Real3DOPlayer",
+     "emu": "REAL3DOPLAYER",
+     "cmd": "%DATA%=%ROMSAF%"
+    }
+   ]
+  },
+  {
+   "name": "CD-i",
+   "group": "Other consoles",
+   "thumbs": "Philips - CD-i",
+   "ext": [
+    ".chd",
+    ".cue",
+    ".iso",
+    ".toc"
+   ],
+   "emulators": [
+    {
+     "label": "SAME CDi",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/same_cdi_libretro_android.so %EXTRA_ROM%=%ROM%"
+    }
+   ]
+  },
+  {
+   "name": "ColecoVision",
+   "group": "Other consoles",
+   "thumbs": "Coleco - ColecoVision",
+   "ext": [
+    ".7z",
+    ".bin",
+    ".cas",
+    ".col",
+    ".cv",
+    ".dsk",
+    ".m3u",
+    ".mx1",
+    ".mx2",
+    ".myv",
+    ".ri",
+    ".rom",
+    ".sc",
+    ".sg",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "blueMSX",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/bluemsx_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Gearcoleco",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/gearcoleco_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "JollyCV",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/jollycv_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "BlastEm",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/blastem_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "MSX.emu",
+     "emu": "MSX-EMU",
+     "cmd": "%DATA%=%ROMSAF%"
+    },
+    {
+     "label": "ColEm",
+     "emu": "COLEM",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    }
+   ]
+  },
+  {
+   "name": "Intellivision",
+   "group": "Other consoles",
+   "thumbs": "Mattel - Intellivision",
+   "ext": [
+    ".7z",
+    ".bin",
+    ".int",
+    ".rom",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "FreeIntv",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/freeintv_libretro_android.so %EXTRA_ROM%=%ROM%"
+    }
+   ]
+  },
+  {
+   "name": "Vectrex",
+   "group": "Other consoles",
+   "thumbs": "GCE - Vectrex",
+   "ext": [
+    ".7z",
+    ".bin",
+    ".gam",
+    ".vc",
+    ".vec",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "vecx",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/vecx_libretro_android.so %EXTRA_ROM%=%ROM%"
+    }
+   ]
+  },
+  {
+   "name": "Odyssey 2",
+   "group": "Other consoles",
+   "thumbs": "Magnavox - Odyssey2",
+   "ext": [
+    ".7z",
+    ".bin",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "O2EM",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/o2em_libretro_android.so %EXTRA_ROM%=%ROM%"
+    }
+   ]
+  },
+  {
+   "name": "N-Gage",
+   "group": "Other consoles",
+   "thumbs": null,
+   "ext": [
+    ".json",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "EKA2L1",
+     "emu": "EKA2L1",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %ACTION%=android.intent.action.VIEW %DATA%=%ROMPROVIDER%"
+    }
+   ]
+  },
+  {
+   "name": "DOS",
+   "group": "Computers",
+   "thumbs": "DOS",
+   "ext": [
+    ".7z",
+    ".bat",
+    ".com",
+    ".conf",
+    ".cue",
+    ".dosz",
+    ".exe",
+    ".img",
+    ".iso",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "DOSBox-Pure",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/dosbox_pure_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "DOSBox-Core",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/dosbox_core_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "DOSBox-SVN",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/dosbox_svn_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "VirtualXT",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/virtualxt_libretro_android.so %EXTRA_ROM%=%ROM%"
+    }
+   ]
+  },
+  {
+   "name": "ScummVM",
+   "group": "Computers",
+   "thumbs": "ScummVM",
+   "ext": [
+    ".scummvm",
+    ".svm"
+   ],
+   "emulators": [
+    {
+     "label": "ScummVM",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/scummvm_libretro_android.so %EXTRA_ROM%=%ROM%"
+    }
+   ]
+  },
+  {
+   "name": "C64",
+   "group": "Computers",
+   "thumbs": "Commodore - 64",
+   "ext": [
+    ".7z",
+    ".bin",
+    ".cmd",
+    ".crt",
+    ".d2m",
+    ".d4m",
+    ".d64",
+    ".d6z",
+    ".d71",
+    ".d7z",
+    ".d80",
+    ".d81",
+    ".d82",
+    ".d8z",
+    ".g41",
+    ".g4z",
+    ".g64",
+    ".g6z",
+    ".gz",
+    ".lnx",
+    ".m3u",
+    ".nbz",
+    ".nib",
+    ".p00",
+    ".prg",
+    ".t64",
+    ".tap",
+    ".vfl",
+    ".vsf",
+    ".x64",
+    ".x6z",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "VICE x64sc Accurate",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/vice_x64sc_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "VICE x64 Fast",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/vice_x64_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "VICE x64 SuperCPU",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/vice_xscpu64_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "VICE x128",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/vice_x128_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "C64.emu",
+     "emu": "C64-EMU",
+     "cmd": "%DATA%=%ROMSAF%"
+    }
+   ]
+  },
+  {
+   "name": "VIC-20",
+   "group": "Computers",
+   "thumbs": "Commodore - VIC-20",
+   "ext": [
+    ".20",
+    ".40",
+    ".60",
+    ".7z",
+    ".a0",
+    ".b0",
+    ".bin",
+    ".cmd",
+    ".crt",
+    ".d2m",
+    ".d4m",
+    ".d64",
+    ".d6z",
+    ".d71",
+    ".d7z",
+    ".d80",
+    ".d81",
+    ".d82",
+    ".d8z",
+    ".g41",
+    ".g4z",
+    ".g64",
+    ".g6z",
+    ".gz",
+    ".lnx",
+    ".m3u",
+    ".nbz",
+    ".nib",
+    ".p00",
+    ".prg",
+    ".rom",
+    ".t64",
+    ".tap",
+    ".vfl",
+    ".vsf",
+    ".x64",
+    ".x6z",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "VICE xvic",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/vice_xvic_libretro_android.so %EXTRA_ROM%=%ROM%"
+    }
+   ]
+  },
+  {
+   "name": "Amiga",
+   "group": "Computers",
+   "thumbs": "Commodore - Amiga",
+   "ext": [
+    ".7z",
+    ".adf",
+    ".adz",
+    ".ccd",
+    ".chd",
+    ".cue",
+    ".dms",
+    ".fdi",
+    ".hdf",
+    ".hdz",
+    ".ipf",
+    ".iso",
+    ".lha",
+    ".m3u",
+    ".mds",
+    ".nrg",
+    ".rp9",
+    ".uae",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "PUAE",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/puae_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "PUAE 2021",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/puae2021_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Amiberry",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/amiberry_libretro_android.so %EXTRA_ROM%=%ROM%"
+    }
+   ]
+  },
+  {
+   "name": "ZX Spectrum",
+   "group": "Computers",
+   "thumbs": "Sinclair - ZX Spectrum",
+   "ext": [
+    ".7z",
+    ".dsk",
+    ".gz",
+    ".img",
+    ".mdr",
+    ".mgt",
+    ".pzx",
+    ".rzx",
+    ".scl",
+    ".sh",
+    ".sna",
+    ".snx",
+    ".sp",
+    ".szx",
+    ".tap",
+    ".trd",
+    ".tzx",
+    ".udi",
+    ".z80",
+    ".zip",
+    ".zsf",
+    ".zx"
+   ],
+   "emulators": [
+    {
+     "label": "Fuse",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/fuse_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "Speccy",
+     "emu": "SPECCY",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    }
+   ]
+  },
+  {
+   "name": "Amstrad CPC",
+   "group": "Computers",
+   "thumbs": "Amstrad - CPC",
+   "ext": [
+    ".7z",
+    ".cdt",
+    ".cpr",
+    ".dsk",
+    ".kcr",
+    ".m3u",
+    ".sna",
+    ".tap",
+    ".tar",
+    ".voc",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "Caprice32",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/cap32_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "CrocoDS",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/crocods_libretro_android.so %EXTRA_ROM%=%ROM%"
+    }
+   ]
+  },
+  {
+   "name": "MSX",
+   "group": "Computers",
+   "thumbs": "Microsoft - MSX2",
+   "ext": [
+    ".7z",
+    ".cas",
+    ".col",
+    ".di1",
+    ".di2",
+    ".dmk",
+    ".dsk",
+    ".fd1",
+    ".fd2",
+    ".m3u",
+    ".mx1",
+    ".mx2",
+    ".ogv",
+    ".ri",
+    ".rom",
+    ".sc",
+    ".sg",
+    ".wav",
+    ".xsa",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "blueMSX",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/bluemsx_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "fMSX",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/fmsx_libretro_android.so %EXTRA_ROM%=%ROM%"
+    },
+    {
+     "label": "fMSX",
+     "emu": "FMSX",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %ACTION%=android.intent.action.VIEW %DATA%=%ROMSAF%"
+    },
+    {
+     "label": "MSX.emu",
+     "emu": "MSX-EMU",
+     "cmd": "%DATA%=%ROMSAF%"
+    }
+   ]
+  },
+  {
+   "name": "Apple II",
+   "group": "Computers",
+   "thumbs": null,
+   "ext": [
+    ".7z",
+    ".do",
+    ".dsk",
+    ".nib",
+    ".po",
+    ".woz",
+    ".zip"
+   ],
+   "emulators": [
+    {
+     "label": "AppleWin",
+     "emu": "RETROARCH",
+     "cmd": "%EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/applewin_libretro_android.so %EXTRA_ROM%=%ROM%"
+    }
+   ]
+  },
+  {
+   "name": "Flash",
+   "group": "Computers",
+   "thumbs": null,
+   "ext": [
+    ".ruf",
+    ".swf"
+   ],
+   "emulators": [
+    {
+     "label": "Ruffle",
+     "emu": "RUFFLE",
+     "cmd": "%ACTION%=android.intent.action.VIEW %DATA%=%ROMPROVIDER%"
+    },
+    {
+     "label": "SWF Player",
+     "emu": "SWF-PLAYER",
+     "cmd": "%ACTIVITY_CLEAR_TASK% %ACTIVITY_CLEAR_TOP% %ACTION%=android.intent.action.VIEW %DATA%=%ROMPROVIDER%"
+    }
+   ]
+  }
+ ],
+ "packages": {
+  "RETROARCH": [
+   "com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture",
+   "com.retroarch.ra32/com.retroarch.browser.retroactivity.RetroActivityFuture",
+   "com.retroarch/com.retroarch.browser.retroactivity.RetroActivityFuture"
+  ],
+  "2600-EMU": [
+   "com.explusalpha.A2600Emu/com.imagine.BaseActivity"
+  ],
+  "APS3E": [
+   "aenu.aps3e.premium/aenu.aps3e.EmulatorActivity",
+   "aenu.aps3e/aenu.aps3e.EmulatorActivity"
+  ],
+  "ARMSX1": [
+   "com.nanodata.armsx/com.armsx2.Main"
+  ],
+  "ARMSX2": [
+   "come.nanodata.armsx2/com.armsx2.MainActivity",
+   "com.armsx2/.MainActivity",
+   "com.armsx2.nightly/com.armsx2.MainActivity",
+   "come.nanodata.armsx2/kr.co.iefriends.pcsx2.MainActivity",
+   "come.nanodata.armsx2.debug/kr.co.iefriends.pcsx2.MainActivity"
+  ],
+  "ARMSX3": [
+   "com.armsx3/com.armsx2.Main"
+  ],
+  "AX360E": [
+   "aenu.ax360e/aenu.ax360e.EmulatorActivity",
+   "aenu.ax360e.free/aenu.ax360e.EmulatorActivity"
+  ],
+  "AZAHAR": [
+   "org.azahar_emu.azahar/org.citra.citra_emu.activities.EmulationActivity",
+   "io.github.lime3ds.android/org.citra.citra_emu.activities.EmulationActivity"
+  ],
+  "AZAHARPLUS": [
+   "io.github.azaharplus.android/org.citra.citra_emu.activities.EmulationActivity"
+  ],
+  "C64-EMU": [
+   "com.explusalpha.C64Emu/com.imagine.BaseActivity"
+  ],
+  "CEMU": [
+   "info.cemu.cemu/info.cemu.cemu.emulation.EmulationActivity",
+   "info.cemu.Cemu/info.cemu.Cemu.emulation.EmulationActivity"
+  ],
+  "CITRA": [
+   "org.citra.citra_emu/.activities.EmulationActivity",
+   "org.citra.citra_emu/.ui.main.MainActivity"
+  ],
+  "CITRA-CANARY": [
+   "org.citra.citra_emu.canary/org.citra.citra_emu.activities.EmulationActivity"
+  ],
+  "CITRA-MMJ": [
+   "org.citra.emu/.ui.EmulationActivity",
+   "com.antutu.ABenchMark/org.citra.emu.ui.EmulationActivity"
+  ],
+  "COLEM": [
+   "com.fms.colem.deluxe/com.fms.emulib.TVActivity",
+   "com.fms.colem/com.fms.emulib.TVActivity"
+  ],
+  "DOLPHIN": [
+   "org.dolphinemu.dolphinemu/.ui.main.TvMainActivity"
+  ],
+  "DOLPHIN-MMJR": [
+   "org.mm.jr/org.dolphinemu.dolphinemu.ui.main.MainActivity"
+  ],
+  "DOLPHIN-MMJR2": [
+   "org.dolphinemu.mmjr/org.dolphinemu.dolphinemu.ui.main.MainActivity"
+  ],
+  "DRASTIC": [
+   "com.dsemu.drastic/.DraSticActivity"
+  ],
+  "DUCKSTATION": [
+   "com.github.stenzek.duckstation/.EmulationActivity"
+  ],
+  "EDEN": [
+   "dev.eden.eden_emulator/org.yuzu.yuzu_emu.activities.EmulationActivity",
+   "dev.legacy.eden_emulator/org.yuzu.yuzu_emu.activities.EmulationActivity",
+   "com.miHoYo.Yuanshen/org.yuzu.yuzu_emu.activities.EmulationActivity"
+  ],
+  "EDEN-NIGHTLY": [
+   "dev.eden.eden_emulator.nightly/org.yuzu.yuzu_emu.activities.EmulationActivity",
+   "dev.legacy.eden_emulator.nightly/org.yuzu.yuzu_emu.activities.EmulationActivity",
+   "com.miHoYo.Yuanshen.nightly/org.yuzu.yuzu_emu.activities.EmulationActivity"
+  ],
+  "EKA2L1": [
+   "com.github.eka2l1/.emu.EmulatorActivity"
+  ],
+  "EMUCOREC": [
+   "com.sbro.emucorec/.core.ps3.Emulator"
+  ],
+  "EMUCOREX": [
+   "com.sbro.emucorex/.MainActivity"
+  ],
+  "EPSXE": [
+   "com.epsxe.ePSXe/.ePSXe"
+  ],
+  "FLYCAST": [
+   "com.flycast.emulator/com.flycast.emulator.MainActivity",
+   "com.flycast.emulator/com.reicast.emulator.MainActivity"
+  ],
+  "FMSX": [
+   "com.fms.fmsx.deluxe/com.fms.emulib.TVActivity",
+   "com.fms.fmsx/com.fms.emulib.TVActivity"
+  ],
+  "FPSE": [
+   "com.emulator.fpse/.Main"
+  ],
+  "FPSE-NG": [
+   "com.emulator.fpse64/.Main"
+  ],
+  "GBA-EMU": [
+   "com.explusalpha.GbaEmu/com.imagine.BaseActivity"
+  ],
+  "GBC-EMU": [
+   "com.explusalpha.GbcEmu/com.imagine.BaseActivity"
+  ],
+  "HAKUX": [
+   "com.rfandango.haku_x/.LauncherActivity"
+  ],
+  "INES": [
+   "com.fms.ines.free/com.fms.emulib.TVActivity"
+  ],
+  "IRATAJAGUAR": [
+   "ru.vastness.altmer.iratajaguar/.EmulatorActivity"
+  ],
+  "KENJI-NX": [
+   "org.kenjinx.android/.MainActivity"
+  ],
+  "LIME3DS": [
+   "io.github.lime3ds.android/.activities.EmulationActivity"
+  ],
+  "LINKBOY": [
+   "com.pixelrespawn.linkboy/.EmulatorActivity"
+  ],
+  "LYNX-EMU": [
+   "com.explusalpha.LynxEmu/com.imagine.BaseActivity"
+  ],
+  "M64PLUS-FZ": [
+   "org.mupen64plusae.v3.fzurita.amazon/paulscode.android.mupen64plusae.SplashActivity",
+   "org.mupen64plusae.v3.fzurita.pro/paulscode.android.mupen64plusae.SplashActivity",
+   "org.mupen64plusae.v3.fzurita/paulscode.android.mupen64plusae.SplashActivity"
+  ],
+  "MAME4DROID-CURRENT": [
+   "com.seleuco.mame4d2024/com.seleuco.mame4droid.MAME4droid"
+  ],
+  "MAME4DROID": [
+   "com.seleuco.mame4droid/.MAME4droid"
+  ],
+  "MANDARINE": [
+   "io.github.mandarine3ds.mandarine/.activities.EmulationActivity"
+  ],
+  "MASTERGEAR": [
+   "com.fms.mg/com.fms.emulib.TVActivity"
+  ],
+  "MD-EMU": [
+   "com.explusalpha.MdEmu/com.imagine.BaseActivity"
+  ],
+  "MELONDS": [
+   "me.magnum.melonds/.ui.emulator.EmulatorActivity",
+   "me.magnum.melondualds/me.magnum.melonds.ui.emulator.EmulatorActivity"
+  ],
+  "MELONDS-NIGHTLY": [
+   "me.magnum.melonds.nightly/me.magnum.melonds.ui.emulator.EmulatorActivity"
+  ],
+  "MSX-EMU": [
+   "com.explusalpha.MsxEmu/com.imagine.BaseActivity"
+  ],
+  "MUPEN64PLUS-AE": [
+   "org.mupen64plusae.v3.alpha/paulscode.android.mupen64plusae.SplashActivity"
+  ],
+  "MY-BOY": [
+   "com.fastemulator.gba/.EmulatorActivity"
+  ],
+  "MY-OLDBOY": [
+   "com.fastemulator.gbc/.EmulatorActivity"
+  ],
+  "NEO-EMU": [
+   "com.explusalpha.NeoEmu/com.imagine.BaseActivity"
+  ],
+  "NES-EMU": [
+   "com.explusalpha.NesEmu/com.imagine.BaseActivity"
+  ],
+  "NESOID": [
+   "com.androidemu.nes/.EmulatorActivity"
+  ],
+  "NETHERSX2": [
+   "xyz.aethersx2.android/.EmulationActivity"
+  ],
+  "NETHERSX2-TURNIP": [
+   "xyz.aethersx2.tturnip/xyz.aethersx2.android.EmulationActivity"
+  ],
+  "NETHERSX2-TURNIP-CLASSIC": [
+   "xyz.aethersx2.cturnip/xyz.aethersx2.android.EmulationActivity"
+  ],
+  "NGP-EMU": [
+   "com.explusalpha.NgpEmu/com.imagine.BaseActivity"
+  ],
+  "NOODS": [
+   "com.hydra.noods/.FileBrowser"
+  ],
+  "PANDA3DS": [
+   "com.panda3ds.pandroid/.app.MainActivity"
+  ],
+  "PCE-EMU": [
+   "com.PceEmu/com.imagine.BaseActivity"
+  ],
+  "PIZZA-BOY-GBA": [
+   "it.dbtecno.pizzaboygbapro/it.dbtecno.pizzaboygbapro.MainActivity",
+   "it.dbtecno.pizzaboygba/it.dbtecno.pizzaboygba.MainActivity"
+  ],
+  "PIZZA-BOY-GBC": [
+   "it.dbtecno.pizzaboypro/it.dbtecno.pizzaboypro.MainActivity",
+   "it.dbtecno.pizzaboy/it.dbtecno.pizzaboy.MainActivity"
+  ],
+  "PIZZA-BOY-SC": [
+   "it.dbtecno.pizzaboyscpro/.MainActivity",
+   "it.dbtecno.pizzaboyscbasic/.MainActivity"
+  ],
+  "PLAY!": [
+   "com.virtualapplications.play/.MainActivity"
+  ],
+  "PPSSPP": [
+   "org.ppsspp.ppssppgold/org.ppsspp.ppsspp.PpssppActivity",
+   "org.ppsspp.ppsspp/.PpssppActivity"
+  ],
+  "REAL3DOPLAYER": [
+   "ru.vastness.altmer.real3doplayer/.EmulatorActivity"
+  ],
+  "REDREAM": [
+   "io.recompiled.redream/.MainActivity"
+  ],
+  "RUFFLE": [
+   "rs.ruffle/.PlayerActivity"
+  ],
+  "SATURN-EMU": [
+   "com.explusalpha.SaturnEmu/com.imagine.BaseActivity"
+  ],
+  "SEEDLESSDS": [
+   "com.seedlessds.app/.LaunchGame"
+  ],
+  "SKYEMU": [
+   "com.sky.SkyEmu/.EnhancedNativeActivity"
+  ],
+  "SKYLINE": [
+   "skyline.emu/emu.skyline.EmulationActivity"
+  ],
+  "SNES9X-EXPLUS": [
+   "com.explusalpha.Snes9xPlus/com.imagine.BaseActivity"
+  ],
+  "SPECCY": [
+   "com.fms.speccy.deluxe/com.fms.emulib.TVActivity",
+   "com.fms.speccy/com.fms.emulib.TVActivity"
+  ],
+  "SUPER3": [
+   "com.izzy2lost.super3/com.izzy2lost.super3.MainActivity"
+  ],
+  "SWAN-EMU": [
+   "com.explusalpha.SwanEmu/com.imagine.BaseActivity"
+  ],
+  "SWF-PLAYER": [
+   "com.issess.flashplayerpro/com.issess.flashplayer.player.FlashPlayerActivity",
+   "com.issess.flashplayer/.player.FlashPlayerActivity"
+  ],
+  "VIRTUAL-VIRTUAL-BOY": [
+   "com.simongellis.vvb/.MainActivity"
+  ],
+  "WATERMELONDS": [
+   "me.magnum.melondualds/me.magnum.melonds.ui.emulator.EmulatorActivity"
+  ],
+  "X1-BOX": [
+   "com.izzy2lost.x1box/.LauncherActivity"
+  ],
+  "XENDROID": [
+   "xendroid.compose/.EmulatorHostActivity"
+  ],
+  "XENRA": [
+   "Ali.Xanite.green/Ali.Xanite.LauncherActivity",
+   "Ali.Xanite/Ali.Xanite.LauncherActivity"
+  ],
+  "YABASANSHIRO-2": [
+   "org.devmiyax.yabasanshioro2.pro/org.uoyabause.android.Yabause",
+   "org.devmiyax.yabasanshioro2/org.uoyabause.android.Yabause"
+  ]
+ }
+}

@@ -30,6 +30,15 @@ Ultra Front End is MIT (see [LICENSE](LICENSE)), but the Windows exe also contai
 | Pillow | 12.3.0 | [MIT-CMU](licenses/Pillow-LICENSE.txt) | https://github.com/python-pillow/Pillow |
 | Libraries inside Pillow: brotli 1.2.0, FreeType 2.14.3, HarfBuzz 14.2.1, lcms2 2.19.1, libavif 1.4.2, libjpeg-turbo 3.1.4.1, libpng 1.6.58, libwebp 1.6.0, OpenJPEG 2.5.4, libtiff 4.7.1, xz 5.8.3, zlib-ng 2.3.3 | as listed | [their own licences, all in Pillow's LICENSE](licenses/Pillow-LICENSE.txt) | https://github.com/python-pillow/Pillow |
 
+## What the Android app contains
+
+The Android app (`UltraFrontEnd-android.apk`, built from `android/`) runs the same page (`app/`) in Android's own WebView. Besides the project's own code it contains:
+
+| Component | Licence | Source |
+|---|---|---|
+| AndroidX Core (androidx.core:core-ktx 1.13.1) and the AndroidX and Kotlin libraries it brings with it | [Apache-2.0](licenses/AndroidX-Apache-2.0.txt) | https://developer.android.com/jetpack/androidx |
+| Emulator package names and launch intents in `android/app/src/main/assets/systems.json`, made by `tools/make_android_tables.py` from ES-DE's Android tables (`es_systems.xml`, `es_find_rules.xml`) | [MIT](licenses/ES-DE-LICENSE.txt), Copyright (c) 2024-2026 Northwestern Software AB, (c) 2020-2024 Leon Styhre, (c) 2014 Alec Lofquist | https://gitlab.com/es-de/emulationstation-de |
+
 ## Required credits
 
 - Microsoft WebView2 SDK: Copyright (C) Microsoft Corporation. All rights reserved.
