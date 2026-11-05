@@ -9,7 +9,7 @@ if [ ! -d .venv-mac ]; then
 fi
 . .venv-mac/bin/activate
 if [ -x "$UV" ]; then INSTALL=("$UV" pip install -q); else INSTALL=(pip install -q); fi
-"${INSTALL[@]}" --upgrade pywebview pyinstaller pillow psutil pyobjc-framework-Quartz pyobjc-framework-Cocoa
+"${INSTALL[@]}" --upgrade pywebview pyinstaller pillow psutil pyobjc-framework-Quartz pyobjc-framework-Cocoa pyobjc-framework-GameController
 python -m PyInstaller --noconfirm --log-level WARN "Game Frontend (Mac).spec"
 
 # unsigned: ad-hoc signed so Apple Silicon will run it (people allow it once in System Settings > Privacy & Security)

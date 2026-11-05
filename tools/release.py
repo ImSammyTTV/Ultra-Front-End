@@ -122,12 +122,32 @@ def verify(py, version):
         sys.exit(f"The exe says VERSION {embedded or '(none found)'}, but the tag is v{version}.")
 
 
+def mac_assets(folder, version, out):
+    """The Mac build's zip (what Mac copies update from) and disk image (the first install), checked to be this version."""
+    import plistlib
+    import zipfile
+    zip_path, dmg = os.path.join(folder, "UltraFrontEnd-mac.zip"), os.path.join(folder, "UltraFrontEnd.dmg")
+    for f in (zip_path, dmg):
+        if not os.path.isfile(f):
+            sys.exit(f"No {os.path.basename(f)} in {folder}: run build-mac.sh on the Mac first.")
+    with zipfile.ZipFile(zip_path) as z:
+        plist = next((n for n in z.namelist() if n.endswith(".app/Contents/Info.plist") and n.count("/") == 2), None)
+        got = str(plistlib.loads(z.read(plist)).get("CFBundleShortVersionString") or "") if plist else ""
+    if got != version:
+        sys.exit(f"The Mac app says version {got or '(none)'}, but the tag is v{version}: rebuild it on the Mac.")
+    zip_out, dmg_out = os.path.join(out, "UltraFrontEnd-mac.zip"), os.path.join(out, "UltraFrontEnd-mac.dmg")
+    shutil.copyfile(zip_path, zip_out)
+    shutil.copyfile(dmg, dmg_out)
+    return [zip_out, dmg_out]
+
+
 def main():
     ap = argparse.ArgumentParser(description="Publish a GitHub release of Ultra Front End.")
     ap.add_argument("notes", nargs="?", help="release notes file (default: GitHub writes them from the commits)")
     ap.add_argument("--venv", help="build in a fresh venv at this folder")
     ap.add_argument("--dry-run", action="store_true", help="check and build, then print the gh command")
     ap.add_argument("--skip-build", action="store_true", help="with --dry-run: check the exe already in dist/")
+    ap.add_argument("--mac", help="folder holding the Mac build from build-mac.sh (UltraFrontEnd-mac.zip and UltraFrontEnd.dmg): published beside the Windows files")
     args = ap.parse_args()
     if args.skip_build and not args.dry_run:
         sys.exit("--skip-build only works with --dry-run.")
@@ -170,7 +190,8 @@ def main():
     setup = os.path.join(out, SETUP)
     shutil.copyfile(setup_built, setup)
 
-    cmd = ["gh", "release", "create", tag, setup, exe, notices, licenses, "--repo", repo, "--target", head,
+    mac_files = mac_assets(args.mac, version, out) if args.mac else []
+    cmd = ["gh", "release", "create", tag, setup, exe, *mac_files, notices, licenses, "--repo", repo, "--target", head,
            "--title", f"Ultra Front End {version}", *(["--notes-file", args.notes] if args.notes else ["--generate-notes"])]
     print(f"{tag} for {repo}: {os.path.getsize(exe) / 1e6:.1f} MB, SHA-256 {digest}, Setup {os.path.getsize(setup) / 1e6:.1f} MB, with {NOTICES} and licenses.zip.")
     if args.dry_run:

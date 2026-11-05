@@ -2426,6 +2426,8 @@ function panelItems() {
   return [  // general
     ...(/Windows/.test(navigator.userAgent) ? [{ kind: 'row', label: 'Start with Windows', value: STARTUP.find(s => s.mode === startupMode(d)).label.replace(/^Don’t start with Windows$/, 'Off'),
       sub: STARTUP.find(s => s.mode === startupMode(d)).sub, act: () => setStartup(STARTUP[(STARTUP.findIndex(s => s.mode === startupMode(d)) + 1) % STARTUP.length].mode) }] : []),
+    ...(ON_MAC ? [{ kind: 'row', ic: icon('power'), label: 'Open at login', value: onOff(startupMode(d) === 'open'), sub: 'Opens full screen when you sign in to your Mac',
+      act: () => setStartup(startupMode(d) === 'open' ? 'off' : 'open') }] : []),
     ...autologonRows(d),
     ...(/Windows/.test(navigator.userAgent) ? [{ kind: 'row', ic: icon('pad'), label: 'Open with the Xbox button', value: onOff(d.options.guideOpens), sub: 'The Xbox button on a controller opens Ultra Front End, or brings it to the front; so does holding View + Start, which also works through Steam (Steam keeps the Xbox and Steam buttons for itself while it runs). A Steam Controller’s Steam button does it with a double-press or a hold. In a game, they open the overlay.', act: () => setOpt('guideOpens') }] : []),
     { kind: 'row', label: 'Installed Steam games', value: d.steamDetected ? onOff(d.options.steamLocal) : 'Steam not found',

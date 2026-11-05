@@ -761,7 +761,7 @@ SYSTEM_SITES = {"3DO": "https://github.com/libretro/opera-libretro", "Pokemon Mi
 
 
 def emulator_for(system):
-    return EMU_INSTALL.get(system, [None])[0]
+    return emu_table().get(system, [None])[0]
 
 
 def system_site(system):
@@ -883,14 +883,17 @@ def install_hatari():
     raise ValueError("Hatari has no Windows download right now. Its project page may have one.")
 
 
-CORE_URL = "https://buildbot.libretro.com/nightly/windows/x86_64/latest/{}_libretro.dll.zip"
+CORE_EXT = ".dylib" if MAC else ".dll"
+CORE_URL = ("https://buildbot.libretro.com/nightly/apple/osx/%s/latest/{}_libretro.dylib.zip" % ("arm64" if __import__("platform").machine() == "arm64" else "x86_64")
+            if MAC else "https://buildbot.libretro.com/nightly/windows/x86_64/latest/{}_libretro.dll.zip")
 
 
 def install_core(retroarch, core):
     """One RetroArch core from libretro's own build server into RetroArch's cores folder (never replacing one)."""
     import io
     import zipfile
-    dll = os.path.join(os.path.dirname(retroarch), "cores", f"{core}_libretro.dll")
+    dll = (os.path.expanduser(f"~/Library/Application Support/RetroArch/cores/{core}_libretro.dylib") if MAC
+           else os.path.join(os.path.dirname(retroarch), "cores", f"{core}_libretro.dll"))
     if os.path.isfile(dll):
         return dll
     with urllib.request.urlopen(urllib.request.Request(CORE_URL.format(core), headers={"User-Agent": UA}), timeout=120) as response:
@@ -901,11 +904,11 @@ def install_core(retroarch, core):
         data = buffer.getvalue()
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as z:
-            body = z.read(f"{core}_libretro.dll")  # that one file, at the top: nothing else in the zip is used
+            body = z.read(f"{core}_libretro{CORE_EXT}")  # that one file, at the top: nothing else in the zip is used
     except (zipfile.BadZipFile, KeyError):
         raise ValueError(f"The {core} core download was damaged. Try again.")
-    if body[:2] != b"MZ":
-        raise ValueError(f"The {core} core download isn't a Windows program")
+    if body[:2] != b"MZ" and not MAC or MAC and body[:4] not in (b"\xcf\xfa\xed\xfe", b"\xca\xfe\xba\xbe"):
+        raise ValueError(f"The {core} core download isn't a program for this computer")
     job_progress("Setting up")
     os.makedirs(os.path.dirname(dll), exist_ok=True)
     with open(dll + ".part", "wb") as f:
@@ -1179,7 +1182,7 @@ def broker_loop(port, token):
 def connect_emulator(package, exe=None):
     """Give every console this package plays its program (found, or the one just installed), keeping the user's own choices."""
     cfg, found = config(), {} if exe else find_emulators()
-    for console, candidate in EMU_INSTALL.items():
+    for console, candidate in emu_table().items():
         path = exe or found.get(console)
         if candidate == package and path and not cfg.get("emulators", {}).get(console, {}).get("path"):
             cfg.setdefault("emulators", {})[console] = {"path": path, "args": emulator_args(path, (system_info(console) or {"cores": []})["cores"], console)}
@@ -1188,19 +1191,21 @@ def connect_emulator(package, exe=None):
 
 
 def install_emulator(system):
-    package = EMU_INSTALL.get(system)
+    package = emu_table().get(system)
     if not package:
         raise ValueError("Installation is not available for this console yet")
     if package[1] == "manual":
         raise ValueError(f"{package[0]} can't be installed from here. Download it from its project page, then choose its program.")
-    if not WIN:
-        raise ValueError(f"Download {package[0]} from its website, then choose it here")
     if not INSTALL_LOCK.acquire(blocking=False):
         raise ValueError("An emulator installation is already running")
     try:
         source = package[1]
-        if source.startswith("retroarch:"):  # RetroArch once, then this console's core into its cores folder
+        if source == "mac":  # from the emulator's own project, into ~/Applications
+            cfg = connect_emulator(package, install_mac_app(package[0]))
+        elif source.startswith("retroarch:"):  # RetroArch once, then this console's core into its cores folder
             ra = find_emulators(keep_retroarch=True).get("_retroarch")
+            if not ra and MAC:
+                raise ValueError("Download RetroArch from retroarch.com into Applications first, then try again")
             if not ra:
                 winget_install("Libretro.RetroArch", "RetroArch")
                 ra = find_emulators(keep_retroarch=True).get("_retroarch")
@@ -1231,7 +1236,8 @@ def system_info(name):
 
 
 EMU_FIND_MAC = {"DOS": ["dosbox*.app"], "Saturn": ["ymir*.app"], "C64": ["vice*.app"], "VIC-20": ["vice*.app"], "N-Gage": ["eka2l1*.app"],
-                "ColecoVision": ["openmsx*.app"], "MSX": ["openmsx*.app"]}  # Mac app names that differ from the Windows exe's
+                "ColecoVision": ["openmsx*.app"], "MSX": ["openmsx*.app"], "PS5": ["kyty*.app"], "N64": ["ares.app"],
+                "Switch 2": ["eglantine*.app"]}  # Mac app names that differ from the Windows exe's
 BREW_BIN = ("/opt/homebrew/bin", "/usr/local/bin")  # Homebrew's command-line emulators (mame, mednafen, atari800...)
 
 
@@ -3727,7 +3733,7 @@ def startup_command(mode):
 def autostart_copy():
     """Only the copy that's really used writes the sign-in entry: not a source run, a build in the project folder or a
     test copy on another port, which would take the entry from it."""
-    return WIN and getattr(sys, "frozen", False) and not os.path.isdir(os.path.join(ROOT, ".git")) and PORT == 8137
+    return (WIN or MAC) and getattr(sys, "frozen", False) and not os.path.isdir(os.path.join(ROOT, ".git")) and PORT == 8137
 
 
 def uninstall_app():
@@ -3786,6 +3792,8 @@ def message_box(text, flags):
 def set_autostart(mode):
     if not autostart_copy():
         return
+    if MAC:
+        return set_autostart_mac(mode)
     import winreg
     command = startup_command(mode)
     with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
@@ -3802,6 +3810,8 @@ def sync_autostart():
     """Keep the sign-in entry pointing at this exe, wherever it has been moved since, once setup has been through it."""
     if not autostart_copy() or not profile().get("setupDone"):
         return
+    if MAC:
+        return set_autostart(config().get("startup"))
     import winreg
     mode = config().get("startup")
     try:
@@ -6713,7 +6723,7 @@ APPLY_LOCK = threading.Lock()  # guards APPLY_LOCKS and APPLY_SOON
 def apply_bios(system, wait=True):
     """Set up the BIOS files found in this system's folder for its emulator, when there are any. wait=False (at launch):
     skipped while that emulator's files are already being set up."""
-    if system not in BIOS_APPLY:
+    if system not in BIOS_APPLY or MAC:  # (on a Mac the emulators' own settings hold their BIOS folders: not set up from here yet)
         return
     cfg = config()
     folder = bios_dir(cfg, system)
@@ -6946,8 +6956,8 @@ def queue_install(systems):
     emus = config().get("emulators", {})
     with QUEUE_COND:
         for s in systems:
-            package = EMU_INSTALL.get(s)
-            if not WIN or not package or package[1] == "manual" or os.path.isfile(emus.get(s, {}).get("path", "")):
+            package = emu_table().get(s)
+            if not (WIN or MAC) or not package or package[1] == "manual" or os.path.exists(emus.get(s, {}).get("path", "")):
                 continue
             job = next((j for j in QUEUE["jobs"] if j["package"] == package and j["state"] in ("waiting", "installing")), None)
             if job:  # one emulator for several systems (ares, MAME...) installs once
@@ -7473,9 +7483,9 @@ def extras_view():
 
 def system_view(system, cfg, chosen):
     emu = cfg.get("emulators", {}).get(system, {}).get("path", "")
-    package, job = EMU_INSTALL.get(system), job_for(system)
+    package, job = emu_table().get(system), job_for(system)
     view = {"name": system, "group": SYSTEM_GROUP.get(system, "Other"), "chosen": system in chosen, "count": STATE["counts"].get(f"ROMs/{system}", 0),
-            "emulator": os.path.basename(emu), "install": package[0] if WIN and package and package[1] != "manual" else None,
+            "emulator": os.path.basename(emu), "install": package[0] if (WIN or MAC) and package and package[1] != "manual" else None,
             "recommended": emulator_for(system), "site": system_site(system), "steps": BIOS_STEPS.get(system),
             "job": job_info(job) if job else None}
     if system in chosen:  # (only these are looked through: hashing every console's folder would slow Settings down)
@@ -7942,8 +7952,9 @@ class Handler(SimpleHTTPRequestHandler):
                 open_in_steam("steam://friends/message/" + sid, str(body.get("name") or "")[:100] or "Steam")
                 return self.reply({"ok": True})
             if path == "/api/introsound" and MAC:
-                own = os.path.join(DATA, "intro.wav")
-                plat_mac.play_sound(own if os.path.isfile(own) else os.path.join(APP, "assets", "intro.wav")) if body.get("play") else plat_mac.stop_sound()
+                name = "outro.wav" if body.get("outro") else "intro.wav"  # the closing sound, or the opening one
+                own = os.path.join(DATA, name)
+                plat_mac.play_sound(own if os.path.isfile(own) else os.path.join(APP, "assets", name)) if body.get("play") else plat_mac.stop_sound()
                 return self.reply({"ok": True})
             if path == "/api/introsound":  # played here because a page can't start sound by itself
                 import winsound
@@ -8271,7 +8282,7 @@ def latest_tag():
     return ""
 UPDATE_LOCK = threading.Lock()
 UPDATE_EVERY = 3600  # GitHub is asked this often (fixes reach everyone within the hour); an unchanged answer (ETag) doesn't count against its hourly limit
-UPDATE_ASSET = "UltraFrontEnd.exe"  # the release file tools/release.py uploads
+UPDATE_ASSET = "UltraFrontEnd-mac.zip" if MAC else "UltraFrontEnd.exe"  # the release file tools/release.py uploads (the Mac app zipped)
 
 
 def version_key(v):
@@ -8299,6 +8310,13 @@ def file_sha256(path):
 
 def updates_off():
     """Why this copy doesn't update itself, or "" when it does."""
+    if MAC:
+        bundle = mac_bundle() if getattr(sys, "frozen", False) else ""
+        if not bundle:
+            return "Only the downloaded app updates itself"
+        if "/AppTranslocation/" in bundle or bundle.startswith("/Volumes/"):
+            return "Move Ultra Front End into your Applications folder to get updates"
+        return "" if os.access(os.path.dirname(bundle), os.W_OK) else "macOS won't let it change the folder it's in. Move it to Applications to get updates"
     if not (WIN and getattr(sys, "frozen", False)):
         return "Only the downloaded exe updates itself"
     if os.path.isdir(os.path.join(ROOT, ".git")):
@@ -8344,7 +8362,7 @@ def latest_release():
 def download_update(release):
     """The release's exe, saved beside this one as <exe>.new once its size and SHA-256 match what GitHub lists."""
     exe, asset = frontend_exe(), release["exe"]
-    part, ready = exe + ".download", exe + ".new"
+    part, ready = update_paths()
     digest = hashlib.sha256()
     try:
         with urllib.request.urlopen(urllib.request.Request(asset["url"], headers={"User-Agent": UA}), timeout=60) as r, open(part, "wb") as f:
@@ -8353,7 +8371,7 @@ def download_update(release):
                 f.write(chunk)
         with open(part, "rb") as f:
             head = f.read(2)
-        if head != b"MZ" or os.path.getsize(part) != asset["size"] or digest.hexdigest() != asset["sha256"]:
+        if head != (b"PK" if MAC else b"MZ") or os.path.getsize(part) != asset["size"] or digest.hexdigest() != asset["sha256"]:
             raise ValueError("the download didn't match the release, so it wasn't used")
         os.replace(part, ready)
     except BaseException:
@@ -8412,6 +8430,8 @@ def close_window(hwnd, seconds=10):
 def install_update(ready, version, reopen=False):
     """Swap the new exe in (the running one is renamed, which Windows allows) and start it; it asks this copy to quit once it
     has taken over. If it never gets that far, the old exe goes back."""
+    if MAC:
+        return install_update_mac(ready, version)
     exe = frontend_exe()
     base = exe[:-4] if exe.lower().endswith(".exe") else exe
     old = base + ".old.exe"
@@ -8478,7 +8498,7 @@ def update_step(action=None):
         if exe_build(exe) != BUILD:  # the exe on disk isn't this copy any more: an update is in place, waiting to take over
             UPDATE["done"], UPDATE["state"] = rel["version"], "installed"
             return
-        ready = exe + ".new"
+        ready = update_paths()[1]
         if saved.get("ready") != digest or not os.path.isfile(ready):
             UPDATE["state"] = "downloading"
             download_update(rel)
@@ -8488,13 +8508,13 @@ def update_step(action=None):
             if action == "install":
                 UPDATE["error"] = "It installs once the game, in-game menu or recording has finished"
             return
-        window = frontend_window()
+        window = True if MAC else frontend_window()  # (on a Mac the helper lives in the window: an update goes in when asked, or when idle)
         if window and action != "install":
             return  # it goes in once the frontend is closed
         if file_sha256(ready) != digest:  # changed since it was downloaded
             os.remove(ready)
             raise ValueError("the downloaded update changed on disk, so it will be fetched again")
-        if window and not close_window(window):
+        if window and not MAC and not close_window(window):
             raise ValueError("the frontend didn't close")
         UPDATE["state"] = "installing"
         install_update(ready, rel["version"], reopen=bool(window))
@@ -8507,6 +8527,11 @@ def update_step(action=None):
 
 def clean_after_update():
     """The exes an update leaves beside this one (the previous version, a bad one, a broken download), once they're not in use."""
+    if MAC:
+        bundle = mac_bundle()
+        for f in ([bundle[:-4] + ".old.app", bundle[:-4] + ".new.app"] if bundle else []) + list(update_paths()[:1]):
+            (shutil.rmtree if os.path.isdir(f) else os.remove)(f) if os.path.exists(f) else None
+        return
     exe = frontend_exe()
     base = exe[:-4] if exe.lower().endswith(".exe") else exe
     for f in glob.glob(glob.escape(base) + ".old*.exe") + glob.glob(glob.escape(base) + ".bad-*.exe") + [exe + ".download"]:
@@ -8603,12 +8628,316 @@ def trash_mac(path):
         return False
 
 
+# ---------- Mac: the app bundle, updating it, opening at login, the controller, emulators from their own projects ----------
+def mac_bundle():
+    """The .app this program runs from (…/Ultra Front End.app), or "" when it isn't in one (a source run)."""
+    d = sys.executable
+    while d and os.path.dirname(d) != d:
+        if d.endswith(".app"):
+            return d
+        d = os.path.dirname(d)
+    return ""
+
+
+def update_paths():
+    """Where an update is downloaded (part) and kept once checked (ready): beside the exe on Windows, beside the .app on a Mac."""
+    if MAC:
+        bundle = mac_bundle() or frontend_exe()
+        return bundle + ".download", bundle + ".new.zip"
+    exe = frontend_exe()
+    return exe + ".download", exe + ".new"
+
+
+def install_update_mac(ready, version):
+    """Unpack the new .app beside this one, check it, swap the two, open the new one and leave. The old one stays beside it
+    as "Ultra Front End.old.app" until the new one has run (clean_after_update), so it can be put back by hand if need be."""
+    import plistlib
+    import tempfile
+    bundle = mac_bundle()
+    if not bundle:
+        raise ValueError("this copy doesn't run from an app bundle")
+    parent, name = os.path.dirname(bundle), os.path.basename(bundle)
+    new, old = os.path.join(parent, name[:-4] + ".new.app"), os.path.join(parent, name[:-4] + ".old.app")
+    with tempfile.TemporaryDirectory(prefix="ufe-update-", dir=parent) as staging:
+        if subprocess.run(["/usr/bin/ditto", "-x", "-k", ready, staging], capture_output=True, timeout=300).returncode:
+            raise ValueError("the update couldn't be unpacked")
+        apps = [os.path.join(staging, f) for f in os.listdir(staging) if f.endswith(".app")]
+        if len(apps) != 1:
+            raise ValueError("the update isn't one app")
+        with open(os.path.join(apps[0], "Contents", "Info.plist"), "rb") as f:
+            got = str(plistlib.load(f).get("CFBundleShortVersionString") or "")
+        if got != version or not os.access(os.path.join(apps[0], "Contents", "MacOS", "Ultra Front End"), os.X_OK):
+            raise ValueError(f"the update says it's version {got or '?'}, not {version}")
+        shutil.rmtree(new, ignore_errors=True)
+        os.rename(apps[0], new)
+    subprocess.run(["/usr/bin/xattr", "-dr", "com.apple.quarantine", new], capture_output=True)
+    shutil.rmtree(old, ignore_errors=True)
+    os.rename(bundle, old)
+    try:
+        os.rename(new, bundle)
+    except OSError:
+        os.rename(old, bundle)
+        raise
+    store("update.json", {**load("update.json", {}), "installing": version, "from": VERSION, "reopen": True})
+    try:
+        os.remove(ready)
+    except OSError:
+        pass
+    UPDATE["done"], UPDATE["state"] = version, "installed"
+    subprocess.Popen(["/bin/sh", "-c", 'sleep 1.5; open -n "$0"', bundle], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    threading.Timer(0.3, lambda: os._exit(0)).start()  # the window lives in this process: it goes, and the new copy opens
+
+
+LAUNCH_AGENT = os.path.expanduser("~/Library/LaunchAgents/com.imsammyttv.ultrafrontend.plist")
+
+
+def set_autostart_mac(mode):
+    """Open at login: a LaunchAgent that opens the app (there's no background helper or tray on a Mac)."""
+    import plistlib
+    if mode == "open" and mac_bundle():
+        os.makedirs(os.path.dirname(LAUNCH_AGENT), exist_ok=True)
+        with open(LAUNCH_AGENT, "wb") as f:
+            plistlib.dump({"Label": "com.imsammyttv.ultrafrontend", "ProgramArguments": ["/usr/bin/open", "-a", mac_bundle()],
+                           "RunAtLoad": True, "ProcessType": "Interactive"}, f)
+    else:
+        try:
+            os.remove(LAUNCH_AGENT)
+        except OSError:
+            pass
+
+
+# The controller, read through macOS' GameController framework (any pad the Mac knows: Xbox, PlayStation, Switch Pro, MFi).
+# Like the XInput reader on Windows: the frontend's menus while it's in front, the home button to bring it forward.
+MAC_BUTTONS = {"a": "ok", "b": "back", "y": "options", "menu": "options", "l1": "prevTab", "r1": "nextTab"}
+
+
+def watch_controller_mac():
+    try:
+        from GameController import GCController
+    except Exception:
+        return
+    held, repeat, combo, last_open = {}, {}, {}, 0.0
+    while True:
+        front = frontend_in_front()
+        time.sleep(0.016 if front else 0.05)
+        now = time.time()
+        pads, dirs = 0, set()
+        try:
+            pads_now = list(GCController.controllers())
+        except Exception:
+            pads_now = []
+        for i, c in enumerate(pads_now):
+            g = c.extendedGamepad()
+            if g is None:
+                continue
+            pads += 1
+            try:
+                b = {"a": g.buttonA(), "b": g.buttonB(), "x": g.buttonX(), "y": g.buttonY(), "menu": g.buttonMenu(), "view": g.buttonOptions(),
+                     "home": g.buttonHome(), "l1": g.leftShoulder(), "r1": g.rightShoulder()}
+                b = {k: bool(v is not None and v.isPressed()) for k, v in b.items()}
+                dp, lx, ly = g.dpad(), g.leftThumbstick().xAxis().value(), g.leftThumbstick().yAxis().value()
+                d = {"up": dp.up().isPressed() or ly > .55, "down": dp.down().isPressed() or ly < -.55,
+                     "left": dp.left().isPressed() or lx < -.55, "right": dp.right().isPressed() or lx > .55}
+            except Exception:
+                continue
+            was = held.get(i, {})
+            held[i] = b
+            pressed = {k for k, v in b.items() if v and not was.get(k)}
+            if not front and config().get("guideOpens") and ("home" in pressed or (b["view"] and b["menu"])) and now - last_open > 2:
+                last_open = now
+                open_frontend()
+            if b["view"] and pressed - {"view"}:
+                combo[i] = True
+            if was.get("view") and not b["view"] and not combo.pop(i, False) and front:
+                pad_emit("system", "mac")  # View on its own: Quick Access
+            if not front or b["view"]:
+                continue
+            for k, action in MAC_BUTTONS.items():
+                if k in pressed:
+                    pad_emit(action, "mac")
+            dirs |= {k for k, v in d.items() if v}
+        PAD["pads"] = pads
+        for d in ("up", "down", "left", "right"):  # held directions repeat like a key: once, then steadily after a pause
+            if d not in dirs:
+                repeat.pop(d, None)
+            elif d not in repeat:
+                repeat[d] = now + 0.38
+                pad_emit(d, "mac")
+            elif now >= repeat[d]:
+                repeat[d] = now + 0.09
+                pad_emit(d, "mac")
+
+
+# Emulators on a Mac: each from its own project's downloads (GitHub releases, or Dolphin's own site), into ~/Applications.
+# (emulator, "mac") installs from MAC_DOWNLOADS; "manual" only shows the project page (Homebrew or the site has it).
+_MAC_MANUAL = lambda name: (name, "manual")
+EMU_INSTALL_MAC = {
+    "PS1": ("DuckStation", "mac"), "PS2": ("PCSX2", "mac"), "PS3": ("RPCS3", "mac"), "PS4": ("shadPS4", "mac"), "PS5": ("KytyPS5", "mac"),
+    "PSP": ("PPSSPP", "mac"), "PS Vita": ("Vita3K", "mac"), "Switch 2": ("Eglantine", "mac"), "Switch": _MAC_MANUAL("Eden"),
+    "Wii U": ("Cemu", "mac"), "Wii": ("Dolphin", "mac"), "GameCube": ("Dolphin", "mac"), "N64": ("ares", "mac"), "SNES": ("Mesen", "mac"),
+    "3DS": ("Azahar", "mac"), "DS": ("melonDS", "mac"), "GBA": ("mGBA", "mac"), "GBC": ("mGBA", "mac"), "Game Boy": ("mGBA", "mac"),
+    "Xbox 360": _MAC_MANUAL("Xenia Canary"), "Xbox": ("xemu", "mac"),
+    **{s: ("Mesen", "mac") for s in ("NES", "FDS", "PC Engine", "PC Engine CD", "WonderSwan", "SG-1000")},
+    **{s: _MAC_MANUAL("Mednafen") for s in ("Virtual Boy", "Neo Geo Pocket", "Atari Lynx", "PC-FX")},
+    **{s: ("ares", "mac") for s in ("Genesis", "Sega CD", "32X", "Master System", "Game Gear", "64DD")},
+    **{s: ("Flycast", "mac") for s in ("Dreamcast", "NAOMI", "NAOMI 2", "Atomiswave")},
+    **{s: _MAC_MANUAL("MAME") for s in ("Atari 7800", "Arcade", "Neo Geo", "Neo Geo CD", "CD-i", "Intellivision", "Vectrex", "Odyssey 2", "Game & Watch")},
+    **{s: ("openMSX", "mac") for s in ("ColecoVision", "MSX")},
+    **{s: _MAC_MANUAL("Atari800") for s in ("Atari 5200", "Atari 8-bit")},
+    **{s: _MAC_MANUAL("VICE") for s in ("C64", "VIC-20")},
+    "Saturn": ("Ymir", "mac"), "Model 3": ("Supermodel", "mac"), "Atari 2600": ("Stella", "mac"), "Atari Jaguar": _MAC_MANUAL("BigPEmu"),
+    "Atari ST": _MAC_MANUAL("Hatari"), "3DO": ("RetroArch", "retroarch:opera"), "Pokemon Mini": ("RetroArch", "retroarch:pokemini"),
+    "Amstrad CPC": ("RetroArch", "retroarch:cap32"), "N-Gage": ("EKA2L1", "mac"), "Amiga": ("Amiberry", "mac"), "ZX Spectrum": ("ZEsarUX", "mac"),
+    "DOS": ("DOSBox Staging", "mac"), "ScummVM": _MAC_MANUAL("ScummVM"), "Apple II": _MAC_MANUAL("AppleWin"), "Flash": ("Ruffle", "mac"),
+}
+# name: (GitHub repo, pattern for an Apple Silicon or universal download, pattern for an Intel one (Rosetta), the app's name)
+# A download with no checksum on GitHub is only taken from the project's own address.
+MAC_DOWNLOADS = {
+    "DuckStation": ("stenzek/duckstation", r"^duckstation-mac-release\.zip$", None, "DuckStation.app"),
+    "PCSX2": ("PCSX2/pcsx2", r"^pcsx2-v[\d.]+-macos-Qt\.tar\.xz$", None, "PCSX2*.app"),
+    "RPCS3": ("RPCS3/rpcs3-binaries-mac-arm64", r"_macos_arm64\.7z$", ("RPCS3/rpcs3-binaries-mac", r"_macos\.7z$"), "RPCS3.app"),
+    "shadPS4": ("shadps4-emu/shadPS4", r"^shadps4-macos-sdl-[\d.]+\.zip$", None, "shadps4*"),
+    "KytyPS5": ("KytyPS5/KytyPS5", None, r"-macOS-x86_64\.zip$", "Kyty*"),
+    "PPSSPP": ("hrydgard/ppsspp", r"^PPSSPPSDL-macOS-v[\d.]+\.zip$", None, "PPSSPP*.app"),
+    "Vita3K": ("Vita3K/Vita3K", r"^macos-arm64-latest\.dmg$", r"^macos-latest\.dmg$", "Vita3K.app"),
+    "Eglantine": ("Djihads80/Eglantine", r"^eglantine-macos-arm64\.zip$", None, "Eglantine*.app"),
+    "Cemu": ("cemu-project/Cemu", None, r"^cemu-[\d.]+-macos-\d+-x64\.dmg$", "Cemu.app"),
+    "Dolphin": ("https://dl.dolphin-emu.org/releases/2609a/dolphin-2609a-universal.dmg", None, None, "Dolphin.app"),  # its own site, as on Windows
+    "ares": ("ares-emulator/ares", r"^ares-macos-universal\.zip$", None, "ares.app"),
+    "Mesen": ("nesdev-org/MesenCE", r"^Mesen_[\d.]+_macOS_ARM64_AppleSilicon\.zip$", r"^Mesen_[\d.]+_macOS_x64_Intel\.zip$", "Mesen.app"),
+    "Azahar": ("azahar-emu/azahar", r"^azahar-macos-universal-[\d.]+\.zip$", None, "Azahar*.app"),
+    "melonDS": ("melonDS-emu/melonDS", r"^melonDS-[\d.]+-macOS-universal\.zip$", None, "melonDS.app"),
+    "mGBA": ("mgba-emu/mgba", r"^mGBA-[\d.]+-macos\.dmg$", None, "mGBA.app"),
+    "xemu": ("xemu-project/xemu", r"^xemu-[\d.]+-macos-universal\.zip$", None, "xemu.app"),
+    "Flycast": ("flyinghead/flycast", r"^flycast-macOS-[\d.]+\.zip$", None, "Flycast.app"),
+    "Supermodel": ("trzy/Supermodel", r"-macos\.tar\.gz$", None, "supermodel*"),
+    "Stella": ("stella-emu/stella", r"^Stella-[\d.]+[a-z]?-macos\.dmg$", None, "Stella.app"),
+    "Ymir": ("StrikerX3/Ymir", r"^ymir-macos-arm64-v[\d.]+\.zip$", r"^ymir-macos-x64-v[\d.]+\.zip$", "Ymir*.app"),
+    "openMSX": ("openMSX/openMSX", r"^openmsx-[\d.]+-mac-aarch64-bin\.dmg$", r"^openmsx-[\d.]+-mac-x86_64-bin\.dmg$", "openMSX.app"),
+    "EKA2L1": ("EKA2L1/EKA2L1", r"^EKA2L1-MacOS-arm64\.dmg$", None, "EKA2L1.app"),
+    "Amiberry": ("BlitterStudio/amiberry", r"^Amiberry-[\d.]+-macOS-universal\.dmg$", None, "Amiberry.app"),
+    "ZEsarUX": ("chernandezba/zesarux", r"^ZEsarUX_macos-silicon-[\d.]+\.dmg$", r"^ZEsarUX_macos-intel-[\d.]+\.dmg$", "ZEsarUX.app"),
+    "DOSBox Staging": ("dosbox-staging/dosbox-staging", r"^dosbox-staging-macOS-v[\d.]+\.dmg$", None, "DOSBox Staging.app"),
+    "Ruffle": ("ruffle-rs/ruffle", r"-macos-universal\.tar\.gz$", None, "Ruffle.app"),
+}
+
+
+def emu_table():
+    return EMU_INSTALL_MAC if MAC else EMU_INSTALL
+
+
+def mac_asset(name):
+    """The download for this Mac: (url, file name, GitHub's checksum or "", size)."""
+    import platform
+    repo, arm, intel, _ = MAC_DOWNLOADS[name]
+    if repo.startswith("https://"):
+        return repo, repo.rsplit("/", 1)[1], "", 0
+    choices = []
+    if platform.machine() == "arm64" and arm:
+        choices.append((repo, arm))
+    if intel:
+        choices.append(intel if isinstance(intel, tuple) else (repo, intel))
+    elif arm and platform.machine() != "arm64":
+        choices.append((repo, arm))  # universal builds run on both
+    for r, pattern in choices:
+        try:
+            releases = http_json(f"https://api.github.com/repos/{r}/releases?per_page=20", timeout=30)
+        except (urllib.error.URLError, ValueError):
+            continue
+        found = sorted(((rel.get("published_at") or "", a) for rel in releases if not rel.get("draft")
+                        for a in rel.get("assets", []) if re.search(pattern, a["name"])), key=lambda x: x[0], reverse=True)
+        if found:
+            a = found[0][1]
+            url = a["browser_download_url"]
+            if not url.startswith(f"https://github.com/{r}/releases/download/"):
+                raise ValueError(f"{name}'s download isn't on its own project")
+            return url, a["name"], str(a.get("digest") or ""), a.get("size") or 0
+    raise ValueError(f"{name} has no Mac download right now. Its project page may have one.")
+
+
+def install_mac_app(name):
+    """Download the emulator and put its app in ~/Applications (a program with no app bundle goes in ~/Applications/<name>)."""
+    import tempfile
+    url, filename, digest, size = mac_asset(name)
+    app_pattern = MAC_DOWNLOADS[name][3]
+    apps_dir = os.path.expanduser("~/Applications")
+    os.makedirs(apps_dir, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="ufe-emu-") as staging:
+        archive = os.path.join(staging, filename)
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=120) as response, open(archive, "wb") as output:
+            copy_progress(response, output, size)
+        if digest.startswith("sha256:") and file_sha256(archive) != digest[7:].lower():
+            raise ValueError(f"The {name} download was damaged. Try again.")
+        job_progress("Unpacking")
+        unpacked = os.path.join(staging, "unpacked")
+        os.makedirs(unpacked)
+        low = filename.lower()
+        if low.endswith(".dmg"):
+            mount = os.path.join(staging, "mount")
+            os.makedirs(mount)
+            r = subprocess.run(["/usr/bin/hdiutil", "attach", "-nobrowse", "-readonly", "-noautoopen", "-mountpoint", mount, archive],
+                               input=b"yes\n", capture_output=True, timeout=300)  # "yes": a licence some images show first
+            if r.returncode:
+                raise ValueError(f"The {name} download couldn't be opened")
+            try:
+                found = find_mac_program(mount, app_pattern)
+                if not found:
+                    raise ValueError(f"The {name} download has no app in it")
+                target = os.path.join(apps_dir, os.path.basename(found))
+                copy_mac_program(found, target)
+            finally:
+                subprocess.run(["/usr/bin/hdiutil", "detach", mount, "-force"], capture_output=True, timeout=120)
+        else:
+            cmd = ["/usr/bin/ditto", "-x", "-k", archive, unpacked] if low.endswith(".zip") else ["/usr/bin/tar", "-xf", archive, "-C", unpacked]
+            if subprocess.run(cmd, capture_output=True, timeout=600).returncode:
+                raise ValueError(f"The {name} download couldn't be unpacked")
+            found = find_mac_program(unpacked, app_pattern)
+            if not found:
+                raise ValueError(f"The {name} download has no app in it")
+            target = os.path.join(apps_dir, os.path.basename(found)) if found.endswith(".app") else os.path.join(apps_dir, name, os.path.basename(found))
+            job_progress("Setting up")
+            copy_mac_program(found, target)
+    subprocess.run(["/usr/bin/xattr", "-dr", "com.apple.quarantine", target], capture_output=True)
+    return target
+
+
+def find_mac_program(folder, pattern):
+    """The .app (or program file) matching the pattern, nearest the top."""
+    import fnmatch
+    hits = []
+    for root, dirs, files in os.walk(folder):
+        depth = root[len(folder):].count(os.sep)
+        for d in list(dirs):
+            if d.endswith(".app"):
+                if fnmatch.fnmatch(d.lower(), pattern.lower()):
+                    hits.append((depth, os.path.join(root, d)))
+                dirs.remove(d)  # never inside an app
+        if not pattern.endswith(".app"):
+            for f in files:
+                p = os.path.join(root, f)
+                if fnmatch.fnmatch(f.lower(), pattern.lower()) and os.access(p, os.X_OK) and not f.endswith((".dylib", ".txt", ".md")):
+                    hits.append((depth + 1, p))
+        if depth >= 3:
+            dirs[:] = []
+    return min(hits)[1] if hits else None
+
+
+def copy_mac_program(src, dst):
+    if os.path.isdir(dst):
+        shutil.rmtree(dst)
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    if subprocess.run(["/usr/bin/ditto", src, dst], capture_output=True, timeout=600).returncode:  # keeps a bundle whole (signatures, links)
+        raise ValueError("The emulator couldn't be copied into Applications")
+
+
 def main():
     def start():
         scan()
         threading.Thread(target=watch_folders, daemon=True).start()
         if PORT == 8137 and MAC:
             threading.Thread(target=watch_running_mac, daemon=True).start()
+            threading.Thread(target=watch_controller_mac, daemon=True).start()
+            sync_autostart()
         if PORT == 8137 and WIN:  # only the real helper (a test copy would fire every shortcut twice); XInput is Windows-only
             threading.Thread(target=watch_controller, daemon=True).start()
             threading.Thread(target=watch_steam_button, daemon=True).start()
