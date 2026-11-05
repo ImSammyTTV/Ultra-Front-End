@@ -104,7 +104,8 @@ class Api:
         self.mode, self.work, self.window = mode, Work(), None
 
     def info(self):
-        return {"mode": self.mode, "version": version(), "installed": installed_version(), "target": TARGET,
+        here = os.path.dirname(sys.executable) if self.mode == "uninstall" and getattr(sys, "frozen", False) else TARGET
+        return {"mode": self.mode, "version": version(), "installed": installed_version(), "target": here,
                 "user": os.environ.get("USERNAME") or "you"}
 
     def state(self):
