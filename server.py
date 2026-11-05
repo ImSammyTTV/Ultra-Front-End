@@ -3369,6 +3369,8 @@ ENCODER = [None]
 
 
 def ffmpeg_path():
+    if own_ffmpeg():  # the app's own copy (Settings › General › Video recording)
+        return own_ffmpeg()
     found = shutil.which("ffmpeg")
     if found:
         return found
@@ -3381,7 +3383,8 @@ def video_encoder(ffmpeg):
     if ENCODER[0]:
         return ENCODER[0]
     for name, extra in (("h264_nvenc", ["-preset", "p3", "-cq", "23"]), ("h264_amf", ["-quality", "balanced", "-qp_i", "23", "-qp_p", "23"]),
-                        ("libx264", ["-preset", "ultrafast", "-crf", "23"])):
+                        ("h264_qsv", ["-preset", "faster", "-global_quality", "23"]), ("libx264", ["-preset", "ultrafast", "-crf", "23"]),
+                        ("h264_mf", ["-hw_encoding", "1", "-b:v", "16M"]), ("h264_mf", ["-b:v", "16M"])):
         probe = subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=black:s=320x240:d=0.1", "-c:v", name, "-f", "null", "-"],
                                capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         if probe.returncode == 0:
@@ -3406,7 +3409,13 @@ def take_capture(mode):
     ctypes.windll.user32.SetProcessDPIAware()
     os.makedirs(CAPTURES, exist_ok=True)
     stamp = f"own-{int(time.time() * 1000)}"
-    ImageGrab.grab().save(os.path.join(CAPTURES, stamp + ".png"))
+    path = os.path.join(CAPTURES, stamp + ".png")
+    shot = ImageGrab.grab()
+    if shot.convert("L").getextrema()[1] < 8 and ffmpeg_path():  # all black: some games draw past Windows' screen copy
+        subprocess.run([ffmpeg_path(), "-y", "-loglevel", "error", "-f", "lavfi", "-i", "ddagrab=framerate=10:draw_mouse=0,hwdownload,format=bgra",
+                        "-frames:v", "1", path], capture_output=True, timeout=20, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    if not os.path.isfile(path):
+        shot.save(path)
     add_capture({"id": stamp, "kind": "screenshot", "file": stamp + ".png", "created": time.time(), "game": session["game"], "duration": 0})
 
 
@@ -3485,6 +3494,9 @@ def speaker_audio(path, stop, info):
 
 def start_recording(game):
     ffmpeg = ffmpeg_path()
+    if not ffmpeg and WIN:  # the first time: the recorder is fetched (Settings › General shows it), and the next press records
+        queue_extra("recorder")
+        return
     encoder = video_encoder(ffmpeg) if ffmpeg else None
     if not encoder:
         return
@@ -7212,7 +7224,72 @@ def presentmon_permission():
         raise ValueError(f"Windows couldn't add you to Performance Log Users (code {code})")
 
 
-EXTRAS = {"presentmon": ("Performance overlay", install_presentmon, remove_presentmon)}  # name: (what it's called, install, remove)
+# ---------- recording: the app's own copy of FFmpeg, fetched into data/tools ----------
+# FFmpeg's official Windows builds (BtbN/FFmpeg-Builds, linked from ffmpeg.org): the LGPL "shared" edition of the newest
+# stable version, about 80 MB, checked against GitHub's checksum. Only ffmpeg.exe and its DLLs are kept.
+RECORDER_REPO = "BtbN/FFmpeg-Builds"
+RECORDER_DIR = os.path.join(DATA, "tools", "ffmpeg")
+
+
+def own_ffmpeg():
+    exe = os.path.join(RECORDER_DIR, "ffmpeg.exe")
+    return exe if os.path.isfile(exe) else ""
+
+
+def install_recorder():
+    import zipfile
+    rel = http_json(f"https://api.github.com/repos/{RECORDER_REPO}/releases/latest", timeout=30)
+    pick = None
+    for a in rel.get("assets", []):
+        m = re.fullmatch(r"ffmpeg-n(\d+(?:\.\d+)*)-latest-win64-lgpl-shared-[\d.]+\.zip", a.get("name", ""))
+        if m and (not pick or version_key(m.group(1)) > version_key(pick[0])):
+            pick = (m.group(1), a)
+    if not pick:
+        raise ValueError("FFmpeg has no Windows download right now. Try again later.")
+    asset = pick[1]
+    url, digest = asset["browser_download_url"], str(asset.get("digest") or "").lower()
+    if not url.startswith(f"https://github.com/{RECORDER_REPO}/releases/download/") or not digest.startswith("sha256:"):
+        raise ValueError("FFmpeg's download couldn't be checked. Try again later.")
+    os.makedirs(os.path.dirname(RECORDER_DIR), exist_ok=True)
+    part = RECORDER_DIR + ".zip.part"
+    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=120) as response, open(part, "wb") as output:
+        copy_progress(response, output, asset.get("size") or 0)
+    job_progress("Setting up")
+    try:
+        if file_sha256(part) != digest[7:]:
+            raise ValueError("The FFmpeg download was damaged. Try again.")
+        fresh = RECORDER_DIR + ".new"
+        shutil.rmtree(fresh, ignore_errors=True)
+        os.makedirs(fresh)
+        with zipfile.ZipFile(part) as z:
+            for name in z.namelist():  # only the program and the libraries it needs, never paths from the archive
+                base = name.rsplit("/", 1)[-1]
+                if "/bin/" in name and re.fullmatch(r"ffmpeg\.exe|[\w.-]+\.dll", base, re.I):
+                    with z.open(name) as src, open(os.path.join(fresh, base), "wb") as dst:
+                        shutil.copyfileobj(src, dst)
+        exe = os.path.join(fresh, "ffmpeg.exe")
+        if not os.path.isfile(exe) or subprocess.run([exe, "-hide_banner", "-version"], capture_output=True, timeout=30).returncode:
+            raise ValueError("FFmpeg didn't start. Try again.")
+        shutil.rmtree(RECORDER_DIR, ignore_errors=True)
+        os.replace(fresh, RECORDER_DIR)
+        ENCODER[0] = None  # look for the best encoder again with this copy
+    finally:
+        try:
+            os.remove(part)
+        except OSError:
+            pass
+    return own_ffmpeg()
+
+
+def remove_recorder():
+    if RECORD["proc"]:
+        raise ValueError("Stop the recording first")
+    shutil.rmtree(RECORDER_DIR)
+    ENCODER[0] = None
+
+
+EXTRAS = {"presentmon": ("Performance overlay", install_presentmon, remove_presentmon),  # name: (what it's called, install, remove)
+          "recorder": ("Video recording", install_recorder, remove_recorder)}
 
 
 def queue_extra(name):
@@ -7233,7 +7310,9 @@ def extras_view():
     if exe and WIN:
         pm["rights"] = presentmon_rights()
         pm["mode"] = hud_mode()  # Off, Compact or Full: chosen in Settings
-    return {"presentmon": pm}
+    rjob = next((j for j in reversed(QUEUE["jobs"]) if j.get("extra") == "recorder"), None)
+    rec = {"installed": bool(own_ffmpeg()), "elsewhere": bool(not own_ffmpeg() and ffmpeg_path()), "job": job_info(rjob) if rjob else None, "available": WIN}
+    return {"presentmon": pm, "recorder": rec}
 
 
 def system_view(system, cfg, chosen):

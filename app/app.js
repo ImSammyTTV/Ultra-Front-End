@@ -1766,7 +1766,7 @@ function renderAlbum() {
       <div class="al-meta">${esc(fmtWhen(c.created))}${c.kind === 'video' && c.duration ? ` · ${fmtClock(c.duration)}` : ''}</div></div>`;
   });
   const how = 'In a game, use the overlay, or hold View and press RB for a screenshot and View + LB to start or stop recording.';
-  $('#albumpage .al-grid').innerHTML = html || `<div class="d-empty">${AL.still ? (AL.view === 'video' ? 'No gameplay recordings yet.' : 'No screenshots yet.') : 'Install Still to capture screenshots and gameplay.'}</div>`;
+  $('#albumpage .al-grid').innerHTML = html || `<div class="d-empty">${AL.still ? (AL.view === 'video' ? 'No gameplay recordings yet.' : 'No screenshots yet.') : 'Take a screenshot or record a video from the in-game menu while you play, and it shows up here.'}</div>`;
   $('#albumpage .np-sub').textContent = how + (items.length ? ' Y deletes.' : '');
   albumFocus();
 }
@@ -2439,7 +2439,7 @@ function panelItems() {
     // the app's own window is always full screen (and a page can't go full screen from a controller press)
     ...(window.pywebview ? [] : [{ kind: 'row', label: 'Fullscreen', value: onOff(!!document.fullscreenElement), act: () => { toggleFS(); setTimeout(renderPanel, 300); } }]),
     { kind: 'row', label: 'Rescan everything', sub: 'Look for new games in every library and account', act: () => work(api('/api/rescan', {}), 'Library updated') },
-    ...(d.extras?.presentmon?.available ? [{ kind: 'head', label: 'Extras' }, ...extraRows(d)] : []),
+    ...(d.extras?.presentmon?.available || d.extras?.recorder?.available ? [{ kind: 'head', label: 'Extras' }, ...recorderRows(d), ...extraRows(d)] : []),
     ...d.errors.map(e => ({ kind: 'note', warn: true, label: e })),
   ];
 }
@@ -2467,6 +2467,26 @@ function launcherRows(d, setup) {
           : job ? 'Waiting to install' : 'Not installed on this PC',
         ...jobBar({ job }), act: () => l.installed ? toast(`${l.name} is installed`, 2000) : install(l) };
     }),
+  ];
+}
+// Video recording: the app's own copy of FFmpeg, fetched into its data folder. Screenshots need nothing extra.
+function recorderRows(d, setup) {
+  const rec = d.extras?.recorder;
+  if (!rec?.available) return [];
+  const job = rec.job && rec.job.state !== 'ready' ? rec.job : null, what = 'Record gameplay with sound from the in-game menu';
+  const install = () => job && job.state !== 'failed' ? toast('It’s on its way', 2500)
+    : work(api('/api/extras/install', { name: 'recorder' })).then(r => { if (r) { toast('Setting up video recording…', 3000); watchQueue(); } });
+  if (!rec.installed) return [{ kind: 'row', key: 'rec', ic: icon('album'), label: setup ? `Video recording: ${what}` : 'Video recording',
+    value: job ? (job.state === 'failed' ? 'Try again' : jobValue(job)) : setup ? '' : 'Set up',
+    sub: job?.state === 'failed' ? `Couldn’t set it up: ${job.error}` : job?.state === 'installing' && job.stage ? progressText(job) : job ? 'Downloading FFmpeg (about 80 MB, once)…'
+      : setup ? 'Press A to tick it. Ultra Front End downloads FFmpeg (about 80 MB, once) to record with' : `${what}. Downloads FFmpeg (about 80 MB, once)`,
+    ...jobBar({ job }), act: install }];
+  const rm = P.confirm === 'rec-rm';
+  return [
+    { kind: 'row', key: 'rec', ic: icon('album'), label: setup ? `Video recording: ${what}` : 'Video recording', value: setup ? '✓' : 'Ready',
+      sub: 'Record video and take screenshots from the in-game menu; they appear in the Album', act: () => toast('Ready: use Record video in the in-game menu', 3000) },
+    ...(setup ? [] : [{ kind: 'row', key: 'rec-rm', warn: rm, label: 'Remove video recording', sub: rm ? 'Press A / Enter again to remove' : 'Deletes FFmpeg from the data folder (your videos stay)',
+      act: () => rm ? work(api('/api/extras/remove', { name: 'recorder' }), 'Video recording removed') : (P.confirm = 'rec-rm', renderPanel()) }]),
   ];
 }
 function extraRows(d, setup) {
@@ -2753,9 +2773,11 @@ function setupItems(d, prof) {
       ];
     }
     case 'setup-extras': {
-      const pm = d.extras?.presentmon, chosen = pm?.installed || pm?.job && pm.job.state !== 'failed';
+      const pm = d.extras?.presentmon, rec = d.extras?.recorder;
+      const chosen = pm?.installed || pm?.job && pm.job.state !== 'failed' || rec?.installed || rec?.job && rec.job.state !== 'failed';
       return [
         { kind: 'note', label: 'Optional extras. Press A to tick one and it installs. You can add or remove them later in Settings › General.' },
+        ...recorderRows(d, true),
         ...extraRows(d, true),
         { ...next, key: 'extras-next', label: chosen ? 'Next' : 'Skip', sub: chosen ? '' : 'Nothing extra for now' },
       ];
