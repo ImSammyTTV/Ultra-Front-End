@@ -959,6 +959,18 @@ async function afterLibraryChange() {
   await loadLibrary(); renderTabs(); buildRow(false);
   if (D.open) D.game = LIB.find(x => x.id === D.game.id) || D.game;  // the ⋯ and Y menus read it
 }
+// A name of your own for a game, typed on the on-screen keyboard (or a real one), starting from the name it has now
+function renameGame(g) {
+  openSearch(null, text => setGameName(g, text.trim()), { id: 'rename', label: `New name for ${g.title}`, max: 120 });
+  $('#srq').value = g.title; searchRun();
+}
+async function setGameName(g, title) {
+  if (title === g.title) return;
+  try { await api('/api/game/rename', { id: g.id, title }); } catch (e) { return toast(e.message); }
+  await afterLibraryChange();
+  if (D.open) renderDetails();  // its title, now
+  toast(title ? `Renamed to ${title}` : 'Original name restored');
+}
 async function setFavorite(g, favorite) {
   try { await api('/api/game/favorite', { id: g.id, favorite }); } catch (e) { return toast(e.message); }
   await afterLibraryChange();
@@ -1065,7 +1077,7 @@ function renderDetails() {
   const g = D.game, d = D.data, root = $('#details');
   const logo = root.querySelector('.d-logo');
   logo.innerHTML = `<h1>${esc(g.title)}</h1>`;
-  if (d?.logo) {  // swap the text title for the game's logo once it has loaded
+  if (d?.logo && !g.renamed) {  // swap the text title for the game's logo once it has loaded (a name of your own stays as text)
     const im = new Image(); im.alt = g.title;
     im.onload = () => { if (D.game === g) { logo.innerHTML = ''; logo.appendChild(im); } };
     im.src = d.logo;
@@ -1772,6 +1784,8 @@ function quickItems(g) {
     { label: g.favorite ? 'Remove from Favourites' : 'Add to Favourites', ic: svg('star'), run: () => setFavorite(g, !g.favorite) },
     { label: 'Collections', ic: svg('library'), run: () => openCollections(g) },
     { label: 'Artwork', ic: svg('image'), run: () => openArtMenu(g) },
+    { label: 'Rename', ic: svg('keyboard'), run: () => renameGame(g) },
+    ...(g.renamed ? [{ label: 'Restore original name', ic: svg('reset'), run: () => setGameName(g, '') }] : []),
     ...(g.source !== 'Emulators' || g.appPath ? [{ label: 'App location', ic: svg('folder'), run: () => openLocationMenu(g) }] : []),
     { label: g.hidden ? 'Unhide game' : 'Hide game', ic: svg(g.hidden ? 'eye' : 'eyeoff'), run: () => setHidden(g, !g.hidden) },
   ];
@@ -2650,8 +2664,9 @@ function setupItems(d, prof) {
       known.forEach(p => { if ((p.chosen || p.count) && !P.unpicked.has(p.name)) P.pick.add(p.name); });
       const todo = known.filter(p => P.pick.has(p.name) && !p.emulator && p.install && !['waiting', 'installing'].includes(p.job?.state));
       const save = install => work(api('/api/systems/choose', { systems: [...P.pick], install }));
-      const go = { ...next, key: 'pick-next', primary: !todo.length, sub: P.pick.size ? `${P.pick.size} system${P.pick.size === 1 ? '' : 's'} ticked` : '',
-        act: async () => { if (await save(false)) setupGo(1); } };
+      const go = { ...next, key: 'pick-next', primary: !todo.length,
+        sub: todo.length ? `Installs the emulators for ${todo.length} ticked system${todo.length === 1 ? '' : 's'}` : P.pick.size ? `${P.pick.size} system${P.pick.size === 1 ? '' : 's'} ticked` : '',
+        act: async () => { if (await save(todo.length > 0)) { if (todo.length) { toast('Installing… you can carry on', 3000); watchQueue(); } setupGo(1); } } };
       return [
         { kind: 'note', label: 'Which systems do you play? Press A to tick or untick one. Each gets its own folder in your ROMs folder, and its emulator is installed for you.' },
         ...queueLine(d.queue),
