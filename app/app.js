@@ -1723,8 +1723,7 @@ $('#albumpage').addEventListener('click', e => {
 const Q = { open: false, game: null, i: 0, items: [] };
 function quickItems(g) {
   const svg = n => n === 'play' ? ICON_PLAY : icon(n);
-  return [
-    { label: RUN.has(g.id) ? 'Resume' : g.installed === false ? 'Install' : 'Play', ic: svg('play'), run: () => launchGame(g) },
+  return [  // no Play: A on the cover (or the details page) starts a game, so Y then A never starts one by mistake
     ...(RUN.has(g.id) ? [{ label: closeAsk === g.id ? 'Press A again to close' : 'Close game', ic: svg('close'), warn: true, stay: closeAsk !== g.id, run: () => askClose(g) }] : []),
     ...(D.open ? [] : [{ label: 'Game details', ic: svg('info'), run: () => openDetails(g) }]),
     { label: g.favorite ? 'Remove from Favourites' : 'Add to Favourites', ic: svg('star'), run: () => setFavorite(g, !g.favorite) },
@@ -1765,7 +1764,7 @@ function openQuick(g) {
   cover.style.setProperty('--c', colorOf(g));
   cover.style.backgroundImage = g.cover ? `url("${g.coverAnim || g.cover}")` : 'none';
   cover.innerHTML = g.cover ? '' : `<div class="ph">${esc(g.title)}</div>`;
-  $('#quick .q-meta').textContent = [g.system || g.group, g.installed === false ? 'Not installed' : '', g.minutes ? fmtTime(g.minutes) + ' played' : ''].filter(Boolean).join('   ·   ');
+  $('#quick .q-meta').textContent = [g.system || g.group, g.installed === false ? 'Not installed' : '', g.minutes ? fmtTime(g.minutes) + ' played' : ''].filter(Boolean).join(' · ');
   $('#quick .q-title').textContent = g.title;
   $('#quick .q-list').innerHTML = Q.items.map((it, j) => `<div class="q-item${it.warn ? ' warn' : ''}" data-i="${j}" style="animation-delay:${60 + j * 35}ms">${it.ic}<span>${esc(it.label)}</span></div>`).join('');
   $('#quick').classList.add('sys');  // every menu here is the same side panel
@@ -1995,6 +1994,7 @@ const SETTINGS = [
 const GAME_SERVICES = [
   { id: 'ea', name: 'EA app', logo: 'ea' },
   { id: 'ubisoft', name: 'Ubisoft Connect', logo: 'ubisoft' },
+  { id: 'gog', name: 'GOG', logo: 'gogdotcom' },
   { id: 'rockstar', name: 'Rockstar Games', logo: 'rockstargames' },
   { id: 'battlenet', name: 'Battle.net', logo: 'battledotnet' },
 ];
@@ -2250,6 +2250,7 @@ function panelItems() {
           || (d.services?.[service.id] ? 'Finds games installed on this PC' : 'Add games installed on this PC'),
         value: libraries.length ? 'Manage' : 'Set up', act: () => { P.service = service.id; setView('service'); } };
     }),
+    ...launcherRows(d, false),
     { kind: 'note', label: 'Select a connected account twice to disconnect it.' },
   ];
   if (P.view === 'service') {
@@ -2258,7 +2259,7 @@ function panelItems() {
       const r = await work(api('/api/libraries/add', { kind, provider: service.id }));
       if (r?.added) toast(`${service.name} games added`);
     };
-    const auto = d.services?.[service.id];  // EA app, Ubisoft Connect and Battle.net games are found automatically
+    const auto = d.services?.[service.id];  // EA app, Ubisoft Connect, GOG and Battle.net games are found automatically
     const key = service.id + 'Local';
     return [  // the page title names the service
       ...(auto ? [
@@ -2318,6 +2319,29 @@ function panelItems() {
 const val = id => $(`#panel input[data-id="${id}"]`)?.value || '';
 // ---------- extras: optional tools that install through the emulator queue (Settings › General and the setup guide) ----------
 const PM_RIGHTS = { ready: 'Ready', signout: 'Sign out and back in to finish', needed: 'Needs permission' };
+// Game launchers (Steam, Epic, EA app, Ubisoft Connect, GOG Galaxy, Battle.net, Rockstar): installed through the same queue
+// as the emulators when they're missing, from the setup guide's Accounts step and Settings › Accounts.
+const LAUNCHER_LOGO = { steam: 'steam', epic: 'epicgames', ea: 'ea', ubisoft: 'ubisoft', gog: 'gogdotcom', battlenet: 'battledotnet', rockstar: 'rockstargames' };
+function launcherRows(d, setup) {
+  const list = d.launchers || [];
+  if (!list.length) return [];
+  const missing = list.filter(l => !l.installed);
+  const install = l => l.job && ['waiting', 'installing'].includes(l.job.state) ? toast('It’s on its way', 2500)
+    : work(api('/api/launchers/install', { id: l.id })).then(r => { if (r) { toast(`Installing ${l.name}…`, 3000); watchQueue(); } });
+  return [
+    { kind: 'head', label: 'Game launchers' },
+    { kind: 'note', label: missing.length ? `${setup ? 'Don’t have one you use? ' : ''}Press A to install it from its maker. Their games then show up here by themselves.`
+      : 'Every launcher is installed.' },
+    ...list.map(l => {
+      const job = !l.installed && l.job && l.job.state !== 'ready' ? l.job : null;
+      return { kind: 'row', key: 'launcher-' + l.id, logo: LAUNCHER_LOGO[l.id], label: l.name,
+        value: l.installed ? '✓ Installed' : job ? (job.state === 'failed' ? 'Try again' : jobValue(job)) : 'Install',
+        sub: l.installed ? '' : job?.state === 'failed' ? `Install failed: ${job.error}` : job?.state === 'installing' && job.stage ? progressText(job)
+          : job ? 'Waiting to install' : 'Not installed on this PC',
+        ...jobBar({ job }), act: () => l.installed ? toast(`${l.name} is installed`, 2000) : install(l) };
+    }),
+  ];
+}
 function extraRows(d, setup) {
   const pm = d.extras?.presentmon;
   if (!pm?.available) return [];
@@ -2378,7 +2402,7 @@ function groupRows(list, row) {
 }
 // While emulators install, the open system pages follow along
 let queueTimer = 0;
-const QUEUE_VIEWS = ['systems', 'system', 'add-system', 'setup-systems', 'general', 'setup-extras'];
+const QUEUE_VIEWS = ['systems', 'system', 'add-system', 'setup-systems', 'general', 'setup-extras', 'accounts', 'setup-accounts'];
 const followQueue = () => { if (QUEUE_VIEWS.includes(P.view) && P.data?.queue?.busy) watchQueue(); };  // however the page was reached
 const queueStates = q => (q?.jobs || []).map(j => `${j.id}:${j.state}`).join();
 function watchQueue() {
@@ -2534,6 +2558,7 @@ function setupItems(d, prof) {
       acc.epic ? { kind: 'row', logo: 'epicgames', label: 'Epic Games', value: '✓ Connected', sub: `${acc.epic.count} games`, act: () => {} } : { kind: 'row', logo: 'epicgames', label: 'Connect Epic Games', sub: 'Every game you own on Epic', act: () => setView('epic') },
       { kind: 'note', label: 'Optional: more artwork. Your games already get covers without it.' },
       acc.sgdb ? { kind: 'row', img: SGDB_LOGO, label: 'SteamGridDB', value: '✓ Connected', sub: 'Choose artwork, animated covers', act: () => {} } : { kind: 'row', img: SGDB_LOGO, label: 'SteamGridDB (optional)', sub: 'Choose covers and backgrounds, animated ones too, and Switch covers. Free account', act: () => setView('sgdb') },
+      ...launcherRows(d, true),
       next,
     ];
     case 'setup-games': {
@@ -3114,7 +3139,7 @@ function poll() {
     edge('LB', b(4), () => inputFrom('pad', 'prevTab'));
     edge('RB', b(5), () => inputFrom('pad', 'nextTab'));
     edge('VW', b(8), () => inputFrom('pad', 'system'));
-    edge('ST', b(9), toggleFS);
+    edge('ST', b(9), () => inputFrom('pad', 'options'));  // Start, like Y: the game's menu
   }
   const padIcon = gp ? 'on' : 'off';
   if (PAD_ICON.dataset.s !== padIcon) { PAD_ICON.dataset.s = padIcon; PAD_ICON.innerHTML = gp ? icon('pad') : ''; }

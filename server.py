@@ -2638,7 +2638,7 @@ def scan():
             except Exception as e:
                 programs = []
                 errors.append(f"Installed programs: {e}")
-            for prov, fn in (("ea", scan_ea), ("ubisoft", scan_ubisoft), ("battlenet", scan_battlenet)):
+            for prov, fn in (("ea", scan_ea), ("ubisoft", scan_ubisoft), ("gog", scan_gog), ("battlenet", scan_battlenet)):
                 if cfg.get(prov + "Local", True):
                     add(f"{LOCAL_PROVIDERS[prov]} (installed)", lambda fn=fn: fn(programs, cfg))
         if "epic" in accounts:
@@ -4139,7 +4139,7 @@ def open_frontend():
         threading.Thread(target=bring_forward, daemon=True).start()
 # Menu navigation straight from XInput (Xbox pads, and the Steam Controller or any pad Steam Input presents as one), so the
 # frontend works with a controller even when the browser's own gamepad support doesn't see it.
-PAD_BUTTONS = {0x1000: "ok", 0x2000: "back", 0x8000: "options", 0x0100: "prevTab", 0x0200: "nextTab"}
+PAD_BUTTONS = {0x1000: "ok", 0x2000: "back", 0x8000: "options", 0x0010: "options", 0x0100: "prevTab", 0x0200: "nextTab"}  # Start, like Y: the game's menu
 PAD_DIRS = {"up": 0x0001, "down": 0x0002, "left": 0x0004, "right": 0x0008}
 PAD = {"seq": 0, "events": [], "cond": threading.Condition(), "pads": 0, "seen": 0.0, "last": {}}
 XSTATE = {}  # XInput slot: (when, buttons, lt, rt, lx, ly, rx, ry), the latest of each pad, for the controller tester
@@ -4443,7 +4443,8 @@ def foreground_title():
 PAD_BATTERY = [None, 0.0]
 PAD_RAW = [b"", 0.0]  # the latest report, for the tester in Settings > Controllers
 # Report 0x42: (byte, bit) of each menu control; the left stick is two signed words at bytes 10 and 12. D-pad directions repeat.
-STEAM_PAD = {"system": (3, 6), "ok": (2, 0), "back": (2, 1), "options": (2, 3), "up": (3, 5), "down": (3, 2), "left": (3, 4), "right": (3, 3), "prevTab": (4, 3), "nextTab": (3, 1)}
+STEAM_PAD = {"system": (3, 6), "ok": (2, 0), "back": (2, 1), "options": (2, 3), "start": (2, 6), "up": (3, 5), "down": (3, 2), "left": (3, 4), "right": (3, 3), "prevTab": (4, 3), "nextTab": (3, 1)}
+STEAM_ALIAS = {"start": "options"}  # Start (Menu), like Y: the game's menu
 
 
 def pad_motion(path, on):
@@ -4560,7 +4561,7 @@ def steam_button_reader(path, active):
             state = {k for k, (byte, bit) in STEAM_PAD.items() if r[byte] >> bit & 1}
             state |= {d for d, hit in (("up", ly > 18000), ("down", ly < -18000), ("left", lx < -18000), ("right", lx > 18000)) if hit}
             for k in state - held:
-                pad_emit(k, "steam")
+                pad_emit(STEAM_ALIAS.get(k, k), "steam")
                 repeat[k] = now + 0.38
             for k in state & set(repeat) & {"up", "down", "left", "right"}:  # directions only; in the short overlay menu just left and right (volume)
                 if now >= repeat[k] and (k in ("left", "right") or not overlay_open()):
@@ -4830,19 +4831,20 @@ def pick(kind, title, filetypes=None):
             root.destroy()
 
 
-LOCAL_PROVIDERS = {"ea": "EA app", "ubisoft": "Ubisoft Connect", "rockstar": "Rockstar Games", "battlenet": "Battle.net"}
+LOCAL_PROVIDERS = {"ea": "EA app", "ubisoft": "Ubisoft Connect", "gog": "GOG", "rockstar": "Rockstar Games", "battlenet": "Battle.net"}
 
 
-# ---------------------------------------------------------------- EA app, Ubisoft Connect, Battle.net: installed games
+# ---------------------------------------------------------------- EA app, Ubisoft Connect, GOG, Battle.net: installed games
 # None of them share your owned-games list without their own sign-in, so (like "Installed Steam games") this finds what
 # each launcher has installed on this PC from the entries it writes to Windows' installed-programs list, and starts
 # games through the launcher so sign-in, updates and cloud saves still work.
-SERVICE_SCANS = ("ea", "ubisoft", "battlenet")   # each has an on/off option "<id>Local" (on by default)
+SERVICE_SCANS = ("ea", "ubisoft", "gog", "battlenet")   # each has an on/off option "<id>Local" (on by default)
 OPTION_KEYS = ("steamLocal", "onlineCovers", "showUninstalled", "artBackground", "guideOpens", "wiiMotion") + tuple(p + "Local" for p in SERVICE_SCANS)
 SERVICE_APPS = {
     "ea": [r"C:\Program Files\Electronic Arts\EA Desktop\EA Desktop\EADesktop.exe"],
     "ubisoft": [r"C:\Program Files (x86)\Ubisoft\Ubisoft Game Launcher\UbisoftConnect.exe", r"C:\Program Files (x86)\Ubisoft\Ubisoft Game Launcher\upc.exe"],
     "battlenet": [r"C:\Program Files (x86)\Battle.net\Battle.net.exe", r"C:\Program Files\Battle.net\Battle.net.exe"],
+    "gog": [r"C:\Program Files (x86)\GOG Galaxy\GalaxyClient.exe", r"C:\Program Files\GOG Galaxy\GalaxyClient.exe"],
 }
 # Battle.net starts a game by its product code; games not listed here start from their own launcher program instead.
 BNET_CODES = {"wow": "WoW", "d3": "D3", "pro": "Pro", "hs_beta": "WTCG", "heroes": "Hero", "s1": "S1", "s2": "S2", "w3": "W3",
@@ -4953,6 +4955,89 @@ def scan_battlenet(programs, cfg):
     return games
 
 
+def scan_gog(programs, cfg):
+    """GOG games: GOG Galaxy and GOG's own offline installers both list each installed game under GOG.com\\Games in the
+    registry. With Galaxy installed a game starts through it (cloud saves, achievements); otherwise its own program starts."""
+    import winreg
+    app, games = service_app("gog"), []
+    for path in (r"SOFTWARE\WOW6432Node\GOG.com\Games", r"SOFTWARE\GOG.com\Games"):
+        try:
+            root = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, path)
+        except OSError:
+            continue
+        with root:
+            for i in range(winreg.QueryInfoKey(root)[0]):
+                try:
+                    game_id = winreg.EnumKey(root, i)
+                    with winreg.OpenKey(root, game_id) as k:
+                        def val(name):
+                            try:
+                                return str(winreg.QueryValueEx(k, name)[0] or "")
+                            except OSError:
+                                return ""
+                        title, folder, exe, args, depends = val("gameName"), val("path"), val("exe"), val("launchParam"), val("dependsOn")
+                except OSError:
+                    continue
+                if not re.fullmatch(r"\d+", game_id) or depends or not title or not os.path.isdir(folder):  # dependsOn: a DLC, not a game
+                    continue
+                if any(g["id"] == gid("gog", game_id) for g in games):
+                    continue
+                if app:
+                    launch = {"type": "exe", "exe": app, "args": ["/command=runGame", f"/gameId={game_id}", f"/path={folder}"]}
+                elif exe and os.path.isfile(exe):
+                    launch = {"type": "exe", "exe": exe, "args": args.split() if args else []}
+                else:
+                    found = best_exe(folder)
+                    if not found:
+                        continue
+                    launch = {"type": "exe", "exe": found, "args": []}
+                games.append(service_game("gog", game_id, clean_title(title), folder, launch, cfg))
+    return games
+
+
+# ---------------------------------------------------------------- game launchers: installed from setup or Settings when missing
+# (id, name, winget package). Each comes from its maker through winget, like the emulators, in the same install queue.
+LAUNCHERS = [("steam", "Steam", "Valve.Steam"), ("epic", "Epic Games Launcher", "EpicGames.EpicGamesLauncher"),
+             ("ea", "EA app", "ElectronicArts.EADesktop"), ("ubisoft", "Ubisoft Connect", "Ubisoft.Connect"),
+             ("gog", "GOG Galaxy", "GOG.Galaxy"), ("battlenet", "Battle.net", "Blizzard.BattleNet"),
+             ("rockstar", "Rockstar Games Launcher", "RockstarGames.Launcher")]
+LAUNCHER_FILES = {
+    "epic": [r"C:\Program Files (x86)\Epic Games\Launcher\Portal\Binaries\Win64\EpicGamesLauncher.exe",
+             r"C:\Program Files (x86)\Epic Games\Launcher\Portal\Binaries\Win32\EpicGamesLauncher.exe",
+             r"C:\Program Files\Epic Games\Launcher\Portal\Binaries\Win64\EpicGamesLauncher.exe"],
+    "rockstar": [r"C:\Program Files\Rockstar Games\Launcher\Launcher.exe", r"C:\Program Files (x86)\Rockstar Games\Launcher\Launcher.exe"],
+}
+
+
+def launcher_installed(lid):
+    if lid == "steam":
+        return bool(steam_path())
+    if lid in SERVICE_APPS:
+        return bool(service_app(lid))
+    return any(os.path.isfile(f) for f in LAUNCHER_FILES.get(lid, []))
+
+
+def queue_launcher(lid):
+    entry = next((l for l in LAUNCHERS if l[0] == lid), None)
+    if not entry or not WIN:
+        raise ValueError("No such launcher")
+    with QUEUE_COND:
+        if not any(j.get("launcher") == lid and j["state"] in ("waiting", "installing") for j in QUEUE["jobs"]):
+            new_batch()
+            QUEUE["next"] += 1
+            QUEUE["jobs"].append({"id": QUEUE["next"], "emulator": entry[1], "package": (entry[2], "launcher"), "systems": [], "launcher": lid,
+                                  "state": "waiting", "error": ""})
+    queue_install([])  # starts the worker if need be and wakes it
+
+
+def launchers_view():
+    out = []
+    for lid, name, _ in LAUNCHERS:
+        job = next((j for j in reversed(QUEUE["jobs"]) if j.get("launcher") == lid), None)
+        out.append({"id": lid, "name": name, "installed": launcher_installed(lid), "job": job_info(job) if job else None})
+    return out
+
+
 def add_library(kind, provider=None):
     if provider and (provider not in LOCAL_PROVIDERS or kind not in ("pc", "game")):
         raise ValueError("Unknown game service")
@@ -5010,7 +5095,8 @@ def settings_view():
     return {"options": {**{k: cfg.get(k, True) for k in OPTION_KEYS}, "startup": cfg.get("startup")}, "services": services, "libraries": libs, "accounts": acc,
             "errors": STATE["errors"], "steamDetected": bool(steam_path()), "steamSuggestedId": steam_suggested_id(),
             "localSteamCount": STATE["counts"].get("Steam (installed)", 0), "romRoot": cfg.get("romRoot") or "", "platforms": platforms,
-            "queue": queue_view(), "profile": profile(), "update": update_view(), "extras": extras_view()}
+            "queue": queue_view(), "profile": profile(), "update": update_view(), "extras": extras_view(),
+            "launchers": launchers_view() if WIN else []}
 
 
 def profile():
@@ -6086,6 +6172,20 @@ def install_worker():
 
 
 def install_job(job):
+    if job.get("launcher"):  # a game launcher (Steam, GOG Galaxy...): winget, then its games are looked for
+        try:
+            winget_install(job["package"][0], job["emulator"])
+            job.update(state="ready" if launcher_installed(job["launcher"]) else "failed",
+                       error="" if launcher_installed(job["launcher"]) else "Installed, but it wasn’t found where expected. Restart the frontend.")
+        except Exception as e:
+            job.update(state="failed", error=(str(e) or type(e).__name__)[:200])
+            if not isinstance(e, ValueError):
+                log_error()
+        try:
+            scan()
+        except Exception:
+            log_error()
+        return
     if job.get("extra"):  # an extra (PresentMon): no systems to connect or rescan
         try:
             EXTRAS[job["extra"]][1]()
@@ -6708,6 +6808,9 @@ class Handler(SimpleHTTPRequestHandler):
                 if not hud.presentmon(DATA):
                     raise ValueError("Install the performance overlay in Settings › General first")
                 return self.reply({"mode": hud_mode(cycle=True)})
+            if path == "/api/launchers/install":  # a missing game launcher, through the install queue
+                queue_launcher(body.get("id") or "")
+                return self.reply(settings_view())
             if path in ("/api/extras/install", "/api/extras/remove", "/api/extras/permission"):
                 if body.get("name") not in EXTRAS or not WIN:
                     raise ValueError("No such extra")
