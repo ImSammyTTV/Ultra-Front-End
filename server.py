@@ -51,12 +51,46 @@ if WIN and not getattr(subprocess.Popen.__init__, "no_window", False):
 APP = shipped("app")
 
 
+# Where the settings in use live, noted in the user's app data, so a new copy of the exe saved somewhere else (a fresh
+# download in Downloads) finds them instead of starting over
+DATA_NOTE = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "Ultra Front End", "settings-folder.txt")
+
+
+def set_up_in(folder):
+    """Whether a data folder holds a finished setup."""
+    try:
+        with open(os.path.join(folder, "config.json"), encoding="utf-8") as f:
+            return bool((json.load(f).get("profile") or {}).get("setupDone"))
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def note_data_folder(folder):
+    if WIN and getattr(sys, "frozen", False) and "--port" not in sys.argv and set_up_in(folder):  # (not a test copy's)
+        try:
+            os.makedirs(os.path.dirname(DATA_NOTE), exist_ok=True)
+            with open(DATA_NOTE, "w", encoding="utf-8") as f:
+                f.write(os.path.abspath(folder))
+        except OSError:
+            pass
+
+
 def data_folder():
     """Beside the exe, so a copy and its settings stay together, unless Windows won't let it write there (Program Files):
-    then the user's own app data. The Mac app runs from a read-only disk image or /Applications: Application Support."""
+    then the user's own app data. A copy with no finished setup beside it uses the settings the last copy used, when they
+    still exist (the same person with a new download). The Mac app runs from a read-only disk image or /Applications:
+    Application Support."""
     if MAC and getattr(sys, "frozen", False):
         return os.path.expanduser("~/Library/Application Support/Game Frontend")
     here = os.path.join(ROOT, "data")
+    if WIN and getattr(sys, "frozen", False) and "--port" not in sys.argv and not set_up_in(here):
+        try:
+            with open(DATA_NOTE, encoding="utf-8") as f:
+                before = f.read().strip()
+        except OSError:
+            before = ""
+        if before and os.path.normcase(os.path.abspath(before)) != os.path.normcase(os.path.abspath(here)) and set_up_in(before):
+            return before
     try:
         import tempfile
         os.makedirs(here, exist_ok=True)
@@ -67,11 +101,12 @@ def data_folder():
 
 
 DATA = data_folder()
+note_data_folder(DATA)
 PORT = int(sys.argv[sys.argv.index("--port") + 1]) if "--port" in sys.argv else 8137  # --port: a second copy for testing
 # This copy's build, noted at start: an update swaps the exe while the old build can still be running in the tray
 BUILD = "%d-%d" % (int(os.path.getmtime(sys.executable)), os.path.getsize(sys.executable)) if getattr(sys, "frozen", False) else "source"
 QUIT = [lambda: os._exit(0)]  # how this helper leaves when a newer build takes over; Game Frontend.exe takes its tray icon down too
-VERSION = "1.1.3"  # the release this is; tools/release.py publishes it as tag v<VERSION>
+VERSION = "1.1.4"  # the release this is; tools/release.py publishes it as tag v<VERSION>
 UPDATE_REPO = "ImSammyTTV/Ultra-Front-End"  # whose GitHub releases a copy of the exe keeps itself current from
 os.makedirs(DATA, exist_ok=True)
 
@@ -7741,6 +7776,7 @@ class Handler(SimpleHTTPRequestHandler):
                 if "setupDone" in body:
                     p["setupDone"] = bool(body["setupDone"])
                 store("config.json", cfg)
+                note_data_folder(DATA)  # a finished setup is the one a new copy should find
                 return self.reply(profile())
             if path == "/api/profile/picture":
                 src = pick("file", "Choose a profile picture", [("Images", "*.png *.jpg *.jpeg *.webp *.gif")])
