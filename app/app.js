@@ -1,4 +1,5 @@
 // Home screen: one row of covers, round shortcut buttons, source tabs.
+const ON_MAC = /Macintosh|Mac OS X/.test(navigator.userAgent), HERE = ON_MAC ? 'this Mac' : 'this PC';  // the page's word for the computer
 // Focus zones (up/down): 0 = game row, 1 = buttons, 2 = source tabs.
 const $ = q => document.querySelector(q);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -2106,11 +2107,11 @@ function panelItems() {
     { kind: 'note', label: 'A fullscreen, controller-friendly launcher for Steam, Epic, your own game folders, emulators and ports.' },
     ...updateRows(P.data?.update),
     // information only: these can't be highlighted, so A never seems to do nothing
-    { kind: 'info', label: 'Your data', sub: 'Libraries, accounts, artwork and play history are kept on this PC only, in the frontend’s data folder.' },
+    { kind: 'info', label: 'Your data', sub: `Libraries, accounts, artwork and play history are kept on ${HERE} only, in the frontend’s data folder.` },
     { kind: 'info', label: 'Artwork and info', sub: 'Steam, Epic, SteamGridDB, libretro and Wikipedia. Descriptions from Wikipedia are under CC BY-SA 4.0' },
     { kind: 'info', label: 'Trademarks', sub: 'All product names, logos and brands are the property of their owners and are used only to name platforms and stores. Ultra Front End is not affiliated with or endorsed by any of them. Valve, Steam and the Steam logo are trademarks of Valve Corporation.' },
     { kind: 'info', label: 'Open-source licences', sub: 'MIT. Built with Python, pywebview, Pillow and pystray (LGPL-3.0), among others: see THIRD_PARTY_NOTICES.md and the licenses folder on the project’s GitHub page' },
-    { kind: 'info', label: 'Helper', sub: API ? `Running on this PC (${location.host})` : 'Not running: start the frontend with Start Frontend.bat' },
+    { kind: 'info', label: 'Helper', sub: API ? `Running on ${HERE} (${location.host})` : 'Not running: start the frontend with Start Frontend.bat' },
     ...(API ? [{ kind: 'row', label: 'Run the setup guide again', sub: 'Name, icon, time zone, accounts and games', act: openSetup }] : []),
   ];
   if (!API) return [{ kind: 'note', label: 'Start the frontend with "Start Frontend.bat" to add libraries and accounts. Opened as a plain file it can only show the demo games.' }];
@@ -2136,7 +2137,7 @@ function panelItems() {
   ];
   if (P.view === 'timezone') return [
     { kind: 'note', label: 'Choose where you are. The clock follows this time zone.' },
-    ...['auto', ...TIMEZONES].map(z => ({ kind: 'row', label: zoneName(z), sub: z === 'auto' ? 'Follows this PC’s setting' : z.split('/')[0].replace('_', ' '),
+    ...['auto', ...TIMEZONES].map(z => ({ kind: 'row', label: zoneName(z), sub: z === 'auto' ? `Follows ${HERE}’s setting` : z.split('/')[0].replace('_', ' '),
       value: `${prof.timezone === z ? '✓  ' : ''}${timeIn(z)}`, act: () => saveProfile({ timezone: z }).then(() => { P.data.profile = PROFILE; setView(subReturn()); }) })),
   ];
   if (P.view === 'systems') {
@@ -2150,7 +2151,7 @@ function panelItems() {
       // a ROMs subfolder named after no system: its games can't start until it's renamed
       ...odd.map(p => ({ kind: 'info', label: `ROMs › ${p.name}`, sub: 'Folder not recognised: rename it to a system’s name, for example SNES or Genesis', value: `${p.count} game${p.count === 1 ? '' : 's'}` })),
       { kind: 'row', key: 'sys-add', label: '+ Add a system', sub: 'Installs its emulator and makes its folders', act: () => setView('add-system') },
-      { kind: 'row', ic: '⌕', label: 'Find installed emulators', sub: 'Looks for emulators already on this PC', act: () => work(api('/api/emulators/find', {})).then(r => r && toast(r.found ? `Found ${r.found} emulator${r.found === 1 ? '' : 's'}` : 'No new emulators found', 3000)) },
+      { kind: 'row', ic: '⌕', label: 'Find installed emulators', sub: `Looks for emulators already on ${HERE}`, act: () => work(api('/api/emulators/find', {})).then(r => r && toast(r.found ? `Found ${r.found} emulator${r.found === 1 ? '' : 's'}` : 'No new emulators found', 3000)) },
     ];
   }
   if (P.view === 'add-system') {
@@ -2180,7 +2181,7 @@ function panelItems() {
         act: () => job && job.state !== 'failed' ? toast('It’s on its way', 2500) : work(api('/api/emulators/install', { system: p.name })).then(r => { if (r) { toast(`Installing ${p.install}…`, 3000); watchQueue(); } }) }] : []),
       ...(p.site ? [{ kind: 'row', ic: icon('link'), label: `${p.recommended} project page`, sub: p.site.replace(/^https:\/\/(www\.)?/, '').replace(/\/$/, ''), value: 'Open',
         act: () => api('/api/emulators/site', { system: p.name }).then(() => toast('Opened in your browser', 3000), e => toast(e.message)) }] : []),
-      { kind: 'row', key: 'sys-choose', ic: icon('folder'), label: 'Choose program', sub: p.emulator || 'Select an emulator already on this PC', value: p.emulator ? 'Change' : 'Choose',
+      { kind: 'row', key: 'sys-choose', ic: icon('folder'), label: 'Choose program', sub: p.emulator || `Select an emulator already on ${HERE}`, value: p.emulator ? 'Change' : 'Choose',
         act: () => work(api('/api/emulators/set', { system: p.name })).then(r => { const e = r?.platforms?.find(x => x.name === p.name)?.emulator; if (e) toast(`${p.name} games will start in ${e}`, 3000); }) },
       // a second A to stop, like every removal
       ...(p.emulator ? [removable(`stop-${p.name}`, `Stop using ${p.emulator}`, 'Its games won’t start until you choose a program again. The emulator stays installed', '/api/emulators/clear', { system: p.name },
@@ -2194,7 +2195,7 @@ function panelItems() {
       ] : [{ kind: 'info', label: `${p.recommended || 'Its emulator'} needs no BIOS or firmware`, value: 'Nothing needed' }]),
       ...(p.steps ? [{ kind: 'note', label: p.steps }] : []),
       ...(p.group === 'Other' ? [] : [{ kind: 'row', key: `rm-${p.name}`, warn: P.confirm === `rm-${p.name}`, label: 'Remove this system',
-        sub: P.confirm === `rm-${p.name}` ? 'Press A / Enter again to remove' : 'Your games, BIOS files and the emulator stay on this PC',
+        sub: P.confirm === `rm-${p.name}` ? 'Press A / Enter again to remove' : `Your games, BIOS files and the emulator stay on ${HERE}`,
         act: () => P.confirm === `rm-${p.name}` ? work(api('/api/systems/remove', { system: p.name }), `Removed ${p.name}`).then(r => r && setView('systems')) : (P.confirm = `rm-${p.name}`, renderPanel()) }]),
       { kind: 'row', label: 'Back', act: () => setView('systems') },
     ];
@@ -2287,7 +2288,7 @@ function panelItems() {
       const found = d.options[service.id + 'Local'] && d.services?.[service.id]?.count;
       return { kind: 'row', logo: service.logo, ic: service.ic, label: service.name,
         sub: [found && `${found} installed game${found === 1 ? '' : 's'} found`, libraries.length && `${libraries.length} game source${libraries.length === 1 ? '' : 's'} added`].filter(Boolean).join(' · ')
-          || (d.services?.[service.id] ? 'Finds games installed on this PC' : 'Add games installed on this PC'),
+          || (d.services?.[service.id] ? `Finds games installed on ${HERE}` : `Add games installed on ${HERE}`),
         value: libraries.length ? 'Manage' : 'Set up', act: () => { P.service = service.id; setView('service'); } };
     }),
     ...launcherRows(d, false),
@@ -2304,12 +2305,12 @@ function panelItems() {
     return [  // the page title names the service
       ...(auto ? [
         { kind: 'row', logo: service.logo, ic: service.ic, label: 'Find installed games automatically', value: onOff(d.options[key]),
-          sub: !d.options[key] ? 'Off' : auto.count ? `${auto.count} found on this PC · they start through ${service.name}`
-            : auto.detected ? `${service.name} is installed, but no games from it were found` : `${service.name} isn’t installed on this PC`,
+          sub: !d.options[key] ? 'Off' : auto.count ? `${auto.count} found on ${HERE} · they start through ${service.name}`
+            : auto.detected ? `${service.name} is installed, but no games from it were found` : `${service.name} isn’t installed on ${HERE}`,
           act: () => setOpt(key) },
         { kind: 'note', label: `Games ${service.name} installs show up by themselves. Your online library (games you own but haven’t installed) isn’t shown, because ${service.name} doesn’t share it. Keep ${service.name} signed in so games can start.` },
         { kind: 'head', label: 'Games it doesn’t find' },
-      ] : [{ kind: 'note', label: 'Add installed games from this PC. Your online account library is not synced. Keep the service’s launcher signed in for games that require it.' }]),
+      ] : [{ kind: 'note', label: `Add installed games from ${HERE}. Your online account library is not synced. Keep the service’s launcher signed in for games that require it.` }]),
       { kind: 'row', logo: service.logo, ic: service.ic, label: 'Add games folder', sub: 'Choose the folder containing your installed games, with one subfolder per game', act: () => add('pc') },
       { kind: 'row', ic: icon('folder'), label: 'Add a game or launcher', sub: 'Choose a specific .exe; you can change its app location later', act: () => add('game') },
       ...d.libraries.filter(l => l.provider === service.id).map(l => removable(l.id, l.type === 'game' ? 'Game or launcher' : 'Games folder', l.path, '/api/libraries/remove', { id: l.id })),
@@ -2342,7 +2343,7 @@ function panelItems() {
     ...autologonRows(d),
     ...(/Windows/.test(navigator.userAgent) ? [{ kind: 'row', ic: icon('pad'), label: 'Open with the Xbox button', value: onOff(d.options.guideOpens), sub: 'The Xbox button on a controller opens Ultra Front End, or brings it to the front; so does holding View + Start, which also works through Steam (Steam keeps the Xbox and Steam buttons for itself while it runs). A Steam Controller’s Steam button does it with a double-press or a hold. In a game, they open the overlay.', act: () => setOpt('guideOpens') }] : []),
     { kind: 'row', label: 'Installed Steam games', value: d.steamDetected ? onOff(d.options.steamLocal) : 'Steam not found',
-      sub: !d.steamDetected ? '' : d.options.steamLocal ? `${d.localSteamCount} found on this PC` : 'Off: your installed Steam games are hidden', act: () => d.steamDetected && setOpt('steamLocal') },
+      sub: !d.steamDetected ? '' : d.options.steamLocal ? `${d.localSteamCount} found on ${HERE}` : 'Off: your installed Steam games are hidden', act: () => d.steamDetected && setOpt('steamLocal') },
     { kind: 'row', label: 'Show games that aren’t installed', value: onOff(d.options.showUninstalled),
       sub: acc.steam || acc.epic ? 'Owned games from your accounts' : 'Owned games from connected accounts (none connected)', act: () => setOpt('showUninstalled') },
     { kind: 'row', label: 'UI scale', value: `${Math.round(uiScale() * 100)}%`, sub: 'Press left or right to make everything bigger or smaller', bar: (uiScale() - SCALE.min) / (SCALE.max - SCALE.min) * 100,
@@ -2378,7 +2379,7 @@ function launcherRows(d, setup) {
       return { kind: 'row', key: 'launcher-' + l.id, logo: LAUNCHER_LOGO[l.id], label: l.name,
         value: l.installed ? '✓ Installed' : job ? (job.state === 'failed' ? 'Try again' : jobValue(job)) : 'Install',
         sub: l.installed ? '' : job?.state === 'failed' ? `Install failed: ${job.error}` : job?.state === 'installing' && job.stage ? progressText(job)
-          : job ? 'Waiting to install' : 'Not installed on this PC',
+          : job ? 'Waiting to install' : `Not installed on ${HERE}`,
         ...jobBar({ job }), act: () => l.installed ? toast(`${l.name} is installed`, 2000) : install(l) };
     }),
   ];
@@ -2536,7 +2537,8 @@ async function chooseRomRoot(useDefault) {
 
 // ---------- first-time setup guide ----------
 // Runs inside the panel as a centred card: welcome, profile, time zone, accounts, games, done.
-const SETUP_STEPS = ['setup-welcome', 'setup-profile', 'setup-time', 'setup-accounts', 'setup-games', 'setup-systems', 'setup-extras', 'setup-startup', 'setup-done'];
+// a Mac has no Windows-only extras (the performance overlay) or start-with-Windows step
+const SETUP_STEPS = ['setup-welcome', 'setup-profile', 'setup-time', 'setup-accounts', 'setup-games', 'setup-systems', ...(ON_MAC ? [] : ['setup-extras', 'setup-startup']), 'setup-done'];
 const SETUP_TITLES = { 'setup-welcome': 'Ultra Front End', 'setup-profile': 'Your profile', 'setup-time': 'Time zone', 'setup-accounts': 'Accounts',
   'setup-games': 'Emulators & games', 'setup-systems': 'Your systems', 'setup-extras': 'Extras', 'setup-startup': 'Starting up', 'setup-done': 'All done' };
 // Start with Windows: the choices, in Settings and in the setup guide
@@ -2553,7 +2555,7 @@ function autologonRows(d, setup) {
   if (!al?.available) return [];
   const sure = P.confirm === 'autologon';
   const sub = al.on ? 'Windows skips its sign-in screen when the PC starts and when it wakes from sleep'
-    : sure ? 'Anyone who turns on this PC is signed in as you. Press A again to turn it on'
+    : sure ? `Anyone who turns on ${HERE} is signed in as you. Press A again to turn it on`
     : al.other ? `Windows signs in ${al.other} by itself now. Turn it on to sign in ${al.user} instead`
     : 'Skip Windows’ sign-in screen, so the PC goes straight to Ultra Front End. Windows asks for permission first';
   return [
@@ -2635,9 +2637,9 @@ function setupItems(d, prof) {
       return [
         { kind: 'note', label: 'Emulated games: pick one ROMs folder and the frontend makes a subfolder for every console. Drop your ROMs and ISOs into the right one.' },
         ...(d.romRoot ? [{ kind: 'row', label: 'ROMs folder', sub: d.romRoot, value: '✓ Change', act: chooseRomRoot }]
-          : [{ kind: 'row', label: 'Use C:\\ROMs (recommended)', sub: 'A folder for each system you play goes inside', value: 'Use', act: () => chooseRomRoot(true) },
+          : [{ kind: 'row', label: ON_MAC ? 'Use the ROMs folder in your home folder (recommended)' : 'Use C:\\ROMs (recommended)', sub: ON_MAC ? '~/ROMs, with a folder for each system you play inside' : 'A folder for each system you play goes inside', value: 'Use', act: () => chooseRomRoot(true) },
             { kind: 'row', label: 'Choose a different folder', sub: 'Somewhere else, like another drive', value: 'Choose', act: chooseRomRoot }]),
-        { kind: 'row', label: 'Find installed emulators', sub: withEmu.length ? `Ready: ${withEmu.map(p => `${p.name} (${p.emulator})`).join(', ')}` : 'Looks for emulators already on this PC', act: () => work(api('/api/emulators/find', {})).then(r => r && toast(r.found ? `Found ${r.found} emulator${r.found === 1 ? '' : 's'}` : 'No new emulators found', 3000)) },
+        { kind: 'row', label: 'Find installed emulators', sub: withEmu.length ? `Ready: ${withEmu.map(p => `${p.name} (${p.emulator})`).join(', ')}` : `Looks for emulators already on ${HERE}`, act: () => work(api('/api/emulators/find', {})).then(r => r && toast(r.found ? `Found ${r.found} emulator${r.found === 1 ? '' : 's'}` : 'No new emulators found', 3000)) },
         { kind: 'row', label: '+ Add a folder of PC games', act: () => addLib('pc'), value: pc.length ? '✓ Add another' : '',  // what's been added stays on show
           sub: pc.length ? pc.map(l => `${l.path} · ${l.count} game${l.count === 1 ? '' : 's'}`).join('; ') : 'Optional: decompiled ports or DRM-free games' },
         next,
