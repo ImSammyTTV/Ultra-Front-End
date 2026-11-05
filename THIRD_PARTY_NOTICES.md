@@ -37,7 +37,6 @@ The Android app (`UltraFrontEnd-android.apk`, built from `android/`) runs the sa
 | Component | Licence | Source |
 |---|---|---|
 | AndroidX Core (androidx.core:core-ktx 1.13.1) and the AndroidX and Kotlin libraries it brings with it | [Apache-2.0](licenses/AndroidX-Apache-2.0.txt) | https://developer.android.com/jetpack/androidx |
-| Emulator package names and launch intents in `android/app/src/main/assets/systems.json`, made by `tools/make_android_tables.py` from ES-DE's Android tables (`es_systems.xml`, `es_find_rules.xml`) | [MIT](licenses/ES-DE-LICENSE.txt), Copyright (c) 2024-2026 Northwestern Software AB, (c) 2020-2024 Leon Styhre, (c) 2014 Alec Lofquist | https://gitlab.com/es-de/emulationstation-de |
 
 ## Required credits
 

@@ -1,0 +1,431 @@
+{
+ "about": "Ultra Front End's own table: each Android emulator app and how a game is started in it (checked against that emulator's own source, see 'source'), and the emulators for each console in order of preference.",
+ "apps": {
+  "dolphin": {
+   "name": "Dolphin",
+   "packages": [
+    "org.dolphinemu.dolphinemu"
+   ],
+   "activity": "org.dolphinemu.dolphinemu.ui.main.MainActivity",
+   "data": "{uri}",
+   "flags": [
+    "clearTask"
+   ],
+   "site": "https://play.google.com/store/apps/details?id=org.dolphinemu.dolphinemu",
+   "source": "dolphin-emu/dolphin: StartupHandler.kt reads intent.data (or AutoStartFile); MainActivity has no onNewIntent"
+  },
+  "azahar": {
+   "name": "Azahar",
+   "packages": [
+    "org.azahar_emu.azahar",
+    "io.github.lime3ds.android"
+   ],
+   "activity": "org.citra.citra_emu.activities.EmulationActivity",
+   "action": "android.intent.action.VIEW",
+   "data": "{uri}",
+   "site": "https://azahar-emu.org/",
+   "source": "azahar-emu/azahar: GameHelper.getLaunchUri reads intent.data; content:// only"
+  },
+  "melonds": {
+   "name": "melonDS",
+   "packages": [
+    "me.magnum.melonds",
+    "me.magnum.melonds.nightly"
+   ],
+   "activity": "me.magnum.melonds.ui.emulator.EmulatorActivity",
+   "action": "{package}.LAUNCH_ROM",
+   "data": "{uri}",
+   "flags": [
+    "clearTask"
+   ],
+   "site": "https://play.google.com/store/apps/details?id=me.magnum.melonds",
+   "source": "rafaelvcaetano/melonDS-android: LaunchArgs.fromIntent reads intent.data; action ${applicationId}.LAUNCH_ROM"
+  },
+  "eden": {
+   "name": "Eden",
+   "packages": [
+    "dev.eden.eden_emulator",
+    "dev.eden.eden_emulator.nightly"
+   ],
+   "activity": "org.yuzu.yuzu_emu.activities.EmulationActivity",
+   "action": "android.intent.action.VIEW",
+   "data": "{uri}",
+   "site": "https://eden-emu.dev/",
+   "source": "git.eden-emu.dev/eden-emu/eden: EmulationFragment reads intent.data; content:// only"
+  },
+  "mupen64plus": {
+   "name": "Mupen64Plus AE",
+   "packages": [
+    "org.mupen64plusae.v3.alpha"
+   ],
+   "activity": "paulscode.android.mupen64plusae.SplashActivity",
+   "action": "android.intent.action.VIEW",
+   "data": "{uri}",
+   "site": "https://github.com/mupen64plus-ae/mupen64plus-ae/releases",
+   "source": "mupen64plus-ae/mupen64plus-ae: ActivityHelper passes intent.data on as ROM_PATH"
+  },
+  "ppsspp": {
+   "name": "PPSSPP",
+   "packages": [
+    "org.ppsspp.ppssppgold",
+    "org.ppsspp.ppsspp"
+   ],
+   "activity": "org.ppsspp.ppsspp.PpssppActivity",
+   "action": "android.intent.action.VIEW",
+   "data": "{uri}",
+   "site": "https://play.google.com/store/apps/details?id=org.ppsspp.ppsspp",
+   "source": "hrydgard/ppsspp: PpssppActivity.parseIntent reads intent.getData()"
+  },
+  "armsx2": {
+   "name": "ARMSX2",
+   "packages": [
+    "com.armsx2",
+    "com.armsx2.nightly"
+   ],
+   "activity": "com.armsx2.Main",
+   "action": "android.intent.action.VIEW",
+   "data": "{uri}",
+   "site": "https://github.com/ARMSX2/ARMSX2/releases",
+   "source": "ARMSX2/ARMSX2: MainActivityRuntime.extractLaunchUri reads intent.data first"
+  },
+  "flycast": {
+   "name": "Flycast",
+   "packages": [
+    "com.flycast.emulator"
+   ],
+   "activity": "com.flycast.emulator.NativeGLActivity",
+   "action": "android.intent.action.VIEW",
+   "data": "{uri}",
+   "flags": [
+    "clearTask"
+   ],
+   "site": "https://play.google.com/store/apps/details?id=com.flycast.emulator",
+   "source": "flyinghead/flycast: BaseGLActivity reads ACTION_VIEW data in onCreate only"
+  },
+  "mame4droid": {
+   "name": "MAME4droid",
+   "packages": [
+    "com.seleuco.mame4d2024"
+   ],
+   "activity": "com.seleuco.mame4droid.MAME4droid",
+   "action": "android.intent.action.VIEW",
+   "data": "{uri}",
+   "site": "https://play.google.com/store/apps/details?id=com.seleuco.mame4d2024",
+   "source": "seleuco/MAME4droid-Current: Emulator.java reads intent.getData(); the file name must be the MAME set name"
+  },
+  "ruffle": {
+   "name": "Ruffle",
+   "packages": [
+    "rs.ruffle"
+   ],
+   "activity": "rs.ruffle.PlayerActivity",
+   "action": "android.intent.action.VIEW",
+   "data": "{uri}",
+   "site": "https://github.com/ruffle-rs/ruffle-android/releases",
+   "source": "ruffle-rs/ruffle-android: PlayerActivity reads intent.data (content://)"
+  },
+  "retroarch": {
+   "name": "RetroArch",
+   "packages": [
+    "com.retroarch.aarch64",
+    "com.retroarch",
+    "com.retroarch.ra32"
+   ],
+   "activity": "com.retroarch.browser.retroactivity.RetroActivityFuture",
+   "flags": [
+    "clearTask"
+   ],
+   "extras": {
+    "ROM": "{path}",
+    "LIBRETRO": "/data/data/{package}/cores/{core}_libretro_android.so"
+   },
+   "site": "https://play.google.com/store/apps/details?id=com.retroarch",
+   "source": "libretro/RetroArch: platform_unix.c reads String extras ROM and LIBRETRO; cores in <dataDir>/cores/<core>_libretro_android.so",
+   "cores": {
+    "snes9x": "Snes9x",
+    "bsnes": "bsnes",
+    "mesen": "Mesen",
+    "nestopia": "Nestopia",
+    "fceumm": "FCEUmm",
+    "mgba": "mGBA",
+    "vba_next": "VBA Next",
+    "gpsp": "gpSP",
+    "gambatte": "Gambatte",
+    "sameboy": "SameBoy",
+    "mednafen_vb": "Beetle VB",
+    "pokemini": "PokeMini",
+    "gw": "Game & Watch",
+    "pcsx_rearmed": "PCSX ReARMed",
+    "swanstation": "SwanStation",
+    "mednafen_psx_hw": "Beetle PSX HW",
+    "ppsspp": "PPSSPP",
+    "dolphin": "Dolphin",
+    "melonds": "melonDS",
+    "desmume": "DeSmuME",
+    "mupen64plus_next": "Mupen64Plus-Next",
+    "parallel_n64": "ParaLLEl N64",
+    "flycast": "Flycast",
+    "yabasanshiro": "YabaSanshiro",
+    "mednafen_saturn": "Beetle Saturn",
+    "genesis_plus_gx": "Genesis Plus GX",
+    "picodrive": "PicoDrive",
+    "mednafen_pce_fast": "Beetle PCE Fast",
+    "mednafen_pce": "Beetle PCE",
+    "mednafen_pcfx": "Beetle PC-FX",
+    "fbneo": "FinalBurn Neo",
+    "neocd": "NeoCD",
+    "mednafen_ngp": "Beetle NeoPop",
+    "race": "RACE",
+    "virtualjaguar": "Virtual Jaguar",
+    "handy": "Handy",
+    "mednafen_lynx": "Beetle Lynx",
+    "prosystem": "ProSystem",
+    "a5200": "a5200",
+    "atari800": "Atari800",
+    "stella": "Stella",
+    "hatari": "Hatari",
+    "mednafen_wswan": "Beetle Cygne",
+    "mame2003_plus": "MAME 2003-Plus",
+    "opera": "Opera",
+    "same_cdi": "SAME CDi",
+    "gearcoleco": "Gearcoleco",
+    "bluemsx": "blueMSX",
+    "freeintv": "FreeIntv",
+    "vecx": "vecx",
+    "o2em": "O2EM",
+    "dosbox_pure": "DOSBox Pure",
+    "scummvm": "ScummVM",
+    "vice_x64sc": "VICE x64sc",
+    "vice_xvic": "VICE xvic",
+    "puae": "PUAE",
+    "fuse": "Fuse",
+    "cap32": "Caprice32",
+    "crocods": "CrocoDS",
+    "fmsx": "fMSX"
+   }
+  }
+ },
+ "systems": {
+  "PS2": [
+   "armsx2"
+  ],
+  "PS1": [
+   "retroarch:pcsx_rearmed",
+   "retroarch:swanstation",
+   "retroarch:mednafen_psx_hw"
+  ],
+  "PSP": [
+   "ppsspp",
+   "retroarch:ppsspp"
+  ],
+  "Switch": [
+   "eden"
+  ],
+  "Wii": [
+   "dolphin",
+   "retroarch:dolphin"
+  ],
+  "GameCube": [
+   "dolphin",
+   "retroarch:dolphin"
+  ],
+  "N64": [
+   "mupen64plus",
+   "retroarch:mupen64plus_next",
+   "retroarch:parallel_n64"
+  ],
+  "64DD": [
+   "retroarch:mupen64plus_next",
+   "retroarch:parallel_n64"
+  ],
+  "SNES": [
+   "retroarch:snes9x",
+   "retroarch:bsnes"
+  ],
+  "NES": [
+   "retroarch:mesen",
+   "retroarch:nestopia",
+   "retroarch:fceumm"
+  ],
+  "FDS": [
+   "retroarch:mesen",
+   "retroarch:nestopia",
+   "retroarch:fceumm"
+  ],
+  "3DS": [
+   "azahar"
+  ],
+  "DS": [
+   "melonds",
+   "retroarch:melonds",
+   "retroarch:desmume"
+  ],
+  "GBA": [
+   "retroarch:mgba",
+   "retroarch:vba_next",
+   "retroarch:gpsp"
+  ],
+  "GBC": [
+   "retroarch:gambatte",
+   "retroarch:sameboy",
+   "retroarch:mgba"
+  ],
+  "Game Boy": [
+   "retroarch:gambatte",
+   "retroarch:sameboy",
+   "retroarch:mgba"
+  ],
+  "Virtual Boy": [
+   "retroarch:mednafen_vb"
+  ],
+  "Pokemon Mini": [
+   "retroarch:pokemini"
+  ],
+  "Game & Watch": [
+   "retroarch:gw"
+  ],
+  "Dreamcast": [
+   "flycast",
+   "retroarch:flycast"
+  ],
+  "NAOMI": [
+   "flycast",
+   "retroarch:flycast"
+  ],
+  "NAOMI 2": [
+   "flycast",
+   "retroarch:flycast"
+  ],
+  "Atomiswave": [
+   "flycast",
+   "retroarch:flycast"
+  ],
+  "Saturn": [
+   "retroarch:yabasanshiro",
+   "retroarch:mednafen_saturn"
+  ],
+  "Sega CD": [
+   "retroarch:genesis_plus_gx",
+   "retroarch:picodrive"
+  ],
+  "32X": [
+   "retroarch:picodrive"
+  ],
+  "Genesis": [
+   "retroarch:genesis_plus_gx",
+   "retroarch:picodrive"
+  ],
+  "Master System": [
+   "retroarch:genesis_plus_gx",
+   "retroarch:picodrive"
+  ],
+  "Game Gear": [
+   "retroarch:genesis_plus_gx",
+   "retroarch:picodrive"
+  ],
+  "SG-1000": [
+   "retroarch:genesis_plus_gx"
+  ],
+  "PC Engine": [
+   "retroarch:mednafen_pce_fast",
+   "retroarch:mednafen_pce"
+  ],
+  "PC Engine CD": [
+   "retroarch:mednafen_pce_fast",
+   "retroarch:mednafen_pce"
+  ],
+  "PC-FX": [
+   "retroarch:mednafen_pcfx"
+  ],
+  "Neo Geo": [
+   "retroarch:fbneo",
+   "mame4droid"
+  ],
+  "Neo Geo CD": [
+   "retroarch:neocd"
+  ],
+  "Neo Geo Pocket": [
+   "retroarch:mednafen_ngp",
+   "retroarch:race"
+  ],
+  "Atari Jaguar": [
+   "retroarch:virtualjaguar"
+  ],
+  "Atari Lynx": [
+   "retroarch:handy",
+   "retroarch:mednafen_lynx"
+  ],
+  "Atari 7800": [
+   "retroarch:prosystem"
+  ],
+  "Atari 5200": [
+   "retroarch:a5200",
+   "retroarch:atari800"
+  ],
+  "Atari 2600": [
+   "retroarch:stella"
+  ],
+  "Atari ST": [
+   "retroarch:hatari"
+  ],
+  "Atari 8-bit": [
+   "retroarch:atari800"
+  ],
+  "WonderSwan": [
+   "retroarch:mednafen_wswan"
+  ],
+  "Arcade": [
+   "mame4droid",
+   "retroarch:fbneo",
+   "retroarch:mame2003_plus"
+  ],
+  "3DO": [
+   "retroarch:opera"
+  ],
+  "CD-i": [
+   "retroarch:same_cdi"
+  ],
+  "ColecoVision": [
+   "retroarch:gearcoleco",
+   "retroarch:bluemsx"
+  ],
+  "Intellivision": [
+   "retroarch:freeintv"
+  ],
+  "Vectrex": [
+   "retroarch:vecx"
+  ],
+  "Odyssey 2": [
+   "retroarch:o2em"
+  ],
+  "DOS": [
+   "retroarch:dosbox_pure"
+  ],
+  "ScummVM": [
+   "retroarch:scummvm"
+  ],
+  "C64": [
+   "retroarch:vice_x64sc"
+  ],
+  "VIC-20": [
+   "retroarch:vice_xvic"
+  ],
+  "Amiga": [
+   "retroarch:puae"
+  ],
+  "ZX Spectrum": [
+   "retroarch:fuse"
+  ],
+  "Amstrad CPC": [
+   "retroarch:cap32",
+   "retroarch:crocods"
+  ],
+  "MSX": [
+   "retroarch:bluemsx",
+   "retroarch:fmsx"
+  ],
+  "Flash": [
+   "ruffle"
+  ]
+ }
+}

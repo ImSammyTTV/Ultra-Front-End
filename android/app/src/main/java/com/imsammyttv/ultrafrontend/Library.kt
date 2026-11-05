@@ -45,7 +45,7 @@ object Library {
     fun canReadFiles() = android.os.Build.VERSION.SDK_INT < 30 || Environment.isExternalStorageManager()
 
     /** Packages of every emulator we know, so they don't show up as games themselves. */
-    private val emulatorPackages by lazy { Systems.packages.values.flatten().map { it.substringBefore('/') }.toSet() }
+    private val emulatorPackages by lazy { Systems.allPackages() }
 
     fun installed(pkg: String) = try { ctx.packageManager.getPackageInfo(pkg, 0); true } catch (e: PackageManager.NameNotFoundException) { false }
 
