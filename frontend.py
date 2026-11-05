@@ -255,6 +255,11 @@ def tray_icon():
 
     def quit_(*_):
         icon.stop()
+        try:  # the closing animation first, when the window is open
+            if webview.windows and webview.windows[0].evaluate_js("window.playOutro ? (playOutro(), true) : false"):
+                time.sleep(1.8)
+        except Exception:
+            pass
         for w in webview.windows:
             w.destroy()
         import ctypes
