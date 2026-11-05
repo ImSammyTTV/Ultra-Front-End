@@ -1014,6 +1014,13 @@ body:not(.ready) #world, body:not(.ready) header, body:not(.ready) main, body:no
 /* ---------- startup intro: a glowing blue wave (app.js introWave), then a fade to the home screen ---------- */
 #intro { position: fixed; inset: 0; z-index: 60; background: #000; transition: opacity .6s ease-out; }
 #intro.out { opacity: 0; pointer-events: none; }
+/* the closing animation: dark over everything, then the wave folding back to nothing */
+#outro { position: fixed; inset: 0; z-index: 70; background: #000; opacity: 0; transition: opacity .3s ease-in; cursor: none; }
+#outro.on { opacity: 1; }
+#outro canvas { width: 100%; height: 100%; display: block; }
+#outro.flat { background: #000 url("assets/intro-wave.jpg") center / cover no-repeat; }
+#outro.flat.on { animation: outroFlat 1.5s ease-in forwards; }
+@keyframes outroFlat { to { background-size: 60% auto; opacity: 0; } }
 #introwave { display: block; width: 100%; height: 100%; }
 #intro.flat { background: #000 url("assets/intro-wave.jpg") center / cover no-repeat; animation: introFlat 1.2s .4s ease-out backwards; }
 @keyframes introFlat { from { filter: brightness(0); } }

@@ -672,8 +672,8 @@ function runIntro() {
 }
 // Drawn live, after the look of the Kling test: a flat line of light swells into a wave of hairline contours that
 // pinch together at drifting nodes around a soft icy core. Being drawn, it stays sharp at any resolution.
-function introWave() {
-  const c = $('#introwave'), dpr = devicePixelRatio || 1;
+function introWave(c = $('#introwave'), clock = s => s, alive = () => !!$('#intro')) {  // clock: the wave's time from seconds shown (the outro runs it backwards)
+  const dpr = devicePixelRatio || 1;
   c.width = Math.round(innerWidth * dpr); c.height = Math.round(innerHeight * dpr);  // device pixels, so the hairlines stay sharp when Windows scales the display
   const gl = c.getContext('webgl', { antialias: false, alpha: false });
   if (!gl) return false;
@@ -720,8 +720,8 @@ function introWave() {
   gl.uniform1f(gl.getUniformLocation(prog, 'k'), Math.max(1, 16 / 9 / (c.width / c.height)));
   const uT = gl.getUniformLocation(prog, 't'), t0 = performance.now();
   const frame = now => {
-    if (!$('#intro')) return;
-    gl.uniform1f(uT, (now - t0) / 1000);
+    if (!alive()) return;
+    gl.uniform1f(uT, clock((now - t0) / 1000));
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     requestAnimationFrame(frame);
   };
@@ -777,9 +777,29 @@ function sysMenu(title, items) {
   quickFocus();
 }
 function quitFrontend() {
-  if (window.pywebview?.api?.quit) window.pywebview.api.quit();
-  else window.close();
+  playOutro(() => {
+    if (window.pywebview?.api?.quit) window.pywebview.api.quit();
+    else window.close();
+  });
 }
+// The closing animation: the screen goes dark and the intro's wave plays backwards, folding into a line of light that
+// closes to the middle, with the closing sound; then the window goes. Off with the intro (Settings › General).
+let outroOn = false;
+function playOutro(done = () => {}) {
+  if (outroOn) return;
+  if (!API || !introOn()) return done();
+  outroOn = true;
+  const el = document.createElement('div');
+  el.id = 'outro'; el.innerHTML = '<canvas></canvas>';
+  document.body.appendChild(el);
+  api('/api/introsound', { play: true, outro: true }).catch(() => {});
+  const SHOWN = 1.5, FROM = 2.9;  // the wave from fully open back to nothing, in a second and a half
+  const drawn = introWave(el.querySelector('canvas'), s => Math.max(0, FROM * (1 - s / SHOWN)), () => el.isConnected);
+  if (!drawn) el.classList.add('flat');  // no WebGL: the still wave fades
+  raf2(() => el.classList.add('on'));
+  setTimeout(done, SHOWN * 1000 + 250);
+}
+window.playOutro = playOutro;  // the tray's Exit asks for it too
 let toastT;
 function toast(msg, ms = 2200) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), ms); }
 async function activate() {
@@ -960,6 +980,31 @@ async function afterLibraryChange() {
   await loadLibrary(); renderTabs(); buildRow(false);
   if (D.open) D.game = LIB.find(x => x.id === D.game.id) || D.game;  // the ⋯ and Y menus read it
 }
+// Game info: the description, screenshots and trailers are found by the game's name. A rename (or an odd folder name) can
+// find another game's: look it up by the right name instead, or write the description yourself.
+function openInfoMenu(g) {
+  sysMenu('Game info', [
+    { label: 'Look up info as…', ic: icon('search'), run: () => {
+      openSearch(null, text => setGameInfo(g, { infoAs: text.trim() }, text.trim() ? `Looking it up as ${text.trim()}` : 'Looking it up by its name'),
+        { id: 'infoas', label: `The game's real name, to find its description, screenshots and trailers`, max: 120 });
+      $('#srq').value = g.title; searchRun();
+    } },
+    { label: 'Write a description', ic: icon('keyboard'), run: () => {
+      openSearch(null, text => setGameInfo(g, { description: text.trim() }, text.trim() ? 'Description saved' : 'Description back to automatic'),
+        { id: 'desc', label: `A description of ${g.title}`, max: 3000 });
+      $('#srq').value = D.open && D.game?.id === g.id && D.data?.descSource === 'Your own description' ? D.data.description : ''; searchRun();
+    } },
+    ...(g.customInfo ? [{ label: 'Restore game info', ic: icon('reset'), run: () => setGameInfo(g, { reset: true }, 'Game info back to automatic') }] : []),
+  ]);
+}
+async function setGameInfo(g, change, done) {
+  try { await api('/api/game/info', { id: g.id, ...change }); } catch (e) { return toast(e.message); }
+  delete DCACHE[g.id];  // the details the window kept are the old ones
+  await afterLibraryChange();
+  const now = LIB.find(x => x.id === g.id) || g;
+  if (D.open && D.game?.id === g.id) openDetails(now);  // looked up again, at once
+  toast(done, 3000);
+}
 // A name of your own for a game, typed on the on-screen keyboard (or a real one), starting from the name it has now
 function renameGame(g) {
   openSearch(null, text => setGameName(g, text.trim()), { id: 'rename', label: `New name for ${g.title}`, max: 120 });
@@ -968,6 +1013,7 @@ function renameGame(g) {
 async function setGameName(g, title) {
   if (title === g.title) return;
   try { await api('/api/game/rename', { id: g.id, title }); } catch (e) { return toast(e.message); }
+  delete DCACHE[g.id];  // a new name can find other details
   await afterLibraryChange();
   if (D.open) renderDetails();  // its title, now
   toast(title ? `Renamed to ${title}` : 'Original name restored');
@@ -1721,7 +1767,7 @@ function renderAlbum() {
       <div class="al-meta">${esc(fmtWhen(c.created))}${c.kind === 'video' && c.duration ? ` · ${fmtClock(c.duration)}` : ''}</div></div>`;
   });
   const how = 'In a game, use the overlay, or hold View and press RB for a screenshot and View + LB to start or stop recording.';
-  $('#albumpage .al-grid').innerHTML = html || `<div class="d-empty">${AL.still ? (AL.view === 'video' ? 'No gameplay recordings yet.' : 'No screenshots yet.') : 'Install Still to capture screenshots and gameplay.'}</div>`;
+  $('#albumpage .al-grid').innerHTML = html || `<div class="d-empty">${AL.still ? (AL.view === 'video' ? 'No gameplay recordings yet.' : 'No screenshots yet.') : 'Take a screenshot or record a video from the in-game menu while you play, and it shows up here.'}</div>`;
   $('#albumpage .np-sub').textContent = how + (items.length ? ' Y deletes.' : '');
   albumFocus();
 }
@@ -1786,6 +1832,7 @@ function quickItems(g) {
     { label: 'Collections', ic: svg('library'), run: () => openCollections(g) },
     { label: 'Artwork', ic: svg('image'), run: () => openArtMenu(g) },
     { label: 'Rename', ic: svg('keyboard'), run: () => renameGame(g) },
+    { label: 'Game info', ic: svg('news'), run: () => openInfoMenu(g) },
     ...(g.renamed ? [{ label: 'Restore original name', ic: svg('reset'), run: () => setGameName(g, '') }] : []),
     ...(g.source !== 'Emulators' || g.appPath ? [{ label: 'App location', ic: svg('folder'), run: () => openLocationMenu(g) }] : []),
     { label: g.hidden ? 'Unhide game' : 'Hide game', ic: svg(g.hidden ? 'eye' : 'eyeoff'), run: () => setHidden(g, !g.hidden) },
@@ -2062,17 +2109,19 @@ function updateRows(u) {
   if (!u) return [];
   const ready = u.latest && u.state === 'ready';
   const note = u.off || u.error || { checking: 'Checking for a new version…', downloading: `Downloading version ${u.latest}…`,
-    ready: `Version ${u.latest} is ready. It installs by itself once the frontend is closed.`, installing: `Installing version ${u.latest}…`,
+    ready: `Version ${u.latest} is ready. It installs by itself when the frontend is closed or left alone for a few minutes.`, installing: `Installing version ${u.latest}…`,
     installed: `Version ${u.latest} is installed and takes over the next time the frontend opens` }[u.state]
     || (u.latest ? `Version ${u.latest} is available` : u.state === 'current' ? 'This is the newest version' : 'Looks for new versions every few hours');
   return [{ kind: 'info', label: `Version ${u.version}`, sub: note },
-    ...(u.off ? [] : [{ kind: 'row', label: ready ? 'Install the update now' : 'Check for updates', sub: ready ? 'The frontend closes and opens again on the new version' : '',
-      act: () => updateNow(ready ? 'install' : 'check') }])];
+    // one press: it checks, downloads, and the frontend opens again on the new version (never over a game)
+    ...(u.off ? [] : [{ kind: 'row', label: u.latest ? `Update now to version ${u.latest}` : 'Check for updates',
+      sub: u.latest ? 'The frontend closes and opens again on the new version' : 'If there’s a new version, it installs and the frontend opens again on it',
+      act: () => updateNow('install') }])];
 }
 async function updateNow(action) {
   let u;
   try { u = await api('/api/update', { action }); } catch (e) { return toast(e.message); }
-  if (action === 'install') toast('Installing the update…', 4000);
+  if (action === 'install') toast(u.latest ? `Updating to version ${u.latest}…` : 'Checking for a new version…', 4000);
   for (let i = 0; i < 120 && P.open && P.view === 'about' && ['checking', 'downloading', 'installing'].includes(u.state); i++) {  // show progress while About is open
     if (P.data) P.data.update = u;
     renderPanel();
@@ -2081,6 +2130,10 @@ async function updateNow(action) {
   }
   if (P.data) P.data.update = u;
   renderPanel();
+  // say how it went, so pressing it never looks like nothing happened
+  toast(u.error || u.off || { current: 'You have the newest version', ready: `Version ${u.latest} is ready: choose Update now`,
+    installed: `Version ${u.latest} takes over the next time the frontend opens`, checking: 'Still checking…', downloading: `Still downloading version ${u.latest}…` }[u.state]
+    || (u.latest ? `Version ${u.latest} is available` : 'Couldn’t reach GitHub just now. Try again in a minute'), 5000);
 }
 // After an update, once: which version this is now
 if (API) api('/api/update').then(u => {
@@ -2089,6 +2142,25 @@ if (API) api('/api/update').then(u => {
   api('/api/update', { action: 'seen' }).catch(() => {});
 }).catch(() => {});
 if (API) api('/api/whatsnew/unseen').then(r => { if (r.unseen) { NEWS_DOT = true; drawButtons(); } }).catch(() => {});
+// An update that arrives while the frontend is open waits for it to close (never mid-game): say so once, with the way to install it now
+// and left alone for three minutes with no game running, it updates by itself and opens again (a handheld is rarely closed)
+let readyShown = '', lastActive = Date.now();
+['pointerdown', 'pointermove', 'keydown', 'wheel'].forEach(t => addEventListener(t, () => { lastActive = Date.now(); }, { passive: true }));
+if (API) setInterval(async () => {
+  if (RUN.size) return;  // never over a game
+  try {
+    const u = await api('/api/update');
+    if (u.state !== 'ready' || !u.latest) return;
+    if (Date.now() - lastActive > 180000) {
+      toast(`Updating to version ${u.latest}…`, 4000);
+      return api('/api/update', { action: 'install' }).catch(() => {});
+    }
+    if (readyShown !== u.latest && !(P.open && P.view === 'about')) {
+      readyShown = u.latest;
+      toast(`Version ${u.latest} is ready. Update now from Settings › About, or it installs when the frontend is left alone`, 8000);
+    }
+  } catch {}
+}, 60000);
 async function openPanel(view = P.cat || SETTINGS[0].id) {  // the category used last this session, or the first
   if (view === 'main') view = P.cat || SETTINGS[0].id;
   P.open = true; P.view = view; P.focus = 0; P.confirm = null; P.game = null; P.side = true;
@@ -2345,7 +2417,7 @@ function panelItems() {
     { kind: 'row', label: '+ Add a single game', sub: 'Pick any game’s .exe', act: () => addLib('game') },
   ];
   if (P.view === 'artwork') return [
-    { kind: 'row', ic: icon('bolt'), label: 'Startup intro', value: onOff(introOn()), sub: 'The short animation and sound when the frontend opens', act: () => { try { localStorage.setItem('fe-intro', introOn() ? 'off' : 'on'); } catch {} renderPanel(); } },
+    { kind: 'row', ic: icon('bolt'), label: 'Intro and outro', value: onOff(introOn()), sub: 'The short animation and sound when the frontend opens and closes', act: () => { try { localStorage.setItem('fe-intro', introOn() ? 'off' : 'on'); } catch {} renderPanel(); } },
     { kind: 'row', ic: icon('wide'), label: 'Full-screen game art', value: onOff(d.options.artBackground), sub: 'The selected game’s art fills the home screen behind the row, instead of the night scenery', act: () => setOpt('artBackground').then(() => { S.artBg = P.data.options.artBackground; applyBackgroundMode(); }) },
     { kind: 'row', label: 'Find artwork & info online', value: onOff(d.options.onlineCovers), sub: 'Covers, logos, backgrounds and descriptions for games that don’t have them', act: () => setOpt('onlineCovers') },
     { kind: 'row', img: SGDB_LOGO, label: 'SteamGridDB', value: acc.sgdb ? 'Connected' : 'Optional', sub: 'More artwork to choose from, animated covers and backgrounds', act: () => acc.sgdb ? toast('SteamGridDB is connected') : setView('sgdb') },
@@ -2368,7 +2440,7 @@ function panelItems() {
     // the app's own window is always full screen (and a page can't go full screen from a controller press)
     ...(window.pywebview ? [] : [{ kind: 'row', label: 'Fullscreen', value: onOff(!!document.fullscreenElement), act: () => { toggleFS(); setTimeout(renderPanel, 300); } }]),
     { kind: 'row', label: 'Rescan everything', sub: 'Look for new games in every library and account', act: () => work(api('/api/rescan', {}), 'Library updated') },
-    ...(d.extras?.presentmon?.available ? [{ kind: 'head', label: 'Extras' }, ...extraRows(d)] : []),
+    ...(d.extras?.presentmon?.available || d.extras?.recorder?.available ? [{ kind: 'head', label: 'Extras' }, ...recorderRows(d), ...extraRows(d)] : []),
     ...d.errors.map(e => ({ kind: 'note', warn: true, label: e })),
   ];
 }
@@ -2396,6 +2468,26 @@ function launcherRows(d, setup) {
           : job ? 'Waiting to install' : `Not installed on ${HERE}`,
         ...jobBar({ job }), act: () => l.installed ? toast(`${l.name} is installed`, 2000) : install(l) };
     }),
+  ];
+}
+// Video recording: the app's own copy of FFmpeg, fetched into its data folder. Screenshots need nothing extra.
+function recorderRows(d, setup) {
+  const rec = d.extras?.recorder;
+  if (!rec?.available) return [];
+  const job = rec.job && rec.job.state !== 'ready' ? rec.job : null, what = 'Record gameplay with sound from the in-game menu';
+  const install = () => job && job.state !== 'failed' ? toast('It’s on its way', 2500)
+    : work(api('/api/extras/install', { name: 'recorder' })).then(r => { if (r) { toast('Setting up video recording…', 3000); watchQueue(); } });
+  if (!rec.installed) return [{ kind: 'row', key: 'rec', ic: icon('album'), label: setup ? `Video recording: ${what}` : 'Video recording',
+    value: job ? (job.state === 'failed' ? 'Try again' : jobValue(job)) : setup ? '' : 'Set up',
+    sub: job?.state === 'failed' ? `Couldn’t set it up: ${job.error}` : job?.state === 'installing' && job.stage ? progressText(job) : job ? 'Downloading FFmpeg (about 80 MB, once)…'
+      : setup ? 'Press A to tick it. Ultra Front End downloads FFmpeg (about 80 MB, once) to record with' : `${what}. Downloads FFmpeg (about 80 MB, once)`,
+    ...jobBar({ job }), act: install }];
+  const rm = P.confirm === 'rec-rm';
+  return [
+    { kind: 'row', key: 'rec', ic: icon('album'), label: setup ? `Video recording: ${what}` : 'Video recording', value: setup ? '✓' : 'Ready',
+      sub: 'Record video and take screenshots from the in-game menu; they appear in the Album', act: () => toast('Ready: use Record video in the in-game menu', 3000) },
+    ...(setup ? [] : [{ kind: 'row', key: 'rec-rm', warn: rm, label: 'Remove video recording', sub: rm ? 'Press A / Enter again to remove' : 'Deletes FFmpeg from the data folder (your videos stay)',
+      act: () => rm ? work(api('/api/extras/remove', { name: 'recorder' }), 'Video recording removed') : (P.confirm = 'rec-rm', renderPanel()) }]),
   ];
 }
 function extraRows(d, setup) {
@@ -2668,13 +2760,13 @@ function setupItems(d, prof) {
       const save = install => work(api('/api/systems/choose', { systems: [...P.pick], install }));
       const go = { ...next, key: 'pick-next', primary: !todo.length,
         sub: todo.length ? `Installs the emulators for ${todo.length} ticked system${todo.length === 1 ? '' : 's'}` : P.pick.size ? `${P.pick.size} system${P.pick.size === 1 ? '' : 's'} ticked` : '',
-        act: async () => { if (await save(todo.length > 0)) { if (todo.length) { toast('Installing… you can carry on', 3000); watchQueue(); } setupGo(1); } } };
+        act: async () => { if (await save(todo.length > 0)) { if (todo.length) { toast('Installing… Windows may ask once for permission. You can carry on', 5000); watchQueue(); } setupGo(1); } } };
       return [
         { kind: 'note', label: 'Which systems do you play? Press A to tick or untick one. Each gets its own folder in your ROMs folder, and its emulator is installed for you.' },
         ...queueLine(d.queue),
         ...(todo.length ? [{ kind: 'row', key: 'pick-install', primary: true, label: `Install emulators for ${todo.length} system${todo.length === 1 ? '' : 's'}`,
           sub: 'One at a time, from each emulator’s own project. You can carry on while they install',
-          act: async () => { if (await save(true)) { toast('Installing… you can carry on', 3000); watchQueue(); } } }] : []),
+          act: async () => { if (await save(true)) { toast('Installing… Windows may ask once for permission. You can carry on', 5000); watchQueue(); } } }] : []),
         go,
         ...groupRows(known, p => ({ kind: 'row', key: 'pick-' + p.name, ...sysLogo(p.name), label: p.name, value: P.pick.has(p.name) ? '✓' : '', ...jobBar(p),
           sub: jobText(p) || [p.emulator ? `${p.emulator} · Ready` : p.recommended, p.count ? `${p.count} game${p.count === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · '),
@@ -2683,9 +2775,11 @@ function setupItems(d, prof) {
       ];
     }
     case 'setup-extras': {
-      const pm = d.extras?.presentmon, chosen = pm?.installed || pm?.job && pm.job.state !== 'failed';
+      const pm = d.extras?.presentmon, rec = d.extras?.recorder;
+      const chosen = pm?.installed || pm?.job && pm.job.state !== 'failed' || rec?.installed || rec?.job && rec.job.state !== 'failed';
       return [
         { kind: 'note', label: 'Optional extras. Press A to tick one and it installs. You can add or remove them later in Settings › General.' },
+        ...recorderRows(d, true),
         ...extraRows(d, true),
         { ...next, key: 'extras-next', label: chosen ? 'Next' : 'Skip', sub: chosen ? '' : 'Nothing extra for now' },
       ];
@@ -3200,7 +3294,7 @@ async function helperPad() {
 const LAST_INPUT = {};
 let lastSrc = null;  // 'key', 'xinput', 'pad' or 'mouse': A on a text field opens the on-screen keyboard unless it came from a real keyboard
 function inputFrom(src, act) {
-  wake();
+  wake(); lastActive = Date.now();
   const now = performance.now(), last = LAST_INPUT[act];
   if (last && last.src !== src && now - last.t < 220) return;
   LAST_INPUT[act] = { src, t: now }; lastSrc = src;
