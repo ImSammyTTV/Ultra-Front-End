@@ -116,8 +116,8 @@ and a UI scale setting.
   <sub>Quick Access (<b>View</b>)</sub>
 </td>
 <td align="center">
-  <img src="assets/screens/ingame.jpg" alt="The in-game menu beside a game: back to game, volume, screenshot, recording, close game and music" width="100%"><br>
-  <sub>In-game menu</sub>
+  <img src="assets/screens/ingame.jpg" alt="Quick Access over a game: back to game, volume, screenshot, recording, close game and music" width="100%"><br>
+  <sub>Quick Access in a game</sub>
 </td>
 </tr>
 <tr>

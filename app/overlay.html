@@ -5,48 +5,55 @@
 <title>Ultra Front End Overlay</title>
 <link rel="icon" href="icon.png">
 <style>
+  /* The in-game menu is Quick Access over a game: the frontend's own Quick Access panel (styles.css, .sp-*), on the right of
+     the screen, with the game's own choices on top. 1rem is 1vh of the screen while the window is 62% of the screen height
+     wide (as Quick Access is), and less when a portrait screen makes it narrower, so the panel's contents scale to fit. */
   * { box-sizing: border-box; }
-  /* 1rem is 1vh while the window is 46% of the screen height wide (as it is beside a landscape game), and less when a
-     portrait screen makes it narrower, so the panel's contents scale to fit */
-  html { font-size: min(1vh, 100vw / 45.8); }
+  html { font-size: min(1vh, 100vw / 62); }
   html, body { height: 100%; margin: 0; overflow: hidden; cursor: none; }
   body.glass { background: #1c1d1f center / 100% 100% no-repeat; }  /* the game behind, frosted, kept up to date (frontend.py) */
-  body { background: #1c1d1f; color: #fff; font-family: "Segoe UI Variable Display", "Segoe UI", sans-serif; opacity: 0; transition: opacity .16s ease-out; }
+  body { background: #1c1d1f; color: #fff; font-family: "Segoe UI Variable Display", "Segoe UI", sans-serif; opacity: 0; transition: opacity .16s ease-out;
+    --quiet: rgba(255, 255, 255, .62); --ink: #0e1014; }
   body.on { opacity: 1; }
-  #panel { position: absolute; inset: 0; padding: 5rem 1.6rem 3.6rem; display: flex; flex-direction: column; }  /* the window itself slides (frontend.py) */
-  #top { display: flex; gap: 2.4rem; padding: 0 2.8rem; align-items: flex-end; margin-bottom: 3rem; }
-  #cover { width: 11rem; height: 15rem; object-fit: cover; border-radius: 1rem; background: rgba(255, 255, 255, .06); flex: none; }
-  #head { min-width: 0; flex: 1; }
-  #clock { font-size: 2.6rem; }
-  #date { font-size: 1.8rem; color: rgba(255, 255, 255, .62); margin-bottom: 1.6rem; }
-  h1 { font-size: 3rem; line-height: 1.2; margin: 0; font-weight: 600; }
-  #stats { font-size: 1.8rem; color: rgba(255, 255, 255, .62); margin-top: .4rem; }
-  .item { display: flex; align-items: center; justify-content: space-between; min-height: 6.8rem; padding: .6rem 2.8rem; border-radius: 3.4rem; font-size: 2.6rem; }
-  .item.sel { background: #fff; color: #0e1014; }
-  .item.warn.sel { background: #dc2626; color: #fff; }  /* Close game: a red highlight, the label as the others */
-  .item small { font-size: 2.2rem; opacity: .7; }
-  .bar { height: .36rem; margin-top: 1rem; border-radius: .2rem; background: rgba(255, 255, 255, .22); }
+  #panel { position: absolute; inset: 0; padding: 5rem 1.6rem 4rem; display: flex; flex-direction: column; }  /* the window itself slides (frontend.py) */
+  h2 { margin: 0 3.6rem 1rem; font-size: 4.2rem; font-weight: 600; }
+  #time { margin: 0 3.6rem 2rem; font-size: 2.2rem; color: var(--quiet); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #time b { font-weight: 600; color: #fff; margin-right: 1.2rem; }
+  #game { display: flex; align-items: center; gap: 3rem; padding: .6rem 3.6rem 2.4rem; }
+  #cover { width: 6.4rem; height: 8.6rem; object-fit: cover; border-radius: .9rem; background: rgba(255, 255, 255, .06); flex: none; }
+  #game .text { min-width: 0; }
+  #title { font-size: 3rem; font-weight: 600; line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  #stats { font-size: 1.9rem; color: var(--quiet); margin-top: .4rem; }
+  #menu { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: .4rem; }
+  .row { display: flex; align-items: center; gap: 3rem; min-height: 6.6rem; padding: .6rem 3.6rem; border-radius: 3.8rem; font-size: 3rem; }
+  .row > svg { width: 4.6rem; height: 4.6rem; flex: none; }
+  .row.sel { background: #fff; color: var(--ink); }
+  .row.warn.sel { background: #dc2626; color: #fff; }  /* Close game: a red highlight, the label as the others */
+  .text { flex: 1; min-width: 0; }
+  .text > div { display: flex; justify-content: space-between; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .text small { display: block; font-size: 1.9rem; color: var(--quiet); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row.sel .text small { color: rgba(14, 16, 20, .62); }
+  .value { font-weight: 400; }
+  .bar { height: .4rem; margin-top: .8rem; border-radius: .2rem; background: rgba(255, 255, 255, .22); }
   .bar i { display: block; height: 100%; border-radius: inherit; background: #fff; }
   .sel .bar { background: rgba(14, 16, 20, .2); }
-  .sel .bar i { background: #0e1014; }
-  .grow { flex: 1; min-width: 0; }
-  .grow > div:first-child { display: flex; justify-content: space-between; }
-  #info { margin-top: auto; padding: 2rem 2.8rem 0; display: flex; flex-direction: column; gap: 1.8rem; font-size: 2.3rem; }
-  #info small { display: block; font-size: 1.8rem; color: rgba(255, 255, 255, .62); }
-  #info div div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #media { display: flex; gap: 1rem; margin: 1.2rem 0 0 -1.4rem; }
-  #media:empty { display: none; }
-  #media b { width: 7.2rem; height: 5.4rem; border-radius: 2.7rem; display: grid; place-items: center; }
-  #media svg { width: 2.8rem; height: 2.8rem; fill: currentColor; }
-  #media.sel b.cur { background: #fff; color: #0e1014; }
-  #foot { margin-top: 2.4rem; padding: 0 2.8rem; font-size: 1.7rem; color: rgba(255, 255, 255, .62); text-align: right; }
+  .sel .bar i { background: var(--ink); }
+  /* the song, at the bottom as in Quick Access: previous, play/pause, next */
+  .row.music { margin-top: auto; }
+  .row.music.sel { background: none; color: inherit; }
+  .row.music.sel .text small { color: var(--quiet); }
+  .mbtns { display: flex; gap: .6rem; flex: none; }
+  .mb { width: 5.4rem; height: 4.6rem; border-radius: 2.3rem; display: grid; place-items: center; }
+  .mb svg { width: 2.2rem; height: 2.2rem; fill: currentColor; }
+  .row.music.sel .mb.on { background: #fff; color: var(--ink); }
 </style>
 </head>
 <body>
 <div id="panel">
-  <div id="top"><img id="cover" alt="" onerror="this.style.visibility='hidden'"><div id="head"><div id="clock"></div><div id="date"></div><h1 id="title"></h1><div id="stats"></div></div></div>
+  <h2>Quick Access</h2>
+  <div id="time"></div>
+  <div id="game"><img id="cover" alt="" onerror="this.style.visibility='hidden'"><div class="text"><div id="title"></div><small id="stats"></small></div></div>
   <div id="menu"></div>
-  <div id="info"><div><div id="song"></div><div id="media"></div></div><div id="battery"></div></div>
 </div>
 <script>
 const $ = q => document.querySelector(q);
@@ -58,21 +65,38 @@ function frost(url) {
 }
 let items = [], sel = 0, busy = false;
 const hm = m => m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
+const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const post = action => fetch('/api/overlay', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Frontend': '1' }, body: JSON.stringify({ action }) });
-// The music controls sit with the song at the bottom: the last stop going down, left and right between the three buttons.
-const ICONS = {
+// The frontend's icons (app.js ICONS), so this reads as the same menu
+const line = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const ICON = {
+  back: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg>',
+  volume: line('<path d="M4 9.5v5h4l5 4v-13l-5 4z"/><path d="M16.5 9a4 4 0 0 1 0 6"/><path d="M19 6.5a8 8 0 0 1 0 11"/>'),
+  mute: line('<path d="M4 9.5v5h4l5 4v-13l-5 4z"/><path d="M17 9.5l5 5"/><path d="M22 9.5l-5 5"/>'),
+  save: line('<path d="M12 4v11"/><path d="M7 10.5l5 5 5-5"/><path d="M5 20h14"/>'),
+  load: line('<path d="M12 15V4"/><path d="M7 8.5l5-5 5 5"/><path d="M5 20h14"/>'),
+  shot: line('<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M3 16l5-4 4 3 3-2 6 5"/>'),
+  record: line('<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/>'),
+  hud: line('<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>'),
+  close: line('<path d="M6 6l12 12M18 6L6 18"/>'),
+  music: line('<path d="M9 18V6l11-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>'),
+};
+const MEDIA = {
   prev: '<svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg>',
   play: '<svg viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></svg>',
   pause: '<svg viewBox="0 0 24 24"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>',
   next: '<svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg>'
 };
-let music = null, mediaSel = 1;  // music: {playing} while Windows shows a song; mediaSel: previous, play/pause, next
-function draw() {
-  $('#menu').innerHTML = items.map((it, i) => it.media ? '' : `<div class="item${it.warn ? ' warn' : ''}${i === sel ? ' sel' : ''}" data-i="${i}">${it.volume ? `<div class="grow"><div>Volume<span>${volume}</span></div><div class="bar"><i style="width:${volume}%"></i></div></div>` : it.label}</div>`).join('');
-  const box = $('#media');
-  box.className = items[sel]?.media ? 'sel' : '';
-  box.innerHTML = music ? [ICONS.prev, music.playing ? ICONS.pause : ICONS.play, ICONS.next].map((svg, i) => `<b class="${i === mediaSel ? 'cur' : ''}">${svg}</b>`).join('') : '';
+// music: the song Windows shows ({title, artist, playing}) or null; mediaSel: previous, play/pause, next
+let music = null, mediaSel = 1, volume = null, muted = false;
+function rowHTML(it, i) {
+  const on = i === sel ? ' sel' : '';
+  if (it.volume) return `<div class="row${on}" data-i="${i}">${muted ? ICON.mute : ICON.volume}<div class="text"><div>Volume<span class="value">${muted ? 'Muted' : volume}</span></div><div class="bar"><i style="width:${muted ? 0 : volume}%"></i></div></div></div>`;
+  if (it.media) return `<div class="row music${on}" data-i="${i}">${ICON.music}<div class="text"><div>${esc(music.title)}</div><small>${esc([music.playing ? 'Now playing' : 'Paused', music.artist].filter(Boolean).join(' · '))}</small></div>`
+    + `<div class="mbtns">${[MEDIA.prev, music.playing ? MEDIA.pause : MEDIA.play, MEDIA.next].map((svg, j) => `<span class="mb${j === mediaSel ? ' on' : ''}">${svg}</span>`).join('')}</div></div>`;
+  return `<div class="row${it.warn ? ' warn' : ''}${on}" data-i="${i}">${ICON[it.icon] || ''}<div class="text"><div>${esc(it.label)}${it.value ? `<span class="value">${esc(it.value)}</span>` : ''}</div></div></div>`;
 }
+function draw() { $('#menu').innerHTML = items.map(rowHTML).join(''); }
 function media() {
   const action = ['media-prev', 'media-play', 'media-next'][mediaSel];
   post(action);
@@ -92,7 +116,6 @@ function act(name) {
   else if (name === 'back' || name === 'dismiss') return go(items[0]);  // dismiss: View + Start again, from the helper
   draw();
 }
-let volume = null;
 // 1% a press. Held, the press repeats (about 9 a second) and the steps grow, so a long hold crosses the range in a few seconds.
 const volumeStep = () => {
   const t = performance.now();
@@ -104,7 +127,7 @@ async function setVolume(delta) {
   try {
     const r = await (await fetch('/api/volume', delta === undefined ? { cache: 'no-store' } : { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Frontend': '1' }, body: JSON.stringify({ delta }) })).json();
     if (r.volume == null) return;
-    volume = r.volume;
+    volume = r.volume; muted = !!r.muted;
     if (!items.some(x => x.volume)) { items.splice(1, 0, { volume: true }); if (sel >= 1) sel++; }  // the highlight stays on the same item
     draw();
   } catch {}
@@ -114,7 +137,7 @@ const slide = show => Promise.race([window.pywebview?.api?.slide?.(show), new Pr
 async function go(it) {
   if (busy || !it) return;
   if (it.hud) {  // Off, Compact, Full: the menu stays open
-    try { const r = await (await fetch('/api/hud', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Frontend': '1' }, body: '{}' })).json(); it.label = `Performance overlay: ${title(r.mode)}`; draw(); } catch {}
+    try { const r = await (await fetch('/api/hud', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Frontend': '1' }, body: '{}' })).json(); it.value = title(r.mode); draw(); } catch {}
     return;
   }
   if (it.stay) {  // the menu stays open; say that it happened
@@ -152,25 +175,18 @@ addEventListener('keydown', e => {
 async function song() {  // one at a time: each asks Windows through a PowerShell that can be slow
   clearTimeout(song.t);
   try {
-    const n = await (await fetch('/api/nowplaying', { cache: 'no-store' })).json(), box = $('#song');
-    box.textContent = '';
-    music = n.title ? { playing: !!n.playing } : null;  // a paused song stays, so it can be played again
+    const n = await (await fetch('/api/nowplaying', { cache: 'no-store' })).json();
+    music = n.title ? { title: n.title, artist: n.artist || '', playing: !!n.playing } : null;  // a paused song stays, so it can be played again
     const at = items.findIndex(x => x.media);
     if (music && at < 0) items.push({ media: true });
     if (!music && at >= 0) { items.splice(at, 1); if (sel >= items.length) sel = items.length - 1; }
     draw();
-    if (!music) return;
-    const label = document.createElement('small'), t = document.createElement('div');
-    label.textContent = music.playing ? 'Now playing' : 'Paused'; t.textContent = n.title;
-    box.append(label, t);
-    if (n.artist) { const a = document.createElement('small'); a.textContent = n.artist; box.append(a); }
   } catch {} finally { song.t = setTimeout(song, 5000); }
 }
-let zone = {};  // the profile's time zone, as the frontend's clock uses
+let zone = {}, battery = null;  // the profile's time zone, as the frontend's clock uses
 const clock = () => {
   const d = new Date();
-  $('#clock').textContent = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...zone });
-  $('#date').textContent = d.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', ...zone });
+  $('#time').innerHTML = `<b>${esc(d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...zone }))}</b>${esc(d.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', ...zone }))}${battery != null ? ` · Controller ${battery}%` : ''}`;
 };
 fetch('/api/profile', { cache: 'no-store' }).then(r => r.json()).then(p => {
   const z = p.timezone;
@@ -180,16 +196,17 @@ fetch('/api/profile', { cache: 'no-store' }).then(r => r.json()).then(p => {
   const s = await fetch('/api/overlay', { cache: 'no-store' }).then(r => r.ok ? r.json() : {}).catch(() => ({}));  // the menu still works without the game's details
   $('#title').textContent = s.title || '';
   $('#stats').textContent = s.session >= 0 ? `This session ${hm(s.session)}` + (s.minutes ? ` · Total ${hm(s.minutes)}` : '') : '';
-  if (s.cover) $('#cover').src = s.cover; else $('#cover').style.visibility = 'hidden';
-  items = [{ label: 'Back to game', action: 'resume' },
-    ...(s.savestate ? [{ label: 'Save state', action: 'savestate', stay: true, done: 'State saved' }, { label: 'Load state', action: 'loadstate', stay: true, done: 'State loaded' }] : []),
-    { label: 'Take screenshot', action: 'screenshot' },
-    { label: s.recording ? 'Stop recording' : 'Record video', action: 'record' },
-    ...(s.hud ? [{ label: `Performance overlay: ${title(s.hud)}`, hud: true }] : []),  // an extra: only once PresentMon is installed
-    { label: 'Close game', action: 'close', warn: true }];
-  if (s.battery != null) $('#battery').innerHTML = `<small>Controller battery</small><div>${s.battery}%</div>`;
+  if (s.cover) $('#cover').src = s.cover; else $('#cover').style.display = 'none';
+  if (!s.title) $('#game').style.display = 'none';
+  battery = s.battery ?? null;
+  items = [{ label: 'Back to game', action: 'resume', icon: 'back' },
+    ...(s.savestate ? [{ label: 'Save state', action: 'savestate', stay: true, done: 'State saved', icon: 'save' }, { label: 'Load state', action: 'loadstate', stay: true, done: 'State loaded', icon: 'load' }] : []),
+    { label: 'Take screenshot', action: 'screenshot', icon: 'shot' },
+    { label: s.recording ? 'Stop recording' : 'Record video', action: 'record', icon: 'record' },
+    ...(s.hud ? [{ label: 'Performance overlay', value: title(s.hud), hud: true, icon: 'hud' }] : []),  // an extra: only once PresentMon is installed
+    { label: 'Close game', action: 'close', warn: true, icon: 'close' }];
   if (!('hud' in s)) fetch('/api/hud', { cache: 'no-store' }).then(r => r.json()).then(r => {  // no state: asked for here, never guessed
-    if (r.fps && r.mode && !items.some(x => x.hud)) { items.splice(items.length - 1, 0, { label: `Performance overlay: ${title(r.mode)}`, hud: true }); draw(); }
+    if (r.fps && r.mode && !items.some(x => x.hud)) { items.splice(items.findIndex(x => x.action === 'close'), 0, { label: 'Performance overlay', value: title(r.mode), hud: true, icon: 'hud' }); draw(); }
   }).catch(() => {});
   draw(); clock(); setInterval(clock, 5000); setVolume();
   document.body.classList.add('on');

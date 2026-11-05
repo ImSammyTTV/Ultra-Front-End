@@ -194,8 +194,9 @@ def take_focus(overlay_hwnd, seconds=0.0, game_hwnd=None):
 
 
 def overlay_slide(show, ms=190):
-    """Slide the overlay in from (or out to) the left edge of the game's screen. The window moves and a region clips it to
-    that screen, so no part of it shows on a monitor beside this one. Moving a window doesn't redraw the page, so it's smooth."""
+    """Slide the overlay in from (or out to) the right edge of the game's screen, as Quick Access does in the frontend. The
+    window moves and a region clips it to that screen, so no part of it shows on a monitor beside this one. Moving a window
+    doesn't redraw the page, so it's smooth."""
     import ctypes
     hwnd = OVL.get("hwnd")
     if not hwnd:
@@ -209,8 +210,8 @@ def overlay_slide(show, ms=190):
         part = int(round(w * (ease if show else 1 - ease)))  # how much of the panel is on screen
         if show:  # a sliver at least: Chromium stops drawing a window that is wholly off the screen
             part = max(part, 2)
-        user32.SetWindowPos(ctypes.c_void_p(hwnd), ctypes.c_void_p(-1), x - (w - part), y, w, h, 0x0050)  # TOPMOST, SHOWWINDOW | NOACTIVATE
-        user32.SetWindowRgn(ctypes.c_void_p(hwnd), gdi32.CreateRectRgn(w - part, 0, w, h), True)
+        user32.SetWindowPos(ctypes.c_void_p(hwnd), ctypes.c_void_p(-1), x + (w - part), y, w, h, 0x0050)  # TOPMOST, SHOWWINDOW | NOACTIVATE
+        user32.SetWindowRgn(ctypes.c_void_p(hwnd), gdi32.CreateRectRgn(0, 0, part, h), True)
         if t >= 1:
             break
         time.sleep(0.008)
@@ -341,7 +342,8 @@ def overlay():
     webview_args()
     x, y, w, h = game_screen()
     scale = ctypes.windll.user32.GetDpiForSystem() / 96 or 1
-    ow = min(int(h * .46), int(w * .42))  # beside the game: 46% of the height wide, but never most of a portrait screen
+    ow = min(int(h * .62), w)  # Quick Access's width (62% of the height), but never wider than a portrait screen
+    x += w - ow  # on the right of the screen, as Quick Access is in the frontend
     user32 = ctypes.windll.user32
     user32.GetForegroundWindow.restype = ctypes.c_void_p
     game = user32.GetForegroundWindow()  # the game's window, for games that can't give up the focus (below)
