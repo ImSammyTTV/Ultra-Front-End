@@ -2198,6 +2198,11 @@ function panelItems() {
     { kind: 'info', label: 'Open-source licences', sub: 'MIT. Built with Python, pywebview, Pillow and pystray (LGPL-3.0), among others: see THIRD_PARTY_NOTICES.md and the licenses folder on the project’s GitHub page' },
     { kind: 'info', label: 'Helper', sub: API ? `Running on ${HERE} (${location.host})` : 'Not running: start the frontend with Start Frontend.bat' },
     ...(API ? [{ kind: 'row', label: 'Run the setup guide again', sub: 'Name, icon, time zone, accounts and games', act: openSetup }] : []),
+    ...(API && ON_MAC ? [  // on Windows this is in Settings › Apps (the installer registers it)
+      { kind: 'head', label: 'Uninstall' },
+      uninstallRow('uninstall-keep', false, 'Uninstall Ultra Front End', 'Moves the app to the Trash. Your settings, artwork and captures are kept, for if you install it again'),
+      uninstallRow('uninstall-wipe', true, 'Uninstall and delete my settings', 'Also moves your settings, artwork, captures and recordings to the Trash. Emulators it installed stay'),
+    ] : []),
   ];
   if (!API) return [{ kind: 'note', label: 'Start the frontend with "Start Frontend.bat" to add libraries and accounts. Opened as a plain file it can only show the demo games.' }];
   if (!d) return [{ kind: 'note', label: 'Loading…' }];
@@ -2814,6 +2819,19 @@ async function addLib(kind) {
   if (r?.added) toast(`Added ${r.added}: ${r.count} game${r.count === 1 ? '' : 's'}`, 3000);
 }
 // Run a request, then refresh the panel and the game row.
+// Settings › About › Uninstall (Mac): press twice; the helper moves things to the Trash and the app quits
+function uninstallRow(key, wipe, label, sub) {
+  return { kind: 'row', key, label, warn: P.confirm === key, sub: P.confirm === key ? 'Press A / Enter again to uninstall' : sub,
+    act: async () => {
+      if (P.confirm !== key) { P.confirm = key; return renderPanel(); }
+      P.confirm = null;
+      try {
+        const r = await api('/api/uninstall', { wipe });
+        if (!r.ok) return toast(`Couldn’t uninstall: ${r.failed.join(', ')}`, 8000), renderPanel();
+        toast(wipe ? 'Uninstalled. The app and your settings are in the Trash' : 'Uninstalled. The app is in the Trash; your settings were kept', 8000);
+      } catch (e) { toast(e.message); renderPanel(); }
+    } };
+}
 async function work(promise, okMsg, nextView) {
   P.working = true; renderPanel();
   try {

@@ -669,6 +669,49 @@ def serving(helper):
     return helper.is_alive()
 
 
+def move_to_applications_mac():
+    """Opened straight from the disk image (macOS then runs it from a hidden read-only copy), it couldn't update itself:
+    offer to copy it to Applications and open it from there. True when it did, so this copy leaves."""
+    import glob
+    import shutil
+    bundle = server.mac_bundle()
+    if not (bundle.startswith("/Volumes/") or "/AppTranslocation/" in bundle):
+        return False
+    name = os.path.basename(bundle)
+    source = bundle if bundle.startswith("/Volumes/") else next(iter(glob.glob(os.path.join("/Volumes", "*", name))), "")
+    if not source:
+        return False
+    from AppKit import NSAlert, NSApplication
+    NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+    alert = NSAlert.alloc().init()
+    alert.setMessageText_("Move Ultra Front End to Applications?")
+    alert.setInformativeText_("It's running from the disk image, so it can't update itself and won't be in your Applications "
+                              "folder next time. It's moved, then opens from there.")
+    alert.addButtonWithTitle_("Move to Applications")
+    alert.addButtonWithTitle_("Not Now")
+    if alert.runModal() != 1000:  # NSAlertFirstButtonReturn
+        return False
+    apps = "/Applications" if os.access("/Applications", os.W_OK) else os.path.expanduser("~/Applications")
+    dest = os.path.join(apps, name)
+    try:
+        os.makedirs(apps, exist_ok=True)
+        if os.path.exists(dest):  # an older copy: to the Trash, so it can be put back
+            from Foundation import NSFileManager, NSURL
+            NSFileManager.defaultManager().trashItemAtURL_resultingItemURL_error_(NSURL.fileURLWithPath_(dest), None, None)
+            if os.path.exists(dest):
+                shutil.rmtree(dest)
+        subprocess.run(["/usr/bin/ditto", source, dest], check=True, capture_output=True)
+        # the person already allowed this app to open; the copy shouldn't ask again
+        subprocess.run(["/usr/bin/xattr", "-dr", "com.apple.quarantine", dest], capture_output=True)
+    except (OSError, subprocess.CalledProcessError) as e:
+        window_log(f"move to Applications failed: {e}")
+        return False
+    window_log(f"moved to {dest}")
+    subprocess.Popen(["/bin/sh", "-c", 'sleep 1; open -n "$0"', dest], start_new_session=True,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return True
+
+
 def main():
     logging.getLogger("pywebview").addHandler(WindowLogHandler(logging.WARNING))
     window_log(f"start {' '.join(sys.argv[1:]) or '(window)'} from parent {os.getppid()}")
@@ -694,6 +737,8 @@ def main():
                 threading.Event().wait()
         return
     if server.WIN and already_open():
+        return
+    if server.MAC and move_to_applications_mac():
         return
     took_over = helper_up() and replace_old_helper()
     own = not helper_up()  # one already running (in the background, or pythonw server.py) is reused, unless it was an older build
