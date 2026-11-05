@@ -7709,8 +7709,9 @@ class Handler(SimpleHTTPRequestHandler):
             if path == "/api/introsound":  # played here because a page can't start sound by itself
                 import winsound
                 if body.get("play"):
-                    own = os.path.join(DATA, "intro.wav")  # put your own sound there to replace the one that ships
-                    winsound.PlaySound(own if os.path.isfile(own) else os.path.join(APP, "assets", "intro.wav"), winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT)
+                    name = "outro.wav" if body.get("outro") else "intro.wav"  # the closing sound, or the opening one
+                    own = os.path.join(DATA, name)  # put your own sound there to replace the one that ships
+                    winsound.PlaySound(own if os.path.isfile(own) else os.path.join(APP, "assets", name), winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT)
                 else:
                     winsound.PlaySound(None, 0)
                 return self.reply({"ok": True})

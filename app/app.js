@@ -671,8 +671,8 @@ function runIntro() {
 }
 // Drawn live, after the look of the Kling test: a flat line of light swells into a wave of hairline contours that
 // pinch together at drifting nodes around a soft icy core. Being drawn, it stays sharp at any resolution.
-function introWave() {
-  const c = $('#introwave'), dpr = devicePixelRatio || 1;
+function introWave(c = $('#introwave'), clock = s => s, alive = () => !!$('#intro')) {  // clock: the wave's time from seconds shown (the outro runs it backwards)
+  const dpr = devicePixelRatio || 1;
   c.width = Math.round(innerWidth * dpr); c.height = Math.round(innerHeight * dpr);  // device pixels, so the hairlines stay sharp when Windows scales the display
   const gl = c.getContext('webgl', { antialias: false, alpha: false });
   if (!gl) return false;
@@ -719,8 +719,8 @@ function introWave() {
   gl.uniform1f(gl.getUniformLocation(prog, 'k'), Math.max(1, 16 / 9 / (c.width / c.height)));
   const uT = gl.getUniformLocation(prog, 't'), t0 = performance.now();
   const frame = now => {
-    if (!$('#intro')) return;
-    gl.uniform1f(uT, (now - t0) / 1000);
+    if (!alive()) return;
+    gl.uniform1f(uT, clock((now - t0) / 1000));
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     requestAnimationFrame(frame);
   };
@@ -776,9 +776,29 @@ function sysMenu(title, items) {
   quickFocus();
 }
 function quitFrontend() {
-  if (window.pywebview?.api?.quit) window.pywebview.api.quit();
-  else window.close();
+  playOutro(() => {
+    if (window.pywebview?.api?.quit) window.pywebview.api.quit();
+    else window.close();
+  });
 }
+// The closing animation: the screen goes dark and the intro's wave plays backwards, folding into a line of light that
+// closes to the middle, with the closing sound; then the window goes. Off with the intro (Settings › General).
+let outroOn = false;
+function playOutro(done = () => {}) {
+  if (outroOn) return;
+  if (!API || !introOn()) return done();
+  outroOn = true;
+  const el = document.createElement('div');
+  el.id = 'outro'; el.innerHTML = '<canvas></canvas>';
+  document.body.appendChild(el);
+  api('/api/introsound', { play: true, outro: true }).catch(() => {});
+  const SHOWN = 1.5, FROM = 2.9;  // the wave from fully open back to nothing, in a second and a half
+  const drawn = introWave(el.querySelector('canvas'), s => Math.max(0, FROM * (1 - s / SHOWN)), () => el.isConnected);
+  if (!drawn) el.classList.add('flat');  // no WebGL: the still wave fades
+  raf2(() => el.classList.add('on'));
+  setTimeout(done, SHOWN * 1000 + 250);
+}
+window.playOutro = playOutro;  // the tray's Exit asks for it too
 let toastT;
 function toast(msg, ms = 2200) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), ms); }
 async function activate() {
@@ -2396,7 +2416,7 @@ function panelItems() {
     { kind: 'row', label: '+ Add a single game', sub: 'Pick any game’s .exe', act: () => addLib('game') },
   ];
   if (P.view === 'artwork') return [
-    { kind: 'row', ic: icon('bolt'), label: 'Startup intro', value: onOff(introOn()), sub: 'The short animation and sound when the frontend opens', act: () => { try { localStorage.setItem('fe-intro', introOn() ? 'off' : 'on'); } catch {} renderPanel(); } },
+    { kind: 'row', ic: icon('bolt'), label: 'Intro and outro', value: onOff(introOn()), sub: 'The short animation and sound when the frontend opens and closes', act: () => { try { localStorage.setItem('fe-intro', introOn() ? 'off' : 'on'); } catch {} renderPanel(); } },
     { kind: 'row', ic: icon('wide'), label: 'Full-screen game art', value: onOff(d.options.artBackground), sub: 'The selected game’s art fills the home screen behind the row, instead of the night scenery', act: () => setOpt('artBackground').then(() => { S.artBg = P.data.options.artBackground; applyBackgroundMode(); }) },
     { kind: 'row', label: 'Find artwork & info online', value: onOff(d.options.onlineCovers), sub: 'Covers, logos, backgrounds and descriptions for games that don’t have them', act: () => setOpt('onlineCovers') },
     { kind: 'row', img: SGDB_LOGO, label: 'SteamGridDB', value: acc.sgdb ? 'Connected' : 'Optional', sub: 'More artwork to choose from, animated covers and backgrounds', act: () => acc.sgdb ? toast('SteamGridDB is connected') : setView('sgdb') },
