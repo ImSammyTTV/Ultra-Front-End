@@ -13,6 +13,12 @@ import urllib.request
 
 import webview  # noqa: E402
 
+if __name__ == "__main__":  # Setup and Uninstall: their own window, before the helper is imported (it sets up a data folder)
+    import setup_ui
+    if setup_ui.is_setup() or "--uninstall" in sys.argv:
+        setup_ui.main("install" if setup_ui.is_setup() else "uninstall")
+        sys.exit()
+
 import server  # noqa: E402
 
 URL = f"http://127.0.0.1:{server.PORT}"
@@ -717,8 +723,6 @@ def main():
     window_log(f"start {' '.join(sys.argv[1:]) or '(window)'} from parent {os.getppid()}")
     if "--overlay" in sys.argv:
         return overlay()
-    if "--uninstall" in sys.argv:  # Settings > Apps > Uninstall: no window, no helper
-        return server.uninstall_app()
     if "--install-broker" in sys.argv:  # the elevated install helper for setup (one administrator prompt): no window, no tray
         i = sys.argv.index("--install-broker")
         return server.install_broker(sys.argv[i + 1], sys.argv[i + 2])

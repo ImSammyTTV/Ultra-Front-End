@@ -3735,7 +3735,7 @@ def autostart_copy():
     return (WIN or MAC) and getattr(sys, "frozen", False) and not os.path.isdir(os.path.join(ROOT, ".git")) and PORT == 8137
 
 
-SETUP_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\{F96F918D-9F0D-43DC-8972-28EAB3FEC1EE}_is1"  # UltraFrontEnd-Setup's Apps entry
+SETUP_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\UltraFrontEnd"  # Settings > Apps entry (setup_ui.py)
 
 
 def note_installed_version():
@@ -3750,58 +3750,6 @@ def note_installed_version():
                 winreg.SetValueEx(k, "DisplayVersion", 0, winreg.REG_SZ, VERSION)
     except OSError:
         pass
-
-
-def uninstall_app():
-    """Settings > Apps > Uninstall (UltraFrontEnd-Setup.exe registers this as --uninstall): asks, stops the app, takes away
-    its shortcuts, start-with-Windows entry and Apps entry, then deletes its folder once this program has left. Settings,
-    captures and recordings stay unless the user says to delete them too."""
-    import winreg
-    own = os.path.join(os.path.dirname(frontend_exe()), "unins000.exe")
-    if os.path.isfile(own):  # installed by Setup: its own uninstaller does it
-        subprocess.Popen([own], close_fds=True)
-        return
-    if message_box("Uninstall Ultra Front End?", 0x1 | 0x20) != 1:
-        return
-    wipe = message_box("Also delete your settings, artwork, captures and recordings?\n\nChoose No to keep them, so they're there if you "
-                       "install Ultra Front End again.", 0x4 | 0x20 | 0x100) == 6  # No is the default
-    exe = frontend_exe()
-    folder = os.path.dirname(exe)
-    for pid in folder_processes(folder) - {os.getpid()}:  # the window and the helper in the tray
-        subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True)
-    try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
-            for name in ("Ultra Front End", "Game Frontend"):
-                try:
-                    winreg.DeleteValue(k, name)
-                except OSError:
-                    pass
-    except OSError:
-        pass
-    programs = os.path.join(os.environ.get("APPDATA", ""), "Microsoft", "Windows", "Start Menu", "Programs")
-    for lnk in (os.path.join(programs, "Ultra Front End.lnk"), os.path.join(os.path.expanduser("~"), "Desktop", "Ultra Front End.lnk")):
-        try:
-            os.remove(lnk)
-        except OSError:
-            pass
-    try:
-        winreg.DeleteKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Uninstall\UltraFrontEnd")
-    except OSError:
-        pass
-    if wipe:
-        try:
-            os.remove(DATA_NOTE)
-        except OSError:
-            pass
-    message_box("Ultra Front End has been uninstalled." + ("" if wipe else " Your settings and captures were kept."), 0x40)
-    # the folder goes once this program has left (a running exe can't be deleted); data stays unless asked
-    enc = lambda text: base64.b64encode(text.encode("utf-16-le")).decode()
-    script = (f"Start-Sleep -Seconds 2; $f = [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('{enc(folder)}')); "
-              + ("Remove-Item -LiteralPath $f -Recurse -Force -ErrorAction SilentlyContinue" if wipe
-                 else "Get-ChildItem -LiteralPath $f | Where-Object { $_.Name -ne 'data' } | "
-                      "ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }"))
-    subprocess.Popen([POWERSHELL, "-NoProfile", "-NonInteractive", "-EncodedCommand", enc(script)],
-                     creationflags=0x00000200 | 0x08000000, close_fds=True)  # its own process group, no window: it outlives this one
 
 
 def message_box(text, flags):
