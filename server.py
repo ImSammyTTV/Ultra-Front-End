@@ -71,7 +71,7 @@ PORT = int(sys.argv[sys.argv.index("--port") + 1]) if "--port" in sys.argv else 
 # This copy's build, noted at start: an update swaps the exe while the old build can still be running in the tray
 BUILD = "%d-%d" % (int(os.path.getmtime(sys.executable)), os.path.getsize(sys.executable)) if getattr(sys, "frozen", False) else "source"
 QUIT = [lambda: os._exit(0)]  # how this helper leaves when a newer build takes over; Game Frontend.exe takes its tray icon down too
-VERSION = "1.1.0"  # the release this is; tools/release.py publishes it as tag v1.0.0
+VERSION = "1.1.1"  # the release this is; tools/release.py publishes it as tag v<VERSION>
 UPDATE_REPO = "ImSammyTTV/Ultra-Front-End"  # whose GitHub releases a copy of the exe keeps itself current from
 os.makedirs(DATA, exist_ok=True)
 
@@ -3571,7 +3571,7 @@ def local_spawn(cmd, cwd):
     load our vcruntime140.dll instead of the system's (RPCS3 refuses to run on it): clear that for the moment of starting."""
     bundle = getattr(sys, "_MEIPASS", None)
     if not (WIN and bundle):
-        return subprocess.Popen(cmd, cwd=cwd)
+        return start_program(cmd, cwd)
     import ctypes
     # nor where it was unpacked: Steam started from here would hand that on to the frontend it launches, which would then run
     # from this copy's unpack folder and lose it when this copy goes
@@ -3582,9 +3582,44 @@ def local_spawn(cmd, cwd):
     with SPAWN_LOCK:
         set_dir(None)
         try:
-            return subprocess.Popen(cmd, cwd=cwd, env=env)
+            return start_program(cmd, cwd, env)
         finally:
             set_dir(bundle)
+
+
+def start_program(cmd, cwd, env=None):
+    """Popen, or for a program that insists on running as administrator (Windows refuses it with error 740), Windows'
+    "Run as administrator", which asks first. Either way the game is followed while it runs."""
+    try:
+        return subprocess.Popen(cmd, cwd=cwd, env=env)
+    except OSError as e:
+        if not WIN or getattr(e, "winerror", 0) != 740:
+            raise
+    return run_as_admin(cmd, cwd)
+
+
+def run_as_admin(cmd, cwd):
+    import ctypes
+    import ctypes.wintypes as W
+
+    class Info(ctypes.Structure):
+        _fields_ = [("cbSize", W.DWORD), ("fMask", W.ULONG), ("hwnd", W.HWND), ("lpVerb", W.LPCWSTR), ("lpFile", W.LPCWSTR), ("lpParameters", W.LPCWSTR),
+                    ("lpDirectory", W.LPCWSTR), ("nShow", ctypes.c_int), ("hInstApp", W.HINSTANCE), ("lpIDList", ctypes.c_void_p), ("lpClass", W.LPCWSTR),
+                    ("hkeyClass", W.HKEY), ("dwHotKey", W.DWORD), ("hIcon", W.HANDLE), ("hProcess", W.HANDLE)]
+    shell, k32 = ctypes.WinDLL("shell32", use_last_error=True), ctypes.WinDLL("kernel32")
+    shell.ShellExecuteExW.argtypes = [ctypes.POINTER(Info)]
+    k32.GetProcessId.argtypes = k32.CloseHandle.argtypes = [W.HANDLE]
+    info = Info(cbSize=ctypes.sizeof(Info), fMask=0x40 | 0x100, lpVerb="runas", lpFile=cmd[0], lpParameters=subprocess.list2cmdline(cmd[1:]),
+                lpDirectory=cwd or None, nShow=1)  # NOCLOSEPROCESS | NOASYNC, shown normally
+    if not shell.ShellExecuteExW(ctypes.byref(info)):
+        if ctypes.get_last_error() == 1223:
+            raise ValueError("This game needs administrator rights, and Windows' permission prompt was cancelled")
+        raise ValueError("This game needs administrator rights, and Windows couldn't start it that way")
+    try:
+        pid = k32.GetProcessId(info.hProcess)
+    finally:
+        k32.CloseHandle(info.hProcess)
+    return WindowProcess(pid)
 
 
 def folder_processes(folder):
@@ -7676,7 +7711,7 @@ class Handler(SimpleHTTPRequestHandler):
 # back and that version waits a day.
 UPDATE = {"state": "", "latest": None, "error": "", "checked": 0.0, "retry": 0.0, "done": None}
 UPDATE_LOCK = threading.Lock()
-UPDATE_EVERY = 6 * 3600  # GitHub is asked this often; an unchanged answer (ETag) doesn't count against its hourly limit
+UPDATE_EVERY = 3600  # GitHub is asked this often (fixes reach everyone within the hour); an unchanged answer (ETag) doesn't count against its hourly limit
 UPDATE_ASSET = "UltraFrontEnd.exe"  # the release file tools/release.py uploads
 
 

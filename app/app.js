@@ -2080,6 +2080,10 @@ async function updateNow(action) {
   }
   if (P.data) P.data.update = u;
   renderPanel();
+  // say how it went, so pressing it never looks like nothing happened
+  toast(u.error || u.off || { current: 'You have the newest version', ready: `Version ${u.latest} is ready: choose Install the update now`,
+    installed: `Version ${u.latest} takes over the next time the frontend opens`, checking: 'Still checking…', downloading: `Still downloading version ${u.latest}…` }[u.state]
+    || (u.latest ? `Version ${u.latest} is available` : 'Couldn’t reach GitHub just now. Try again in a minute'), 5000);
 }
 // After an update, once: which version this is now
 if (API) api('/api/update').then(u => {
