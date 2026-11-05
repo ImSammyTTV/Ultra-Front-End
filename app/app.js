@@ -2201,7 +2201,7 @@ function panelItems() {
     { kind: 'info', label: 'Your data', sub: `Libraries, accounts, artwork and play history are kept on ${HERE} only, in the frontend’s data folder.` },
     { kind: 'info', label: 'Artwork and info', sub: 'Steam, Epic, SteamGridDB, libretro and Wikipedia. Descriptions from Wikipedia are under CC BY-SA 4.0' },
     { kind: 'info', label: 'Trademarks', sub: 'All product names, logos and brands are the property of their owners and are used only to name platforms and stores. Ultra Front End is not affiliated with or endorsed by any of them. Valve, Steam and the Steam logo are trademarks of Valve Corporation.' },
-    { kind: 'info', label: 'Open-source licences', sub: ON_ANDROID ? 'MIT. Emulator launch details from ES-DE (MIT), among others: see THIRD_PARTY_NOTICES.md and the licenses folder on the project’s GitHub page' : 'MIT. Built with Python, pywebview, Pillow and pystray (LGPL-3.0), among others: see THIRD_PARTY_NOTICES.md and the licenses folder on the project’s GitHub page' },
+    { kind: 'info', label: 'Open-source licences', sub: ON_ANDROID ? 'MIT. Built with AndroidX (Apache-2.0): see THIRD_PARTY_NOTICES.md and the licenses folder on the project’s GitHub page' : 'MIT. Built with Python, pywebview, Pillow and pystray (LGPL-3.0), among others: see THIRD_PARTY_NOTICES.md and the licenses folder on the project’s GitHub page' },
     { kind: 'info', label: 'Helper', sub: API ? `Running on ${HERE} (${location.host})` : 'Not running: start the frontend with Start Frontend.bat' },
     ...(API ? [{ kind: 'row', label: 'Run the setup guide again', sub: 'Name, icon, time zone, accounts and games', act: openSetup }] : []),
     ...(API && ON_MAC ? [  // on Windows this is in Settings › Apps (the installer registers it)

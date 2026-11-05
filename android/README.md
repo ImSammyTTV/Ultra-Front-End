@@ -10,18 +10,18 @@ so `app.js` runs unchanged apart from a few `ON_ANDROID` branches.
 | `HttpServer.kt` | The page's server on 127.0.0.1:8137 (this device only) |
 | `Backend.kt` | The `/api` routes: library, settings, systems, ROMs folder, volume, sounds, updates, what's new |
 | `Library.kt` | Finds Android games (apps marked as games) and ROMs (`ROMs/<console>/`), draws or fetches covers |
-| `Launcher.kt` | Starts Android games, and ROMs in an emulator with the intent from `assets/systems.json` |
+| `Launcher.kt` | Starts Android games, and ROMs in an emulator with the intent from `assets/emulators.json` |
 | `Pad.kt` | Controller actions for the page's long poll (`/api/pad`) |
 | `Store.kt` | The app's JSON files (`config.json`, `overrides.json`, `play.json`) and the systems table |
 
 ## Emulators
 
-`app/src/main/assets/systems.json` lists every console, its ROM extensions and the Android emulators that play it,
-with the intent that starts a game. It is made from ES-DE's Android tables (MIT, see `THIRD_PARTY_NOTICES.md`):
+Two files in `app/src/main/assets/`:
 
-```
-python tools/make_android_tables.py <folder with ES-DE's resources/systems/android/es_systems.xml and es_find_rules.xml>
-```
+- `systems.json`: every console with its ROM file types, box-art set and folder names, made from `server.py` so Android
+  sorts ROMs exactly as Windows does: `python tools/make_android_systems.py`
+- `emulators.json`, written by hand: each emulator app and how a game is started in it (package, activity, action, data
+  and extras), checked against that emulator's own source, and the emulators for each console in order of preference.
 
 Each console's games start in the emulator chosen in Settings › Systems, or else the first one installed.
 

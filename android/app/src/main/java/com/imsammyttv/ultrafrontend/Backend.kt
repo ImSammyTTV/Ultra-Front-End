@@ -266,17 +266,18 @@ class Backend(private val ctx: Context, private val version: String) {
         val next = have[(have.indexOf(now) + 1) % have.size]
         Store.edit("config.json") { c ->
             val e = c.optJSONObject("emulators") ?: JSONObject().also { c.put("emulators", it) }
-            e.put(system, JSONObject().put("emu", next.emu).put("label", next.label))
+            e.put(system, JSONObject().put("id", next.id))
         }
         return ok(settings())
     }
 
-    /** The recommended emulator's page in Google Play (where most Android emulators are). */
+    /** Where to get the console's first emulator: its Google Play page, or its own site when it isn't on Google Play. */
     private fun emulatorSite(system: String): Response {
         val e = Systems.byName[system]?.emulators?.firstOrNull() ?: throw IllegalArgumentException("No emulator known for this console")
-        val pkg = (Systems.packages[e.emu] ?: emptyList()).firstOrNull()?.substringBefore('/') ?: throw IllegalArgumentException("No emulator known for this console")
-        MainActivity.instance?.open(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$pkg")),
-            Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$pkg")))
+        val site = e.site ?: "https://play.google.com/store/apps/details?id=${e.packages.first()}"
+        val play = Regex("""play\.google\.com/store/apps/details\?id=([\w.]+)""").find(site)?.groupValues?.get(1)
+        MainActivity.instance?.open(*listOfNotNull(play?.let { Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$it")) },
+            Intent(Intent.ACTION_VIEW, Uri.parse(site))).toTypedArray())
         return ok(JSONObject().put("ok", true))
     }
 
