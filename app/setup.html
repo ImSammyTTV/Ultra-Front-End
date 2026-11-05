@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ultra Front End Setup</title>
+<style>
+  :root {
+    --ui: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+    --accent: #38bdf8;
+    --text: #f3f7ff;
+    --dim: #b9c6de;
+    --ease: cubic-bezier(.22, 1, .36, 1);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; background: #070c1a; color: var(--text); font-family: var(--ui); user-select: none; cursor: default; }
+  body { background: radial-gradient(120% 90% at 85% -10%, #1d4a96 0%, transparent 55%), linear-gradient(180deg, #0c1838 0%, #070c1a 70%); }
+  canvas { position: fixed; left: 0; right: 0; bottom: 0; width: 100%; height: 46%; pointer-events: none; }
+
+  .bar { position: fixed; top: 0; left: 0; right: 0; height: 46px; display: flex; align-items: center; justify-content: flex-end; padding: 0 8px; z-index: 3; }
+  .close { width: 40px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: var(--dim); font: 18px var(--ui); cursor: pointer; }
+  .close:hover { background: rgba(255, 255, 255, .1); color: #fff; }
+
+  main { position: relative; z-index: 2; height: 100%; display: flex; flex-direction: column; justify-content: center; padding: 0 64px 40px; }
+  .brand { display: flex; align-items: center; gap: 22px; margin-bottom: 30px; }
+  .brand img { width: 84px; height: 84px; border-radius: 20px; box-shadow: 0 10px 36px rgba(56, 189, 248, .35); }
+  h1 { font-size: 38px; font-weight: 700; letter-spacing: -.5px; line-height: 1.1; }
+  .ver { margin-top: 6px; color: var(--accent); font-size: 16px; font-weight: 600; }
+  p { font-size: 17px; line-height: 1.55; color: var(--dim); max-width: 560px; }
+  p b { color: var(--text); font-weight: 600; }
+
+  .actions { display: flex; align-items: center; gap: 14px; margin-top: 30px; }
+  .btn { height: 52px; padding: 0 34px; border: 0; border-radius: 26px; font: 600 17px var(--ui); cursor: pointer; transition: transform .2s var(--ease), box-shadow .2s, background .2s; }
+  .btn.primary { color: #04121f; background: linear-gradient(180deg, #7dd6ff, #38bdf8); box-shadow: 0 8px 28px rgba(56, 189, 248, .45), inset 0 1px 0 rgba(255, 255, 255, .6); }
+  .btn.primary:hover { transform: translateY(-1px); box-shadow: 0 10px 34px rgba(56, 189, 248, .6), inset 0 1px 0 rgba(255, 255, 255, .6); }
+  .btn.ghost { color: var(--text); background: rgba(255, 255, 255, .08); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .16); }
+  .btn.ghost:hover { background: rgba(255, 255, 255, .14); }
+  .btn.danger { color: #fff; background: linear-gradient(180deg, #ff7a7a, #e5484d); box-shadow: 0 8px 28px rgba(229, 72, 77, .4); }
+  .btn:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+
+  .check { display: flex; align-items: center; gap: 12px; margin-top: 22px; font-size: 16px; color: var(--text); cursor: pointer; width: fit-content; }
+  .check input { appearance: none; width: 22px; height: 22px; border-radius: 7px; background: rgba(255, 255, 255, .08); box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .35); display: grid; place-items: center; cursor: pointer; }
+  .check input:checked { background: var(--accent); box-shadow: none; }
+  .check input:checked::after { content: ""; width: 6px; height: 11px; border: solid #04121f; border-width: 0 2.5px 2.5px 0; transform: translateY(-1px) rotate(45deg); }
+
+  .progress { margin-top: 30px; max-width: 560px; }
+  .track { height: 8px; border-radius: 4px; background: rgba(255, 255, 255, .1); overflow: hidden; }
+  .fill { height: 100%; width: 0; border-radius: 4px; background: linear-gradient(90deg, #38bdf8, #7dd6ff); box-shadow: 0 0 16px rgba(56, 189, 248, .8); transition: width .35s var(--ease); }
+  .step { margin-top: 14px; font-size: 15px; color: var(--dim); }
+  .error { margin-top: 18px; padding: 14px 18px; border-radius: 14px; background: rgba(229, 72, 77, .14); box-shadow: inset 0 0 0 1px rgba(229, 72, 77, .45); color: #ffd7d7; font-size: 15px; max-width: 560px; }
+
+  .view { display: none; animation: in .45s var(--ease); }
+  .view.on { display: block; }
+  @keyframes in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .foot { position: fixed; left: 64px; bottom: 22px; z-index: 2; font-size: 13px; color: rgba(185, 198, 222, .7); }
+</style>
+</head>
+<body>
+<div class="bar pywebview-drag-region"><button class="close" id="x" title="Close">✕</button></div>
+<canvas id="wave"></canvas>
+<main>
+  <div class="brand pywebview-drag-region">
+    <img src="icon.png" alt="">
+    <div><h1 id="title">Ultra Front End</h1><div class="ver" id="ver"></div></div>
+  </div>
+
+  <section class="view" id="v-install">
+    <p id="intro"></p>
+    <label class="check"><input type="checkbox" id="desktop" checked> Put a shortcut on the desktop</label>
+    <div class="actions"><button class="btn primary" id="go">Install</button></div>
+  </section>
+
+  <section class="view" id="v-work">
+    <p id="workText">Installing…</p>
+    <div class="progress"><div class="track"><div class="fill" id="fill"></div></div><div class="step" id="step"></div></div>
+    <div class="error" id="err" hidden></div>
+    <div class="actions" id="errActions" hidden><button class="btn ghost" id="retry">Try again</button></div>
+  </section>
+
+  <section class="view" id="v-done">
+    <p id="doneText"></p>
+    <div class="actions"><button class="btn primary" id="open">Open Ultra Front End</button><button class="btn ghost" id="finish">Close</button></div>
+  </section>
+
+  <section class="view" id="v-uninstall">
+    <p>This removes Ultra Front End from this PC: the app, its Start menu and desktop shortcuts, and starting with Windows. Your games and emulators aren't touched.</p>
+    <label class="check"><input type="checkbox" id="wipe"> Also delete my settings, artwork, captures and recordings</label>
+    <div class="actions"><button class="btn danger" id="remove">Uninstall</button><button class="btn ghost" id="keep">Cancel</button></div>
+  </section>
+
+  <section class="view" id="v-removed">
+    <p id="removedText"></p>
+    <div class="actions"><button class="btn primary" id="bye">Close</button></div>
+  </section>
+</main>
+<div class="foot" id="foot"></div>
+<script>
+const $ = s => document.querySelector(s);
+const api = () => window.pywebview.api;
+let MODE = 'install';
+
+function show(id) {
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === 'v-' + id));
+  const b = document.querySelector('#v-' + id + ' .btn'); if (b) setTimeout(() => b.focus(), 50);
+}
+
+async function start() {
+  const i = await api().info();
+  MODE = i.mode;
+  $('#ver').textContent = i.mode === 'uninstall' ? 'Uninstall' : 'Version ' + i.version;
+  $('#foot').textContent = i.mode === 'uninstall' ? i.target : `Installs to ${i.target}`;
+  if (i.mode === 'uninstall') return show('uninstall');
+  $('#intro').innerHTML = i.installed
+    ? (i.installed === i.version ? `Version ${i.version} is already installed. <b>Install it again?</b> Your settings, games and captures stay as they are.`
+       : `Version ${i.installed} is installed. <b>Update it to ${i.version}?</b> Your settings, games and captures stay as they are.`)
+    : `Your games, emulators and ROMs on one console-style screen. <b>Installs just for ${i.user}</b>: no administrator prompt, and it keeps itself up to date.`;
+  $('#go').textContent = i.installed ? (i.installed === i.version ? 'Install again' : 'Update') : 'Install';
+  show('install');
+}
+
+async function follow(doneView) {
+  for (;;) {
+    const s = await api().state();
+    $('#fill').style.width = Math.round(s.progress * 100) + '%';
+    $('#step').textContent = s.step;
+    if (s.error) {
+      $('#err').textContent = s.error; $('#err').hidden = false; $('#errActions').hidden = false;
+      return;
+    }
+    if (s.done) return doneView(s);
+    await new Promise(r => setTimeout(r, 120));
+  }
+}
+
+$('#go').onclick = async () => {
+  $('#workText').textContent = 'Installing Ultra Front End…';
+  $('#err').hidden = true; $('#errActions').hidden = true; show('work');
+  await api().install($('#desktop').checked);
+  follow(s => { $('#doneText').innerHTML = `<b>All set.</b> Ultra Front End is in the Start menu${$('#desktop').checked ? ' and on your desktop' : ''}.`; show('done'); });
+};
+$('#retry').onclick = () => MODE === 'uninstall' ? $('#remove').onclick() : $('#go').onclick();
+$('#open').onclick = () => api().open_app();
+$('#finish').onclick = () => api().close();
+$('#x').onclick = () => api().close();
+$('#remove').onclick = async () => {
+  $('#workText').textContent = 'Removing Ultra Front End…';
+  $('#err').hidden = true; $('#errActions').hidden = true; show('work');
+  await api().uninstall($('#wipe').checked);
+  follow(s => { $('#removedText').innerHTML = `<b>Ultra Front End has been removed.</b> ${s.kept ? 'Your settings and captures were kept, so they’re there if you install it again.' : ''}`; show('removed'); });
+};
+$('#keep').onclick = () => api().close();
+$('#bye').onclick = () => api().close();
+addEventListener('keydown', e => { if (e.key === 'Escape') api().close(); });
+
+// the intro's wave, gently moving
+const cv = $('#wave'), cx = cv.getContext('2d');
+function draw(t) {
+  const w = cv.width = cv.clientWidth * devicePixelRatio, h = cv.height = cv.clientHeight * devicePixelRatio;
+  cx.clearRect(0, 0, w, h);
+  for (let k = 0; k < 4; k++) {
+    cx.beginPath();
+    for (let x = 0; x <= w; x += 4) {
+      const y = h * .62 + Math.sin(x / w * Math.PI * 2.1 + t / 1600 + k * .8) * h * .13 + Math.sin(x / w * 5 - t / 2300 + k) * h * .03 + k * h * .04;
+      x ? cx.lineTo(x, y) : cx.moveTo(x, y);
+    }
+    cx.strokeStyle = `rgba(56,189,248,${.55 - k * .11})`;
+    cx.lineWidth = (2.2 - k * .3) * devicePixelRatio;
+    cx.shadowColor = 'rgba(56,189,248,.9)'; cx.shadowBlur = 14 * devicePixelRatio;
+    cx.stroke();
+  }
+  requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+window.addEventListener('pywebviewready', start);
+</script>
+</body>
+</html>

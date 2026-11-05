@@ -13,7 +13,6 @@ Ultra Front End is MIT (see [LICENSE](LICENSE)), but the Windows exe also contai
 | Microsoft Visual C++ runtime (VCRUNTIME140.dll, VCRUNTIME140_1.dll), from the Python install | 14.42.34438 | Microsoft Distributable Code, under the "Additional Conditions for this Windows binary build" in [Python-LICENSE.txt](licenses/Python-LICENSE.txt) | https://docs.python.org/3.12/license.html |
 | PyInstaller bootloader and loader | 6.22.3 | [GPL-2.0-or-later with the Bootloader Exception](licenses/PyInstaller-COPYING.txt), which lets the exe ship under any licence | https://pyinstaller.org |
 | PyInstaller run-time hooks (pyi_rth_inspect, pyi_rth_pkgutil, pyi_rth_multiprocessing, pyi_rth__tkinter) | 6.22.3 | [Apache-2.0](licenses/PyInstaller-COPYING.txt) | https://github.com/pyinstaller/pyinstaller |
-| Inno Setup (the installer UltraFrontEnd-Setup.exe and its uninstaller) | 6.7 | [Inno Setup License](https://jrsoftware.org/files/is/license.txt) | https://jrsoftware.org/isinfo.php |
 | pywebview (incl. WebBrowserInterop.x64.dll / x86.dll) | 6.2.1 | [BSD-3-Clause](licenses/pywebview-LICENSE.txt) | https://github.com/r0x0r/pywebview |
 | domJSON, inside pywebview | 0.1.2 | [MIT](licenses/pywebview-js-libraries.txt) | https://github.com/azaslavsky/domJSON |
 | Native Promise Only, inside pywebview | 0.8.1 | [MIT](licenses/pywebview-js-libraries.txt) | https://github.com/getify/native-promise-only |
