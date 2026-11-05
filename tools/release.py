@@ -25,6 +25,7 @@ from importlib.metadata import version as installed
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ASSET = "UltraFrontEnd.exe"
+SETUP = "UltraFrontEnd-Setup.exe"  # what people download first; ASSET is what copies update themselves from
 NOTICES = "THIRD_PARTY_NOTICES.md"  # shipped beside the exe on every release, with licenses/ zipped as licenses.zip
 BUILT = os.path.join(ROOT, "dist", "Game Frontend.exe")
 PKG_TOC = os.path.join(ROOT, "build", "Game Frontend", "PKG-00.toc")
@@ -158,10 +159,20 @@ def main():
     notices = os.path.join(out, NOTICES)
     shutil.copyfile(os.path.join(ROOT, NOTICES), notices)
     licenses = shutil.make_archive(os.path.join(out, "licenses"), "zip", ROOT, "licenses")
+    # the installer people download first: the same exe inside, installed per user (installer.py, Setup.spec)
+    with open(os.path.join(out, "version.txt"), "w", encoding="utf-8") as f:
+        f.write(version)
+    if not args.skip_build:
+        run(py, "-m", "PyInstaller", "--noconfirm", "--clean", "Setup.spec")
+    setup_built = os.path.join(ROOT, "dist", SETUP)
+    if not os.path.isfile(setup_built) or os.path.getsize(setup_built) <= os.path.getsize(exe):
+        sys.exit(f"No proper {SETUP} at {setup_built}.")
+    setup = os.path.join(out, SETUP)
+    shutil.copyfile(setup_built, setup)
 
-    cmd = ["gh", "release", "create", tag, exe, notices, licenses, "--repo", repo, "--target", head,
+    cmd = ["gh", "release", "create", tag, setup, exe, notices, licenses, "--repo", repo, "--target", head,
            "--title", f"Ultra Front End {version}", *(["--notes-file", args.notes] if args.notes else ["--generate-notes"])]
-    print(f"{tag} for {repo}: {os.path.getsize(exe) / 1e6:.1f} MB, SHA-256 {digest}, with {NOTICES} and licenses.zip.")
+    print(f"{tag} for {repo}: {os.path.getsize(exe) / 1e6:.1f} MB, SHA-256 {digest}, Setup {os.path.getsize(setup) / 1e6:.1f} MB, with {NOTICES} and licenses.zip.")
     if args.dry_run:
         print("Dry run: would run\n  " + subprocess.list2cmdline(cmd))
         return

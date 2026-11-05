@@ -549,6 +549,8 @@ def main():
     window_log(f"start {' '.join(sys.argv[1:]) or '(window)'} from parent {os.getppid()}")
     if "--overlay" in sys.argv:
         return overlay()
+    if "--uninstall" in sys.argv:  # Settings > Apps > Uninstall: no window, no helper
+        return server.uninstall_app()
     if "--install-broker" in sys.argv:  # the elevated install helper for setup (one administrator prompt): no window, no tray
         i = sys.argv.index("--install-broker")
         return server.install_broker(sys.argv[i + 1], sys.argv[i + 2])
