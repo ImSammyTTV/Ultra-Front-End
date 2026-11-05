@@ -610,6 +610,8 @@ def cover_screen_mac(window):
         w.setStyleMask_(AppKit.NSWindowStyleMaskBorderless)
         w.setFrame_display_((w.screen() or AppKit.NSScreen.mainScreen()).frame(), True)
         app.activateIgnoringOtherApps_(True)
+        if hasattr(app, "activate"):  # macOS 14 and later ignore the call above
+            app.activate()
         w.makeKeyAndOrderFront_(None)
         window_log(f"window {w.frame()}; screen {(w.screen() or AppKit.NSScreen.mainScreen()).frame()}; key {w.isKeyWindow()}")  # for checking the result remotely
     AppHelper.callAfter(apply)

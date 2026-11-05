@@ -179,9 +179,10 @@ def _osa(script):
 
 def audio_volume(level=None, delta=None, mute=None):
     """The output volume: {"volume": 0-100, "muted": bool}. level, delta and mute change it first (raising it unmutes, as on Windows)."""
-    now = _osa("output volume of (get volume settings) & \",\" & output muted of (get volume settings)")
-    vol, muted = now.split(",")
-    vol, muted = int(vol or 0) if vol.strip().isdigit() else 0, muted.strip() == "true"
+    # "output volume:75, input volume:44, alert volume:0, output muted:false" (volume is "missing value" with no output device)
+    now = dict(part.strip().split(":", 1) for part in _osa("get volume settings").split(",") if ":" in part)
+    vol = int(now.get("output volume", "0")) if now.get("output volume", "").isdigit() else 0
+    muted = now.get("output muted", "false").strip() == "true"
     if level is not None or delta is not None:
         new = max(0, min(100, int(level if level is not None else vol + delta)))
         raised = new > vol
