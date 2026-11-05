@@ -2371,6 +2371,7 @@ function panelItems() {
     { kind: 'row', label: 'Back', act: () => setView(subReturn()) },
   ];
   if (P.view === 'accounts') return [
+    ...(ON_MAC && !d.steamDetected ? [{ kind: 'note', label: 'Steam games play through the Steam app, which isn’t included. Install Steam for Mac from steampowered.com to play them.' }] : []),
     { logo: 'steam', ...(acc.steam ? removable('acc-steam', 'Steam', `Connected · ${acc.steam.label} · ${acc.steam.count} games`, '/api/accounts/remove', { name: 'steam' })
       : { kind: 'row', label: 'Connect Steam', sub: 'Show every game you own on Steam, installed or not', act: () => setView('steam') }) },
     { logo: 'epicgames', ...(acc.epic ? removable('acc-epic', 'Epic Games', `Connected · ${acc.epic.label} · ${acc.epic.count} games`, '/api/accounts/remove', { name: 'epic' })
@@ -2744,7 +2745,8 @@ function setupItems(d, prof) {
     ];
     case 'setup-accounts': return [
       { kind: 'note', label: `${d.steamDetected ? 'Your installed Steam games are already here: connecting Steam adds the ones you haven’t installed. ' : 'Connect the stores you use to see every game you own. '}`
-        + 'Each needs a key or code from its website, easiest with a keyboard, so it’s fine to skip this and do it later in Settings › Accounts.' },
+        + 'Each needs a key or code from its website, easiest with a keyboard, so it’s fine to skip this and do it later in Settings › Accounts.'
+        + (ON_MAC && !d.steamDetected ? ' Steam games play through the Steam app, which isn’t included: install Steam for Mac from steampowered.com to play them.' : '') },
       acc.steam ? { kind: 'row', logo: 'steam', label: 'Steam', value: '✓ Connected', sub: `${acc.steam.count} games`, act: () => {} } : { kind: 'row', logo: 'steam', label: 'Connect Steam', sub: 'Every game you own on Steam', act: () => setView('steam') },
       acc.epic ? { kind: 'row', logo: 'epicgames', label: 'Epic Games', value: '✓ Connected', sub: `${acc.epic.count} games`, act: () => {} } : { kind: 'row', logo: 'epicgames', label: 'Connect Epic Games', sub: 'Every game you own on Epic', act: () => setView('epic') },
       { kind: 'note', label: 'Optional: more artwork. Your games already get covers without it.' },
