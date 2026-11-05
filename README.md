@@ -203,33 +203,6 @@ expected and what happened instead, and attach `errors.log` from the `data` fold
 
 ---
 
-## 🛠️ For developers
-
-<details>
-<summary><b>Building from source</b></summary>
-
-Needs Windows and Python 3.12.
-
-```sh
-pip install pywebview pystray pillow pyinstaller
-python -m PyInstaller --noconfirm "Game Frontend.spec"
-```
-
-The exe is built in `dist/`. To run from source instead: `python frontend.py`.
-</details>
-
-<details>
-<summary><b>Releasing (maintainers)</b></summary>
-
-1. Raise `VERSION` in `server.py`, commit and push.
-2. Run `python tools/release.py [notes.md]` (add `--dry-run` to check everything first).
-
-It builds the exe and publishes it as `UltraFrontEnd.exe` under the tag `v<VERSION>`, with the licence notices beside it.
-Every copy of the app picks the release up and updates itself.
-</details>
-
----
-
 ## 📄 License
 
 [MIT](LICENSE) © ImSammyTTV. Third-party software and artwork: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
