@@ -71,7 +71,7 @@ PORT = int(sys.argv[sys.argv.index("--port") + 1]) if "--port" in sys.argv else 
 # This copy's build, noted at start: an update swaps the exe while the old build can still be running in the tray
 BUILD = "%d-%d" % (int(os.path.getmtime(sys.executable)), os.path.getsize(sys.executable)) if getattr(sys, "frozen", False) else "source"
 QUIT = [lambda: os._exit(0)]  # how this helper leaves when a newer build takes over; Game Frontend.exe takes its tray icon down too
-VERSION = "1.1.2"  # the release this is; tools/release.py publishes it as tag v<VERSION>
+VERSION = "1.1.3"  # the release this is; tools/release.py publishes it as tag v<VERSION>
 UPDATE_REPO = "ImSammyTTV/Ultra-Front-End"  # whose GitHub releases a copy of the exe keeps itself current from
 os.makedirs(DATA, exist_ok=True)
 
@@ -2862,10 +2862,16 @@ def warm_details():
 def game_details(g):
     """Everything the details screen shows except news (fetched separately so the screen fills in at once)."""
     cfg = config()
-    appid = steam_appid_for(g) if g.get("appid") or cfg["onlineCovers"] else None
+    own = load("overrides.json", {}).get(g["id"], {})
+    look = dict(g, title=own.get("infoAs") or g["title"])  # the name its description, screenshots and trailers are found by
+    if own.get("infoAs"):
+        look.pop("appid", None)  # a name the user chose wins over the store page it had
+    appid = steam_appid_for(look) if g.get("appid") or cfg["onlineCovers"] else None
     local = local_steam_art(g, appid)
     ach_f = POOL.submit(achievements, g)
-    d = dict(remote_info(g, appid, local))
+    d = dict(remote_info(look, appid, local))
+    if own.get("description"):  # one the user wrote
+        d["description"], d["descSource"], d["sourceUrl"], d["sourceTitle"] = own["description"], "Your own description", "", ""
     raw = d.get("genres") or []  # Wikipedia gives "racing video game"; show "Racing"
     d["genres"] = list(dict.fromkeys((tidy_genres([x]) or [(lambda y: y[:1].upper() + y[1:])(re.sub(r"\s+video games?$", "", x, flags=re.I))])[0] for x in raw))
     d["hero"] = local.get("hero") or d.get("hero", "")
@@ -3121,6 +3127,8 @@ def scan():
                 g["customLogo"] = True
             if g and o.get("hidden"):
                 g["hidden"] = True
+            if g and (o.get("infoAs") or o.get("description")):
+                g["customInfo"] = True
             if g and o.get("title"):
                 g["renameTo"] = o["title"]  # applied after the duplicate merge below, which goes by the game's own name
             if g and o.get("favorite"):
@@ -7586,6 +7594,27 @@ class Handler(SimpleHTTPRequestHandler):
                         overrides.pop(g["id"])
                 store("overrides.json", overrides)
                 g["hidden"] = bool(body.get("hidden"))
+                return self.reply({"ok": True})
+            if path == "/api/game/info":  # look it up by another name, write its description, or both back to automatic
+                g = STATE["byId"].get(body.get("id"))
+                if not g:
+                    raise ValueError("Game not found")
+                overrides = load("overrides.json", {})
+                o = overrides.setdefault(g["id"], {})
+                for field, limit in (("infoAs", 120), ("description", 3000)):
+                    if body.get("reset"):
+                        o.pop(field, None)
+                    elif field in body:
+                        text = " ".join(str(body.get(field) or "").split())[:limit]
+                        if text:
+                            o[field] = text
+                        else:
+                            o.pop(field, None)
+                if not o:
+                    overrides.pop(g["id"])
+                store("overrides.json", overrides)
+                g["customInfo"] = bool(o.get("infoAs") or o.get("description"))
+                DETAILS.pop(g["id"], None)
                 return self.reply({"ok": True})
             if path == "/api/game/rename":  # a name of the user's own; an empty one goes back to the game's own name
                 g = STATE["byId"].get(body.get("id"))

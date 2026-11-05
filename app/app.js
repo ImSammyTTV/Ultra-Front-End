@@ -959,6 +959,31 @@ async function afterLibraryChange() {
   await loadLibrary(); renderTabs(); buildRow(false);
   if (D.open) D.game = LIB.find(x => x.id === D.game.id) || D.game;  // the ⋯ and Y menus read it
 }
+// Game info: the description, screenshots and trailers are found by the game's name. A rename (or an odd folder name) can
+// find another game's: look it up by the right name instead, or write the description yourself.
+function openInfoMenu(g) {
+  sysMenu('Game info', [
+    { label: 'Look up info as…', ic: icon('search'), run: () => {
+      openSearch(null, text => setGameInfo(g, { infoAs: text.trim() }, text.trim() ? `Looking it up as ${text.trim()}` : 'Looking it up by its name'),
+        { id: 'infoas', label: `The game's real name, to find its description, screenshots and trailers`, max: 120 });
+      $('#srq').value = g.title; searchRun();
+    } },
+    { label: 'Write a description', ic: icon('keyboard'), run: () => {
+      openSearch(null, text => setGameInfo(g, { description: text.trim() }, text.trim() ? 'Description saved' : 'Description back to automatic'),
+        { id: 'desc', label: `A description of ${g.title}`, max: 3000 });
+      $('#srq').value = D.open && D.game?.id === g.id && D.data?.descSource === 'Your own description' ? D.data.description : ''; searchRun();
+    } },
+    ...(g.customInfo ? [{ label: 'Restore game info', ic: icon('reset'), run: () => setGameInfo(g, { reset: true }, 'Game info back to automatic') }] : []),
+  ]);
+}
+async function setGameInfo(g, change, done) {
+  try { await api('/api/game/info', { id: g.id, ...change }); } catch (e) { return toast(e.message); }
+  delete DCACHE[g.id];  // the details the window kept are the old ones
+  await afterLibraryChange();
+  const now = LIB.find(x => x.id === g.id) || g;
+  if (D.open && D.game?.id === g.id) openDetails(now);  // looked up again, at once
+  toast(done, 3000);
+}
 // A name of your own for a game, typed on the on-screen keyboard (or a real one), starting from the name it has now
 function renameGame(g) {
   openSearch(null, text => setGameName(g, text.trim()), { id: 'rename', label: `New name for ${g.title}`, max: 120 });
@@ -967,6 +992,7 @@ function renameGame(g) {
 async function setGameName(g, title) {
   if (title === g.title) return;
   try { await api('/api/game/rename', { id: g.id, title }); } catch (e) { return toast(e.message); }
+  delete DCACHE[g.id];  // a new name can find other details
   await afterLibraryChange();
   if (D.open) renderDetails();  // its title, now
   toast(title ? `Renamed to ${title}` : 'Original name restored');
@@ -1785,6 +1811,7 @@ function quickItems(g) {
     { label: 'Collections', ic: svg('library'), run: () => openCollections(g) },
     { label: 'Artwork', ic: svg('image'), run: () => openArtMenu(g) },
     { label: 'Rename', ic: svg('keyboard'), run: () => renameGame(g) },
+    { label: 'Game info', ic: svg('info'), run: () => openInfoMenu(g) },
     ...(g.renamed ? [{ label: 'Restore original name', ic: svg('reset'), run: () => setGameName(g, '') }] : []),
     ...(g.source !== 'Emulators' || g.appPath ? [{ label: 'App location', ic: svg('folder'), run: () => openLocationMenu(g) }] : []),
     { label: g.hidden ? 'Unhide game' : 'Hide game', ic: svg(g.hidden ? 'eye' : 'eyeoff'), run: () => setHidden(g, !g.hidden) },
