@@ -51,6 +51,7 @@ const icon = n => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 const API = location.protocol.startsWith('http');
 let LIB = [];
 let TABS = [{ name: 'All Games', has: () => true }];
+let NEWS_DOT = false;  // a new version's notes not seen yet: a dot on the News button
 const BUTTONS = [
   { name: 'News', icon: 'news', run: () => openNewsPage() },
   { name: 'Library', icon: 'library', run: () => openLibraryPage('pc') },
@@ -183,7 +184,7 @@ function drawButtons() {
   const cur = BUTTONS[S.btn], news = BUTTONS.splice(BUTTONS.findIndex(b => b.name === 'News'), 1)[0];
   BUTTONS.splice(!API || LIB.some(g => g.appid) ? 0 : BUTTONS.findIndex(b => b.name === 'Search') + 1, 0, news);
   S.btn = Math.max(0, BUTTONS.indexOf(cur));
-  $('#buttons').innerHTML = BUTTONS.map((b, i) => `<div class="btn${S.zone === 1 && i === S.btn ? ' sel' : ''}" data-i="${i}"><div class="ring">${icon(b.icon)}</div><span>${b.name}</span></div>`).join('');
+  $('#buttons').innerHTML = BUTTONS.map((b, i) => `<div class="btn${S.zone === 1 && i === S.btn ? ' sel' : ''}" data-i="${i}"><div class="ring">${icon(b.icon)}${b.name === 'News' && NEWS_DOT ? '<i class="btn-dot"></i>' : ''}</div><span>${b.name}</span></div>`).join('');
 }
 // Every cover decoded in idle time, a few at a time, so a fast scroll through games not seen yet still shows each
 // one's art (the browser keeps the bitmaps in its own cache; this only makes sure they're fetched once).
@@ -1365,26 +1366,60 @@ $('#details').addEventListener('click', e => {
   if (D.menu) { D.menu = false; renderActions(); }
 });
 
-// ---------- news page: the latest news across your Steam games ----------
-const NP = { open: false, items: [], i: 0 };
-let newsReq = null;
-async function openNewsPage() {
+// ---------- news page: the latest news across your Steam games, and What's new in Ultra Front End (LB / RB) ----------
+const NP = { open: false, items: [], i: 0, tab: 'games', games: null, updates: null, upErr: '', version: '' };
+const NEWS_TABS = [['games', 'Game news'], ['new', 'What’s new']];
+const RELEASE_STATE = { installed: 'Installed', update: 'Update ready' };
+let newsReq = null, whatsReq = null;
+// After an update the News button has a dot, and News opens on What's new, until its notes have been seen
+async function openNewsPage(tab) {
   if (!API) return toast('Start the frontend with Start Frontend.bat to see news');
-  NP.open = true; NP.i = 0;
+  NP.open = true; NP.i = 0; NP.tab = tab || (NEWS_DOT ? 'new' : 'games');
   document.body.classList.add('news-open');
-  const grid = $('#newspage .np-grid');
-  if (!NP.items.length) grid.innerHTML = '<div class="d-empty">Loading news from your games…</div>';
   tick(600, .07);
-  try {
-    newsReq ??= api('/api/news').finally(() => setTimeout(() => newsReq = null, 600000));
-    NP.items = (await newsReq).news;
-  } catch (e) { return toast(e.message); }
-  if (!NP.open) return;
-  grid.innerHTML = NP.items.length ? NP.items.map((n, i) => `<div class="np-card" data-i="${i}" style="animation-delay:${Math.min(i, 16) * 40}ms">
+  renderNewsPage(); loadNewsTab();
+}
+async function loadNewsTab() {
+  const tab = NP.tab;
+  if (tab === 'new') {
+    try {
+      whatsReq ??= api('/api/whatsnew').finally(() => setTimeout(() => whatsReq = null, 600000));
+      const r = await whatsReq;
+      NP.updates = r.items; NP.upErr = r.error || ''; NP.version = r.version || '';
+      if (!r.items?.length) whatsReq = null;  // nothing to show (offline, say): asked again next time
+      // the dot goes once the notes are actually on screen, not when they couldn't load
+      if (NEWS_DOT && r.items?.length && NP.open && NP.tab === 'new') { NEWS_DOT = false; drawButtons(); api('/api/whatsnew', {}).catch(() => {}); }
+    } catch (e) { NP.upErr = e.message; NP.updates ??= []; whatsReq = null; }
+  } else {
+    try {
+      newsReq ??= api('/api/news').finally(() => setTimeout(() => newsReq = null, 600000));
+      NP.games = (await newsReq).news;
+    } catch (e) { NP.games ??= []; toast(e.message); }
+  }
+  if (NP.open && NP.tab === tab) renderNewsPage();
+}
+function renderNewsPage() {
+  const games = NP.tab === 'games', list = games ? NP.games : NP.updates, grid = $('#newspage .np-grid');
+  NP.items = list || [];
+  NP.i = clamp(NP.i, 0, Math.max(0, NP.items.length - 1));
+  $('#newspage .np-sub').textContent = games ? 'The latest from your Steam games' : `Updates to Ultra Front End${NP.version ? ` · you have version ${NP.version}` : ''}`;
+  $('#newspage .al-tabs').innerHTML = NEWS_TABS.map(([k, label]) => `<div class="al-tab${NP.tab === k ? ' sel' : ''}" data-k="${k}">${label}</div>`).join('');
+  if (!list) grid.innerHTML = `<div class="d-empty">${games ? 'Loading news from your games…' : 'Loading what’s new…'}</div>`;
+  else if (games) grid.innerHTML = list.length ? list.map((n, i) => `<div class="np-card" data-i="${i}" style="animation-delay:${Math.min(i, 16) * 40}ms">
       <div class="ni" style="background-image:url(&quot;${esc(n.image || n.cover)}&quot;)"></div>
       <div class="nb"><div class="ng">${esc(n.game)}</div><div class="nt">${esc(n.title)}</div><div class="ns">${esc(n.summary)}</div><div class="nd">${esc(fmtDate(n.date))}${n.source ? ' · ' + esc(n.source) : ''}</div></div></div>`).join('')
     : `<div class="d-empty">No news yet. Connect Steam or add Steam games to see their news here.${LIB.some(g => g.appid) ? '' : '<br>Press A to connect Steam.'}</div>`;
+  else grid.innerHTML = list.length ? list.map((n, i) => `<div class="np-card np-rel" data-i="${i}" style="animation-delay:${Math.min(i, 16) * 40}ms">
+      <div class="ni"><span class="np-ver">${esc(n.version)}</span>${n.state ? `<span class="np-state ${n.state}">${RELEASE_STATE[n.state]}</span>` : ''}</div>
+      <div class="nb"><div class="ng">Ultra Front End</div><div class="nt">${esc(n.title)}</div><div class="ns">${esc(n.summary)}</div><div class="nd">${esc(fmtDate(n.date))}</div></div></div>`).join('')
+    : `<div class="d-empty">${esc(NP.upErr || 'Nothing here yet.')}</div>`;
   newsFocus();
+}
+function newsTab(dir) {
+  const k = dir > 0 ? 'new' : 'games';
+  if (k === NP.tab) return;
+  NP.tab = k; NP.i = 0; tick(760, .04);
+  renderNewsPage(); loadNewsTab();
 }
 // From the pages that need a Steam account: Settings › Accounts, on Connect Steam unless it's connected already
 async function connectSteam() {
@@ -1404,8 +1439,16 @@ function newsMove(dx, dy) {
   const n = clamp(NP.i + dx + dy * newsCols(), 0, NP.items.length - 1);
   if (n !== NP.i) { NP.i = n; tick(700, .04); newsFocus(); }
 }
-function newsOpen() { const n = NP.items[NP.i]; if (n) openReader(n, n.image || n.cover); else if (!NP.items.length && !LIB.some(g => g.appid) && API) connectSteam(); }
-$('#newspage').addEventListener('click', e => { const c = e.target.closest('.np-card'); if (c) { NP.i = +c.dataset.i; newsFocus(); newsOpen(); } else if (e.target.closest('.d-empty')) newsOpen(); });
+function newsOpen() {
+  const n = NP.items[NP.i];
+  if (n && NP.tab === 'new') return openReader({ ...n, source: 'Ultra Front End' }, 'assets/intro-wave.jpg');
+  if (n) openReader(n, n.image || n.cover); else if (NP.tab === 'games' && NP.games && !NP.items.length && !LIB.some(g => g.appid) && API) connectSteam();
+}
+$('#newspage').addEventListener('click', e => {
+  const t = e.target.closest('.al-tab'), c = e.target.closest('.np-card');
+  if (t) return newsTab(t.dataset.k === 'new' ? 1 : -1);
+  if (c) { NP.i = +c.dataset.i; newsFocus(); newsOpen(); } else if (e.target.closest('.d-empty')) newsOpen();
+});
 
 // ---------- search ----------
 // Type on a keyboard, or with the controller on the on-screen keys (A types, Y deletes). Matching games appear as
@@ -2027,9 +2070,10 @@ async function updateNow(action) {
 // After an update, once: which version this is now
 if (API) api('/api/update').then(u => {
   if (!u.updated) return;
-  toast(`Updated to version ${u.updated.version}`, 5000);
+  toast(`Updated to version ${u.updated.version}. See what’s new in News`, 6000);
   api('/api/update', { action: 'seen' }).catch(() => {});
 }).catch(() => {});
+if (API) api('/api/whatsnew/unseen').then(r => { if (r.unseen) { NEWS_DOT = true; drawButtons(); } }).catch(() => {});
 async function openPanel(view = P.cat || SETTINGS[0].id) {  // the category used last this session, or the first
   if (view === 'main') view = P.cat || SETTINGS[0].id;
   P.open = true; P.view = view; P.focus = 0; P.confirm = null; P.game = null; P.side = true;
@@ -2980,7 +3024,8 @@ function input(action) {
       ? { up: () => achMove(0, -1), down: () => achMove(0, 1), left: () => achMove(-1, 0), right: () => achMove(1, 0), back: closeAchievements,
           prevTab: () => achTab(-1), nextTab: () => achTab(1) }
     : NP.open
-      ? { up: () => newsMove(0, -1), down: () => newsMove(0, 1), left: () => newsMove(-1, 0), right: () => newsMove(1, 0), ok: newsOpen, back: closeNewsPage }
+      ? { up: () => newsMove(0, -1), down: () => newsMove(0, 1), left: () => newsMove(-1, 0), right: () => newsMove(1, 0), ok: newsOpen, back: closeNewsPage,
+          prevTab: () => newsTab(-1), nextTab: () => newsTab(1) }
     : SR.open
       ? kb
     : HUB.open

@@ -450,6 +450,14 @@ body.news-open #newspage { opacity: 1; pointer-events: auto; }
 .np-card .nt { font-size: 2.1vh; font-weight: 600; line-height: 1.3; }
 .np-card .ns { font-size: 1.6vh; line-height: 1.45; opacity: .65; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .np-card .nd { font-size: 1.35vh; opacity: .5; margin-top: .4vh; }
+/* What's new: a release card, the version over the intro's wave */
+#newspage .al-tabs { flex-shrink: 0; }
+.np-rel .ni { position: relative; background-image: linear-gradient(180deg, rgba(4, 8, 20, 0) 40%, rgba(4, 8, 20, .7)), url("assets/intro-wave.jpg"); }
+.np-ver { position: absolute; left: 2vh; bottom: 1.4vh; font-size: 4.6vh; font-weight: 700; letter-spacing: .03em; text-shadow: 0 .4vh 2vh rgba(0, 0, 0, .6); }
+.np-state { position: absolute; right: 1.6vh; top: 1.6vh; padding: .45vh 1.3vh; border-radius: 99px; font-size: 1.4vh; font-weight: 600; background: rgba(5, 10, 22, .75); color: #bfe6ff; }
+.np-state.update { background: var(--accent); color: #04121f; box-shadow: 0 0 1.6vh var(--accent-glow); }
+.btn .ring { position: relative; }
+.btn-dot { position: absolute; top: 4%; right: 4%; width: 1.5vh; height: 1.5vh; border-radius: 50%; background: var(--accent); box-shadow: 0 0 1.4vh var(--accent-glow), 0 0 0 .3vh rgba(4, 8, 20, .8); }
 .np-card.sel { transform: translateY(-.6vh); box-shadow: var(--glass-edge), 0 0 3vh var(--accent-glow), 0 1.6vh 4vh rgba(0, 0, 0, .4); }
 .np-card.sel::after { box-shadow: inset 0 0 0 .25vh var(--accent); }
 
