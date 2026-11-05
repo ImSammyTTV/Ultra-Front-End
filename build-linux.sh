@@ -10,6 +10,13 @@ if [ ! -d .venv-linux ]; then python3 -m venv .venv-linux; fi
 . .venv-linux/bin/activate
 pip install -q --upgrade pip
 pip install -q --upgrade pywebview qtpy PySide6-Essentials PySide6-Addons pyinstaller pillow
+# PySide6 6.12 and later ship the web engine as a package of its own (older ones have it in PySide6-Addons)
+pip install -q --upgrade PySide6-WebEngine 2>/dev/null || true
+if ! python -c "import PySide6.QtWebEngineWidgets" 2>/dev/null; then
+  echo "Qt's web engine (PySide6.QtWebEngineWidgets) doesn't load here: the window needs it" >&2
+  python -c "import PySide6.QtWebEngineWidgets" >&2 || true
+  exit 1
+fi
 python -m PyInstaller --noconfirm --log-level WARN "Game Frontend (Linux).spec"
 
 # Libraries the build needs but this machine lacks never go into the AppImage, and the window then fails on every
