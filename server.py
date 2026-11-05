@@ -2585,6 +2585,126 @@ def all_news():
     return items[:80]
 
 
+# ---------- What's new: this app's own releases, for the News page ----------
+WHATS_NEW = {"at": 0.0, "items": None, "error": ""}
+
+
+def markdown_inline(text):
+    """Markdown's inline marks taken out: the page shows plain text."""
+    t = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", text)  # pictures are blocks of their own
+    t = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", t)  # [text](link) -> text
+    t = re.sub(r"(\*\*|__)(.+?)\1", r"\2", t)
+    t = re.sub(r"(?<![\w*])\*(?!\s)(.+?)(?<!\s)\*(?!\w)", r"\1", t)
+    t = re.sub(r"`([^`]*)`", r"\1", t)
+    return tidy(html.unescape(t))
+
+
+def markdown_blocks(md):
+    """A release's notes (Markdown) as the plain blocks the reader shows, like a Steam post's."""
+    blocks, para = [], []
+
+    def flush():
+        if para:
+            text = markdown_inline(" ".join(para))
+            if text:
+                blocks.append({"t": "p", "text": text})
+            para.clear()
+    for line in (md or "").replace("\r\n", "\n").split("\n"):
+        s = line.strip()
+        img = re.fullmatch(r"!\[[^\]]*\]\((https://[^\s)]+)[^)]*\)", s)
+        head = re.match(r"#{1,6}\s+(.*)", s)
+        item = re.match(r"(?:[-*+]|\d+[.)])\s+(.*)", s)
+        if not s or re.fullmatch(r"(-{3,}|\*{3,}|_{3,})", s):
+            flush()
+        elif img:
+            flush()
+            blocks.append({"t": "img", "src": img.group(1)})
+        elif head:
+            flush()
+            if markdown_inline(head.group(1)):
+                blocks.append({"t": "h", "text": markdown_inline(head.group(1))})
+        elif item:
+            flush()
+            if markdown_inline(item.group(1)):
+                blocks.append({"t": "li", "text": markdown_inline(item.group(1))})
+        elif blocks and blocks[-1]["t"] == "li" and not para and line[:1] in (" ", "\t"):  # an item carried on to the next line
+            blocks[-1]["text"] = tidy(blocks[-1]["text"] + " " + markdown_inline(s))
+        else:
+            para.append(s)
+    flush()
+    return blocks[:150]
+
+
+def release_date(text):
+    try:
+        import calendar
+        return calendar.timegm(time.strptime(text or "", "%Y-%m-%dT%H:%M:%SZ"))
+    except ValueError:
+        return 0
+
+
+def in_app_notes(md):
+    """A release's notes as the app shows them: without the section on downloading it, which someone reading this has done."""
+    out, skip = [], False
+    for b in markdown_blocks(md):
+        if b["t"] == "h":
+            skip = bool(re.match(r"(download|install(ing|ation)?)\b", b["text"], re.I))
+        if not skip:
+            out.append(b)
+    return out
+
+
+def release_summary(blocks):
+    """The first lines of a release's notes, for its card."""
+    text = " ".join(b["text"] for b in blocks if b["t"] in ("p", "li"))
+    return text[:280] + ("…" if len(text) > 280 else "")
+
+
+def whats_new():
+    """This app's releases, newest first, from its GitHub page: asked for at most once an hour, and the last answer kept
+    (with GitHub's ETag) for when it can't be reached."""
+    if WHATS_NEW["items"] is not None and time.time() - WHATS_NEW["at"] < 3600:
+        return WHATS_NEW["items"], WHATS_NEW["error"]
+    saved = load("whatsnew.json", {})
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": UA}
+    if saved.get("etag") and saved.get("releases") is not None:
+        headers["If-None-Match"] = saved["etag"]
+    releases, error = saved.get("releases"), ""
+    try:
+        req = urllib.request.Request(f"https://api.github.com/repos/{UPDATE_REPO}/releases?per_page=12", headers=headers)
+        with urllib.request.urlopen(req, timeout=15) as r:
+            releases = [{"version": str(x.get("tag_name") or "").lstrip("vV"), "name": str(x.get("name") or ""), "notes": str(x.get("body") or ""),
+                         "date": release_date(x.get("published_at")), "page": str(x.get("html_url") or "")}
+                        for x in json.loads(r.read().decode("utf-8")) if not x.get("draft") and not x.get("prerelease")]
+            store("whatsnew.json", {**load("whatsnew.json", {}), "etag": r.headers.get("ETag", ""), "releases": releases})
+    except urllib.error.HTTPError as e:
+        if e.code != 304:
+            error = "GitHub didn't answer just now" if releases else f"Couldn't reach GitHub ({e.code})"
+    except (urllib.error.URLError, OSError, ValueError, TimeoutError):
+        error = "" if releases else "Couldn't reach GitHub. Check the internet connection"
+    items = []
+    for x in releases or []:
+        if not x.get("version"):
+            continue
+        key, mine = version_key(x["version"]), version_key(VERSION)
+        items.append({"version": x["version"], "title": x["name"] or f"Ultra Front End {x['version']}", "date": x["date"], "page": x["page"],
+                      "summary": release_summary(in_app_notes(x["notes"])), "body": in_app_notes(x["notes"]),
+                      "state": "installed" if key == mine else "update" if key > mine else ""})
+    items.sort(key=lambda n: version_key(n["version"]), reverse=True)
+    # an answer is kept an hour; nothing at all (offline at start-up, say) only a minute, so it's asked again soon
+    WHATS_NEW.update(at=time.time() - (0 if releases else 3540), items=items, error=error)
+    return items, error
+
+
+def whats_new_unseen():
+    """Whether this version's notes are still to be read: once it has updated itself. A first start just notes the version."""
+    saved = load("whatsnew.json", {})
+    if not saved.get("seen"):
+        store("whatsnew.json", {**saved, "seen": VERSION})
+        return False
+    return version_key(saved["seen"]) < version_key(VERSION)
+
+
 def game_news(g):
     hit = NEWS.get(g["id"])
     if hit and time.time() - hit[0] < 1800:
@@ -6968,6 +7088,11 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_path(f) if f and os.path.isfile(f) else self.send_error(404)
         if path == "/api/news":
             return self.reply({"news": all_news()})
+        if path == "/api/whatsnew":
+            items, error = whats_new()
+            return self.reply({"items": items, "error": error, "version": VERSION, "unseen": whats_new_unseen()})
+        if path == "/api/whatsnew/unseen":  # for the News button's dot: no network
+            return self.reply({"unseen": whats_new_unseen(), "version": VERSION})
         if path == "/api/game/achievements":
             g = STATE["byId"].get((urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("id") or [""])[0])
             return self.reply({"achievements": quiet(POOL.submit(achievements, g), None) if g else None})
@@ -7027,6 +7152,9 @@ class Handler(SimpleHTTPRequestHandler):
             if path == "/api/spawn/done":
                 spawn_done(body.get("id"), int(body.get("pid") or 0))
                 return self.reply({"ok": True})
+            if path == "/api/whatsnew":  # this version's notes were read: the News button's dot goes
+                store("whatsnew.json", {**load("whatsnew.json", {}), "seen": VERSION})
+                return self.reply({"unseen": False})
             if path == "/api/update":  # Settings > About: check now, install now, or the page has shown "Updated"
                 if body.get("action") == "seen":
                     store("update.json", {**load("update.json", {}), "updated": None})
