@@ -580,7 +580,8 @@ def main():
     full = "--windowed" not in sys.argv
     if server.MAC and full:
         # macOS full screen leaves the strip beside the notch black, so cover the whole screen with a borderless window instead
-        window = webview.create_window("Ultra Front End", URL, frameless=True, easy_drag=False, background_color="#070c1a", js_api=Api())
+        # hidden until it covers the screen: shown at its first size it flashes a light border
+        window = webview.create_window("Ultra Front End", URL, frameless=True, easy_drag=False, background_color="#070c1a", hidden=True, js_api=Api())
         webview.start(cover_screen_mac, window, private_mode=False, storage_path=os.path.join(server.DATA, "webview"))
     else:
         window = webview.create_window("Ultra Front End", URL, fullscreen=full, background_color="#070c1a", js_api=Api())
@@ -602,18 +603,25 @@ def cover_screen_mac(window):
     import AppKit
     from PyObjCTools import AppHelper
 
-    window.events.shown.wait(15)
+    window.events.loaded.wait(20)  # the window is hidden until this has run, so "shown" never comes first
 
     def apply():
         w, app = window.native, AppKit.NSApplication.sharedApplication()
         app.setPresentationOptions_(AppKit.NSApplicationPresentationHideDock | AppKit.NSApplicationPresentationHideMenuBar)
         w.setStyleMask_(AppKit.NSWindowStyleMaskBorderless)
+        w.setHasShadow_(False)
+        w.setBackgroundColor_(AppKit.NSColor.colorWithRed_green_blue_alpha_(7 / 255, 12 / 255, 26 / 255, 1))
         w.setFrame_display_((w.screen() or AppKit.NSScreen.mainScreen()).frame(), True)
+        content = w.contentView()
+        for view in content.subviews():  # the page keeps its first size unless it's told to fill the window
+            view.setFrame_(content.bounds())
+            view.setAutoresizingMask_(AppKit.NSViewWidthSizable | AppKit.NSViewHeightSizable)
         app.activateIgnoringOtherApps_(True)
         if hasattr(app, "activate"):  # macOS 14 and later ignore the call above
             app.activate()
         w.makeKeyAndOrderFront_(None)
-        window_log(f"window {w.frame()}; screen {(w.screen() or AppKit.NSScreen.mainScreen()).frame()}; key {w.isKeyWindow()}")  # for checking the result remotely
+        window_log(f"window {w.frame().size.width:.0f}x{w.frame().size.height:.0f}; page {[f'{v.frame().size.width:.0f}x{v.frame().size.height:.0f}' for v in content.subviews()]}; "
+                   f"screen {(w.screen() or AppKit.NSScreen.mainScreen()).frame().size.height:.0f} high; key {w.isKeyWindow()}")  # for checking the result remotely
     AppHelper.callAfter(apply)
 
 
