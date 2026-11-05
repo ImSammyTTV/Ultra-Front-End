@@ -15,3 +15,6 @@ prototype/
 .claude/
 docs/
 tools/extract_covers.py
+.venv-linux/
+*.AppImage
+.cache/

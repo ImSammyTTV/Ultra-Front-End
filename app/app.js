@@ -1,5 +1,6 @@
 // Home screen: one row of covers, round shortcut buttons, source tabs.
 const ON_MAC = /Macintosh|Mac OS X/.test(navigator.userAgent), HERE = ON_MAC ? 'this Mac' : 'this PC';  // the page's word for the computer
+const ON_LINUX = /Linux|X11/.test(navigator.userAgent) && !/Android/.test(navigator.userAgent), UNIX = ON_MAC || ON_LINUX;  // (Linux: the Steam Deck first)
 // Focus zones (up/down): 0 = game row, 1 = buttons, 2 = source tabs.
 const $ = q => document.querySelector(q);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -2425,7 +2426,7 @@ function panelItems() {
   return [  // general
     ...(/Windows/.test(navigator.userAgent) ? [{ kind: 'row', label: 'Start with Windows', value: STARTUP.find(s => s.mode === startupMode(d)).label.replace(/^Don’t start with Windows$/, 'Off'),
       sub: STARTUP.find(s => s.mode === startupMode(d)).sub, act: () => setStartup(STARTUP[(STARTUP.findIndex(s => s.mode === startupMode(d)) + 1) % STARTUP.length].mode) }] : []),
-    ...(ON_MAC ? [{ kind: 'row', ic: icon('power'), label: 'Open at login', value: onOff(startupMode(d) === 'open'), sub: 'Opens full screen when you sign in to your Mac',
+    ...(UNIX ? [{ kind: 'row', ic: icon('power'), label: 'Open at login', value: onOff(startupMode(d) === 'open'), sub: ON_MAC ? 'Opens full screen when you sign in to your Mac' : 'Opens full screen when you sign in to the desktop (on a Steam Deck, Desktop Mode)',
       act: () => setStartup(startupMode(d) === 'open' ? 'off' : 'open') }] : []),
     ...autologonRows(d),
     ...(/Windows/.test(navigator.userAgent) ? [{ kind: 'row', ic: icon('pad'), label: 'Open with the Xbox button', value: onOff(d.options.guideOpens), sub: 'The Xbox button on a controller opens Ultra Front End, or brings it to the front; so does holding View + Start, which also works through Steam (Steam keeps the Xbox and Steam buttons for itself while it runs). A Steam Controller’s Steam button does it with a double-press or a hold. In a game, they open the overlay.', act: () => setOpt('guideOpens') }] : []),
@@ -2645,7 +2646,7 @@ async function chooseRomRoot(useDefault) {
 // ---------- first-time setup guide ----------
 // Runs inside the panel as a centred card: welcome, profile, time zone, accounts, games, done.
 // a Mac has no Windows-only extras (the performance overlay) or start-with-Windows step
-const SETUP_STEPS = ['setup-welcome', 'setup-profile', 'setup-time', 'setup-accounts', 'setup-games', 'setup-systems', ...(ON_MAC ? [] : ['setup-extras', 'setup-startup']), 'setup-done'];
+const SETUP_STEPS = ['setup-welcome', 'setup-profile', 'setup-time', 'setup-accounts', 'setup-games', 'setup-systems', ...(UNIX ? [] : ['setup-extras', 'setup-startup']), 'setup-done'];
 const SETUP_TITLES = { 'setup-welcome': 'Ultra Front End', 'setup-profile': 'Your profile', 'setup-time': 'Time zone', 'setup-accounts': 'Accounts',
   'setup-games': 'Emulators & games', 'setup-systems': 'Your systems', 'setup-extras': 'Extras', 'setup-startup': 'Starting up', 'setup-done': 'All done' };
 // Start with Windows: the choices, in Settings and in the setup guide
@@ -2744,7 +2745,7 @@ function setupItems(d, prof) {
       return [
         { kind: 'note', label: 'Emulated games: pick one ROMs folder and the frontend makes a subfolder for every console. Drop your ROMs and ISOs into the right one.' },
         ...(d.romRoot ? [{ kind: 'row', label: 'ROMs folder', sub: d.romRoot, value: '✓ Change', act: chooseRomRoot }]
-          : [{ kind: 'row', label: ON_MAC ? 'Use the ROMs folder in your home folder (recommended)' : 'Use C:\\ROMs (recommended)', sub: ON_MAC ? '~/ROMs, with a folder for each system you play inside' : 'A folder for each system you play goes inside', value: 'Use', act: () => chooseRomRoot(true) },
+          : [{ kind: 'row', label: UNIX ? 'Use the ROMs folder in your home folder (recommended)' : 'Use C:\\ROMs (recommended)', sub: UNIX ? `~/ROMs, with a folder for each system you play inside${ON_LINUX ? '. For an SD card, choose a different folder' : ''}` : 'A folder for each system you play goes inside', value: 'Use', act: () => chooseRomRoot(true) },
             { kind: 'row', label: 'Choose a different folder', sub: 'Somewhere else, like another drive', value: 'Choose', act: chooseRomRoot }]),
         { kind: 'row', label: 'Find installed emulators', sub: withEmu.length ? `Ready: ${withEmu.map(p => `${p.name} (${p.emulator})`).join(', ')}` : `Looks for emulators already on ${HERE}`, act: () => work(api('/api/emulators/find', {})).then(r => r && toast(r.found ? `Found ${r.found} emulator${r.found === 1 ? '' : 's'}` : 'No new emulators found', 3000)) },
         { kind: 'row', label: '+ Add a folder of PC games', act: () => addLib('pc'), value: pc.length ? '✓ Add another' : '',  // what's been added stays on show
@@ -3308,7 +3309,7 @@ function poll() {
   const t = performance.now();
   // XInput pads already come through the helper; the browser handles the rest (DualSense, Switch Pro, any pad on a Mac)
   // Only while this window has the focus: a browser reads the pad even behind a game, so B there opened the Exit menu here
-  const gp = !document.hasFocus() ? null : [...(navigator.getGamepads?.() || [])].find(p => p && !(HP.live && HP.pads && /xinput|xbox/i.test(p.id)));
+  const gp = !document.hasFocus() ? null : [...(navigator.getGamepads?.() || [])].find(p => p && !(HP.live && HP.pads && (ON_LINUX || /xinput|xbox/i.test(p.id))));  // (on Linux the helper reads every pad)
   if (gp) {
     const b = n => !!gp.buttons[n]?.pressed, ax = n => gp.axes[n] || 0;
     if (!S.pad && (gp.buttons.some(x => x.pressed) || gp.axes.some(a => Math.abs(a) > .5))) S.pad = true;
