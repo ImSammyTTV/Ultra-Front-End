@@ -1245,8 +1245,7 @@ def find_emulators_mac():
     """Known emulators installed as Mac apps (Dolphin.app, PCSX2.app, RetroArch.app...), or as Homebrew commands."""
     import fnmatch
     home, found = os.path.expanduser("~"), {}
-    for root in ("/Applications", os.path.join(home, "Applications"), os.path.join(home, "Emulators"), os.path.join(home, "Downloads"),
-                 os.path.join(home, "Desktop")):
+    for root in ("/Applications", os.path.join(home, "Applications"), os.path.join(home, "Emulators")):  # (not Downloads or the Desktop: slow, and apps belong in Applications)
         if not os.path.isdir(root):
             continue
         base = root.rstrip("/").count(os.sep)
@@ -7011,10 +7010,10 @@ def install_job(job):
         return
     try:
         connect_emulator(job["package"])  # already on this PC: nothing to download
-        if not all(os.path.isfile(config().get("emulators", {}).get(s, {}).get("path", "")) for s in job["systems"]):
+        if not all(os.path.exists(config().get("emulators", {}).get(s, {}).get("path", "")) for s in job["systems"]):  # (a Mac app is a folder)
             install_emulator(job["systems"][0])
         emus = config().get("emulators", {})
-        missing = [s for s in job["systems"] if not os.path.isfile(emus.get(s, {}).get("path", ""))]
+        missing = [s for s in job["systems"] if not os.path.exists(emus.get(s, {}).get("path", ""))]
         job.update(state="failed" if missing else "ready", error="Installed, but its program wasn’t found. Use Choose program." if missing else "")
     except Exception as e:
         job.update(state="failed", error=(str(e) or type(e).__name__)[:200])
@@ -8884,6 +8883,7 @@ def install_mac_app(name):
                 if not found:
                     raise ValueError(f"The {name} download has no app in it")
                 target = os.path.join(apps_dir, os.path.basename(found))
+                job_progress("Setting up")
                 copy_mac_program(found, target)
             finally:
                 subprocess.run(["/usr/bin/hdiutil", "detach", mount, "-force"], capture_output=True, timeout=120)
