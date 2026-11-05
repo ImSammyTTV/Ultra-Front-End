@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.svg" alt="Ultra Front End: every game you own on one screen, played with one controller" width="100%">
+  <img src="assets/banner.webp" alt="Ultra Front End's home screen moving along a row of game covers (the games shown are made up for this demo)" width="100%">
 </p>
 
 <p align="center">
@@ -94,6 +94,45 @@ and a UI scale setting.
 </td>
 </tr>
 </table>
+
+---
+
+## 📸 A look around
+
+<table>
+<tr>
+<td width="50%" align="center">
+  <img src="assets/screens/details.jpg" alt="A game's details page: description, playtime, last played and Play" width="100%"><br>
+  <sub>Game details</sub>
+</td>
+<td width="50%" align="center">
+  <img src="assets/screens/gamemenu.jpg" alt="The game menu over the home row: Play, Game details, Favourites, Collections, Artwork, Hide" width="100%"><br>
+  <sub>Game menu (<b>Y</b>)</sub>
+</td>
+</tr>
+<tr>
+<td align="center">
+  <img src="assets/screens/quickaccess.jpg" alt="Quick Access: volume, downloads, friends, settings, music controls and power buttons" width="100%"><br>
+  <sub>Quick Access (<b>View</b>)</sub>
+</td>
+<td align="center">
+  <img src="assets/screens/ingame.jpg" alt="The in-game menu beside a game: back to game, volume, screenshot, recording, close game and music" width="100%"><br>
+  <sub>In-game menu</sub>
+</td>
+</tr>
+<tr>
+<td align="center">
+  <img src="assets/screens/library.jpg" alt="The Library page: every PC game in a grid with categories and sorting" width="100%"><br>
+  <sub>Library</sub>
+</td>
+<td align="center">
+  <img src="assets/screens/emulators.jpg" alt="The Emulators page: emulated games with a tab for each console" width="100%"><br>
+  <sub>Emulators</sub>
+</td>
+</tr>
+</table>
+
+<sub>Every game, cover and song in these pictures is made up for the demo.</sub>
 
 ---
 
