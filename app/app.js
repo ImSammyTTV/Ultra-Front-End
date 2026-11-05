@@ -1996,7 +1996,6 @@ function sysRows() {
   return [
     ...(now ? [{ ic: 'pad', label: now.title, sub: 'Running · A resumes', run: () => { closeSys(); resumeGame(now); } }] : []),
     ...(SP.volume === null ? [] : [{ id: 'volume', run: () => setSound({ mute: !SP.muted }) }]),
-    { ic: 'download', label: 'Downloads', sub: SP.active ? `${SP.active} active` : '', run: () => { closeSys(); closePages(); openHub('downloads'); } },
     { ic: 'friends', label: 'Friends', sub: SP.friends || '', run: () => { closeSys(); closePages(); openHub('friends'); } },
     { ic: 'settings', label: 'Settings', run: () => { closeSys(); closePages(); openPanel(); } },
     ...(SP.song ? [{ id: 'music', run: sysMedia }] : []),  // the song, just above the power buttons
