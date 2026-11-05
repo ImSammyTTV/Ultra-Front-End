@@ -33,8 +33,8 @@
 <td width="50%" valign="top">
 
 ### 🕹️ Every game in one place
-**Steam, Epic Games, EA app, Ubisoft Connect, Rockstar Games and Battle.net**, plus your own games folders and ROMs.
-Store games start through their own launcher, so sign-in, updates and cloud saves still work.
+**Steam, Epic Games, EA app, Ubisoft Connect, GOG, Rockstar Games and Battle.net**, plus your own games folders and ROMs.
+Store games start through their own launcher, so sign-in, updates and cloud saves still work. Missing a launcher? Setup can install it.
 
 </td>
 <td width="50%" valign="top">
@@ -106,8 +106,8 @@ and a UI scale setting.
   <sub>Game details</sub>
 </td>
 <td width="50%" align="center">
-  <img src="assets/screens/gamemenu.jpg" alt="The game menu over the home row: Play, Game details, Favourites, Collections, Artwork, Hide" width="100%"><br>
-  <sub>Game menu (<b>Y</b>)</sub>
+  <img src="assets/screens/gamemenu.jpg" alt="The game menu over the home row: Game details, Favourites, Collections, Artwork, Hide" width="100%"><br>
+  <sub>Game menu (<b>Y</b> or <b>Start</b>)</sub>
 </td>
 </tr>
 <tr>
@@ -155,7 +155,7 @@ and a UI scale setting.
 |---|---|---|
 | **A** | Select | |
 | **B** | Back | |
-| **Y** | Game menu (artwork, favourites, hide…) | |
+| **Y** or **Start** | Game menu (details, favourites, artwork, hide…) | |
 | **View** | Quick Access | |
 | **LB / RB** | Change tab | |
 | **Xbox button**, **Steam button** or **View + Start** | Open the frontend | In-game menu |
@@ -196,7 +196,7 @@ with no account. To choose your own, including **animated covers and backgrounds
 2. Sign in there, or make a free account.
 3. Choose **Generate API Key**, copy it, and paste it back into the frontend.
 
-Then press **Y** on any game and choose **Artwork**.
+Then press **Y** (or **Start**) on any game and choose **Artwork**.
 
 ---
 
@@ -205,7 +205,7 @@ Then press **Y** on any game and choose **Artwork**.
 <details>
 <summary><b>A game is missing</b></summary>
 
-Installed Steam, EA app, Ubisoft Connect, Rockstar Games and Battle.net games are found by themselves. For Steam games you own but haven't
+Installed Steam, EA app, Ubisoft Connect, GOG, Rockstar Games and Battle.net games are found by themselves. For Steam games you own but haven't
 installed, and for Epic, connect the account in **Settings → Accounts**. For anything else, add its folder in
 **Settings → Libraries**, or add a single game there.
 </details>

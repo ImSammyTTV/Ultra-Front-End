@@ -53,6 +53,7 @@ The logos of the older systems, made plain white and trimmed to the artwork (the
 |---|---|---|---|
 | atari.svg | Atari (Atari 8-bit) | [Simple Icons](https://cdn.jsdelivr.net/npm/simple-icons@16.36.0/icons/atari.svg) | CC0 1.0 |
 | commodore.svg | Commodore (C64, VIC-20) | [Simple Icons](https://cdn.jsdelivr.net/npm/simple-icons@16.36.0/icons/commodore.svg) | CC0 1.0 |
+| gogdotcom.svg | GOG | [Simple Icons](https://cdn.jsdelivr.net/npm/simple-icons@16.36.0/icons/gogdotcom.svg) | CC0 1.0 |
 | nec.svg | NEC (PC Engine CD) | [Simple Icons](https://cdn.jsdelivr.net/npm/simple-icons@16.36.0/icons/nec.svg) | CC0 1.0 |
 | nintendo64dd.svg | 64DD | [Commons: 64DD logo (1999).svg](https://commons.wikimedia.org/wiki/File:64DD_logo_%281999%29.svg) | Public domain |
 | fds.svg | Family Computer Disk System | [Commons: Family Computer Disk System logo.svg](https://commons.wikimedia.org/wiki/File:Family_Computer_Disk_System_logo.svg) | Public domain |

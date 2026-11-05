@@ -906,7 +906,10 @@ body.sys-open .sp-box { transform: none; }
 
 #quick.sys { background: none; backdrop-filter: none; display: block; }
 #quick.sys .q-inner { position: absolute; top: 0; right: 0; bottom: 0; width: 56vh; box-sizing: border-box; padding: 6.4vh 3.2vh 4vh; display: block; background: var(--menu-bg); }
-#quick.sys .q-cover, #quick.sys .q-meta { display: none; }
+#quick.sys .q-cover { display: none; }
+/* the game's line under its title, as Quick Access has the time under its own */
+#quick.sys .q-title { order: 0; } #quick.sys .q-meta { order: 1; } #quick.sys .q-list { order: 2; } #quick.sys .sys-time, #quick.sys .sys-info { order: 3; }
+#quick.sys .q-meta { display: block; margin: -2.2vh 2.4vh 2.6vh; font-size: 2.2vh; letter-spacing: 0; text-transform: none; color: var(--quiet); opacity: 1; }
 #quick.sys .q-side { width: auto; height: 100%; display: flex; flex-direction: column; }
 #quick.sys .q-title { text-align: left; font-size: 3.6vh; font-weight: 600; margin: 0 2.4vh 3.2vh; text-shadow: none; }
 #quick.sys .q-list { min-width: 0; gap: .8vh; }
@@ -1025,6 +1028,8 @@ body:not(.ready) #world, body:not(.ready) header, body:not(.ready) main, body:no
    The home screen scales around the middle of the screen, which keeps the row between the header and the bottom; every
    other screen is zoomed, so its own backdrop still fills the screen. The wallpaper, intro and media viewer keep their size. */
 main { transform: scale(var(--scale, 1)); }
+/* Bigger, the home screen runs into the platform tabs at the bottom: its buttons move up into the reflections' space instead */
+#buttons { margin-top: calc((1 - var(--scale, 1)) * 22vh); }
 body > :not(#intro, #world, main, #viewer, #padtester, script) { zoom: var(--scale, 1); }
 /* At a large scale the details column can be taller than the screen: it scrolls down to the screenshots and back up to
    Play, with room around it so the highlight's glow isn't cut off. */
@@ -1084,6 +1089,11 @@ body.quick-open :is(#row, #title), body.sys-open :is(#row, #title) {
 #syspanel .sp-box { padding-top: 5vh; }
 #syspanel .sp-time { margin-bottom: 2vh; }
 .sp-list .sp-row { min-height: 6.6vh; }
+/* the game menu is a Quick Access panel for one game: the same spacing, title and line under it */
+#quick.sys .q-list { gap: .4vh; }
+#quick.sys .q-list .q-item { min-height: 6.6vh; }
+#quick.sys .q-title { margin-bottom: 1vh; }
+#quick.sys .q-meta { margin: 0 3.6vh 2vh; }
 .sp-list .sp-vol { min-height: 8.4vh; }
 .sp-power { justify-content: space-between; gap: 1vh; padding: .6vh 1.2vh; margin-top: 1.4vh; }
 .sp-pw { flex: 1; display: flex; flex-direction: column; align-items: center; gap: .6vh; padding: 1.2vh .4vh; border-radius: 2.4vh; font-size: 1.9vh; white-space: nowrap; }
@@ -1128,7 +1138,7 @@ body.zone-2 #tabs, body.tabs-peek #tabs { pointer-events: auto; }
 #toast { top: auto; bottom: 10vh; }
 
 /* Quick Access: frosted glass over whatever is behind it */
-#syspanel .sp-box, #quick .q-inner { background: rgba(24, 25, 28, .66); -webkit-backdrop-filter: blur(30px) saturate(1.5); backdrop-filter: blur(30px) saturate(1.5);
+#syspanel .sp-box, #quick .q-inner, #quick.sys .q-inner { background: rgba(24, 25, 28, .66); -webkit-backdrop-filter: blur(30px) saturate(1.5); backdrop-filter: blur(30px) saturate(1.5);
   box-shadow: inset 1px 0 0 rgba(255, 255, 255, .08); }
 #syspanel .sp-list .sp-power { margin-top: auto; }  /* power sits at the bottom of the panel */
 #syspanel .sp-list .sp-music { margin-top: auto; }  /* the song sits just above it */
