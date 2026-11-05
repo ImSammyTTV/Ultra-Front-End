@@ -43,6 +43,7 @@
   .row.music.sel { background: none; color: inherit; }
   .row.music.sel .text small { color: var(--quiet); }
   .mbtns { display: flex; gap: .6rem; flex: none; }
+  .art { width: 4.6rem; height: 4.6rem; flex: none; border-radius: .8rem; object-fit: cover; background: rgba(255, 255, 255, .08); }
   .mb { width: 5.4rem; height: 4.6rem; border-radius: 2.3rem; display: grid; place-items: center; }
   .mb svg { width: 2.2rem; height: 2.2rem; fill: currentColor; }
   .row.music.sel .mb.on { background: #fff; color: var(--ink); }
@@ -92,7 +93,7 @@ let music = null, mediaSel = 1, volume = null, muted = false;
 function rowHTML(it, i) {
   const on = i === sel ? ' sel' : '';
   if (it.volume) return `<div class="row${on}" data-i="${i}">${muted ? ICON.mute : ICON.volume}<div class="text"><div>Volume<span class="value">${muted ? 'Muted' : volume}</span></div><div class="bar"><i style="width:${muted ? 0 : volume}%"></i></div></div></div>`;
-  if (it.media) return `<div class="row music${on}" data-i="${i}">${ICON.music}<div class="text"><div>${esc(music.title)}</div><small>${esc([music.playing ? 'Now playing' : 'Paused', music.artist].filter(Boolean).join(' · '))}</small></div>`
+  if (it.media) return `<div class="row music${on}" data-i="${i}">${music.art ? `<img class="art" src="${esc(music.art)}" alt="">` : ICON.music}<div class="text"><div>${esc(music.title)}</div><small>${esc([music.playing ? 'Now playing' : 'Paused', music.artist].filter(Boolean).join(' · '))}</small></div>`
     + `<div class="mbtns">${[MEDIA.prev, music.playing ? MEDIA.pause : MEDIA.play, MEDIA.next].map((svg, j) => `<span class="mb${j === mediaSel ? ' on' : ''}">${svg}</span>`).join('')}</div></div>`;
   return `<div class="row${it.warn ? ' warn' : ''}${on}" data-i="${i}">${ICON[it.icon] || ''}<div class="text"><div>${esc(it.label)}${it.value ? `<span class="value">${esc(it.value)}</span>` : ''}</div></div></div>`;
 }
@@ -176,7 +177,7 @@ async function song() {  // one at a time: each asks Windows through a PowerShel
   clearTimeout(song.t);
   try {
     const n = await (await fetch('/api/nowplaying', { cache: 'no-store' })).json();
-    music = n.title ? { title: n.title, artist: n.artist || '', playing: !!n.playing } : null;  // a paused song stays, so it can be played again
+    music = n.title ? { title: n.title, artist: n.artist || '', playing: !!n.playing, art: n.art || '' } : null;  // a paused song stays, so it can be played again
     const at = items.findIndex(x => x.media);
     if (music && at < 0) items.push({ media: true });
     if (!music && at >= 0) { items.splice(at, 1); if (sel >= items.length) sel = items.length - 1; }
@@ -203,11 +204,7 @@ fetch('/api/profile', { cache: 'no-store' }).then(r => r.json()).then(p => {
     ...(s.savestate ? [{ label: 'Save state', action: 'savestate', stay: true, done: 'State saved', icon: 'save' }, { label: 'Load state', action: 'loadstate', stay: true, done: 'State loaded', icon: 'load' }] : []),
     { label: 'Take screenshot', action: 'screenshot', icon: 'shot' },
     { label: s.recording ? 'Stop recording' : 'Record video', action: 'record', icon: 'record' },
-    ...(s.hud ? [{ label: 'Performance overlay', value: title(s.hud), hud: true, icon: 'hud' }] : []),  // an extra: only once PresentMon is installed
     { label: 'Close game', action: 'close', warn: true, icon: 'close' }];
-  if (!('hud' in s)) fetch('/api/hud', { cache: 'no-store' }).then(r => r.json()).then(r => {  // no state: asked for here, never guessed
-    if (r.fps && r.mode && !items.some(x => x.hud)) { items.splice(items.findIndex(x => x.action === 'close'), 0, { label: 'Performance overlay', value: title(r.mode), hud: true, icon: 'hud' }); draw(); }
-  }).catch(() => {});
   draw(); clock(); setInterval(clock, 5000); setVolume();
   document.body.classList.add('on');
   padLoop();
