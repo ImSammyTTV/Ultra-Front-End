@@ -7944,7 +7944,26 @@ class Handler(SimpleHTTPRequestHandler):
 # the newest release's exe is downloaded beside this one and checked against GitHub's SHA-256, then swapped in once nothing is
 # open or running. The new copy takes over from this one (frontend.py replace_old_helper); if it never starts, the old exe goes
 # back and that version waits a day.
-UPDATE = {"state": "", "latest": None, "error": "", "checked": 0.0, "retry": 0.0, "done": None}
+UPDATE = {"state": "", "latest": None, "error": "", "checked": 0.0, "retry": 0.0, "done": None, "quick": 0.0}
+QUICK_EVERY = 60  # how often github.com is asked which release is the latest: a tiny request, not the API (no hourly limit)
+
+
+def latest_tag():
+    """The newest release's version, from github.com's own "latest release" redirect, or "" if it can't tell. Asked every
+    minute, so an update starts downloading within a minute of being published; the API is asked only when this changes."""
+    class Stay(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *args, **kwargs):
+            return None  # read where it points instead of going there
+    req = urllib.request.Request(f"https://github.com/{UPDATE_REPO}/releases/latest", method="HEAD", headers={"User-Agent": UA})
+    try:
+        urllib.request.build_opener(Stay).open(req, timeout=10)
+    except urllib.error.HTTPError as e:
+        where = e.headers.get("Location", "") if e.code in (301, 302, 303, 307, 308) else ""
+        m = re.search(r"/releases/tag/v?([0-9][\w.-]*)$", where)
+        return m.group(1) if m else ""
+    except (OSError, ValueError):
+        return ""
+    return ""
 UPDATE_LOCK = threading.Lock()
 UPDATE_EVERY = 3600  # GitHub is asked this often (fixes reach everyone within the hour); an unchanged answer (ETag) doesn't count against its hourly limit
 UPDATE_ASSET = "UltraFrontEnd.exe"  # the release file tools/release.py uploads
@@ -8133,7 +8152,13 @@ def update_step(action=None):
         now = time.time()
         if not action and now < UPDATE["retry"]:
             return
-        if action or now - UPDATE["checked"] > UPDATE_EVERY:
+        newer = False
+        if not action and now - UPDATE["quick"] >= QUICK_EVERY - 1:  # each minute: has a newer release appeared?
+            UPDATE["quick"] = now
+            tag = latest_tag()
+            known = (UPDATE["latest"] or {}).get("version") or VERSION
+            newer = bool(tag) and version_key(tag) > version_key(known)
+        if action or newer or now - UPDATE["checked"] > UPDATE_EVERY:
             UPDATE["checked"], UPDATE["state"] = now, "checking"
             UPDATE["latest"] = latest_release()
         rel, saved = UPDATE["latest"], load("update.json", {})
@@ -8204,7 +8229,7 @@ def watch_updates():
     time.sleep(90)  # after the first scan, and after a takeover has settled
     while True:
         update_step()
-        time.sleep(120)  # a waiting update goes in within a couple of minutes of the frontend closing
+        time.sleep(QUICK_EVERY)  # new releases are noticed, and a waiting update goes in, within a minute
 
 
 def update_view():

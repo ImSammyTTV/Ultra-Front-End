@@ -2092,6 +2092,18 @@ if (API) api('/api/update').then(u => {
   api('/api/update', { action: 'seen' }).catch(() => {});
 }).catch(() => {});
 if (API) api('/api/whatsnew/unseen').then(r => { if (r.unseen) { NEWS_DOT = true; drawButtons(); } }).catch(() => {});
+// An update that arrives while the frontend is open waits for it to close (never mid-game): say so once, with the way to install it now
+let readyShown = '';
+if (API) setInterval(async () => {
+  if (RUN.size || P.open && P.view === 'about') return;  // not over a game; About shows it already
+  try {
+    const u = await api('/api/update');
+    if (u.state === 'ready' && u.latest && readyShown !== u.latest) {
+      readyShown = u.latest;
+      toast(`Version ${u.latest} is ready. It installs when you close Ultra Front End, or now from Settings › About`, 8000);
+    }
+  } catch {}
+}, 120000);
 async function openPanel(view = P.cat || SETTINGS[0].id) {  // the category used last this session, or the first
   if (view === 'main') view = P.cat || SETTINGS[0].id;
   P.open = true; P.view = view; P.focus = 0; P.confirm = null; P.game = null; P.side = true;
