@@ -316,6 +316,15 @@ def scan_steam_local():
             appid, name = ci(st, "appid"), ci(st, "name")
             if not appid or not name or appid in seen or STEAM_SKIP.search(name):
                 continue
+            # Steam also keeps a record for a game it hasn't finished installing (queued, a demo or playtest it never
+            # downloaded): only the ones flagged fully installed, with their folder there, can start
+            try:
+                flags = int(ci(st, "StateFlags") or 0)
+            except ValueError:
+                flags = 0
+            folder = ci(st, "installdir") and os.path.join(lib, "steamapps", "common", ci(st, "installdir"))
+            if not flags & 4 or not (folder and os.path.isdir(folder)):
+                continue
             seen.add(appid)
             s = stats.get(appid, {})
             games.append(steam_game(appid, name, True, s.get("min"), s.get("last")))
