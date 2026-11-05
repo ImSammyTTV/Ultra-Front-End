@@ -6,7 +6,7 @@ VERSION = re.search(r'^VERSION = "([^"]+)"', open("server.py", encoding="utf-8")
 a = Analysis(
     ["frontend.py"],
     datas=[("app", "app"), ("metadata", "metadata"), ("THIRD_PARTY_NOTICES.md", "."), ("licenses", "licenses")],
-    hiddenimports=["server", "plat_mac", "psutil", "AppKit", "Quartz", "PIL.Image", "PIL.ImageDraw", "PIL.ImageFont", "PIL.ImageGrab"],
+    hiddenimports=["server", "plat_mac", "psutil", "AppKit", "Quartz", "GameController", "PIL.Image", "PIL.ImageDraw", "PIL.ImageFont", "PIL.ImageGrab"],
     excludes=["numpy", "yaml", "cryptography", "bcrypt", "jinja2", "markupsafe", "mako", "pygments", "chardet", "defusedxml", "olefile",
               "setuptools", "pkg_resources", "_distutils_hack", "importlib_resources"],
 )
