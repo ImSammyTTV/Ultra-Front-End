@@ -108,7 +108,7 @@ PORT = int(sys.argv[sys.argv.index("--port") + 1]) if "--port" in sys.argv else 
 # This copy's build, noted at start: an update swaps the exe while the old build can still be running in the tray
 BUILD = "%d-%d" % (int(os.path.getmtime(sys.executable)), os.path.getsize(sys.executable)) if getattr(sys, "frozen", False) else "source"
 QUIT = [lambda: os._exit(0)]  # how this helper leaves when a newer build takes over; Game Frontend.exe takes its tray icon down too
-VERSION = "1.2.2"  # the release this is; tools/release.py publishes it as tag v<VERSION>
+VERSION = "1.2.3"  # the release this is; tools/release.py publishes it as tag v<VERSION>
 UPDATE_REPO = "ImSammyTTV/Ultra-Front-End"  # whose GitHub releases a copy of the exe keeps itself current from
 os.makedirs(DATA, exist_ok=True)
 
@@ -972,6 +972,79 @@ def winget_progress(text, seen):
         job_progress("Installing", force=True)
 
 
+INSTALL_HINT = 60  # seconds of quiet before the page suggests answering a window the installer opened
+INSTALL_STALLED = 300  # seconds of quiet before the install is stopped
+INSTALL_LONGEST = 2700  # however busy it looks, never longer than this
+WINGET_STALLED = 0x8A15FFF1  # the elevated helper's answer when it stopped a stalled install
+STALLED_TEXT = ("{name}'s installer stopped responding, so it was stopped after 5 minutes. It may have been waiting for a "
+                "window hidden behind Ultra Front End. Try again, or install it from its own website.")
+
+
+def tree_cpu(pid):
+    """CPU seconds used so far by a process and everything it started (those this program may look at)."""
+    import ctypes
+    k32 = ctypes.WinDLL("kernel32")
+    k32.OpenProcess.restype = ctypes.c_void_p
+    k32.OpenProcess.argtypes = [ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong]
+    k32.CloseHandle.argtypes = [ctypes.c_void_p]
+    k32.GetProcessTimes.argtypes = [ctypes.c_void_p] + [ctypes.POINTER(ctypes.c_ulonglong)] * 4
+    total = 0
+    for p in process_tree(pid):
+        h = k32.OpenProcess(0x1000, False, p)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            continue
+        times = [ctypes.c_ulonglong() for _ in range(4)]
+        if k32.GetProcessTimes(h, *[ctypes.byref(x) for x in times]):
+            total += times[2].value + times[3].value  # kernel + user, in 100 ns
+        k32.CloseHandle(h)
+    return total / 1e7
+
+
+def msi_busy():
+    """Windows Installer is installing something (its execute mutex exists): MSI packages run in its own service, outside winget's
+    process tree, so their work doesn't show up in tree_cpu."""
+    import ctypes
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.OpenMutexW.restype = ctypes.c_void_p
+    k32.OpenMutexW.argtypes = [ctypes.c_ulong, ctypes.c_int, ctypes.c_wchar_p]
+    k32.CloseHandle.argtypes = [ctypes.c_void_p]
+    h = k32.OpenMutexW(0x00100000, False, "Global\\_MSIExecute")  # SYNCHRONIZE
+    if h:
+        k32.CloseHandle(h)
+        return True
+    return ctypes.get_last_error() == 5  # ERROR_ACCESS_DENIED: there, but not ours to open
+
+
+def watch_install(proc, last_output, hint=True):
+    """Waits for winget to finish. Returns its exit code, or None if it was stopped: nothing from it for INSTALL_STALLED seconds
+    (no output, no CPU used by it or anything it started, Windows Installer idle), which is usually an installer waiting on
+    a window nobody can see. hint: say so on the page after a minute of quiet."""
+    start = active = time.time()
+    cpu, hinted = tree_cpu(proc.pid), False
+    while True:
+        try:
+            return proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+        now, used = time.time(), tree_cpu(proc.pid)
+        if used - cpu > 0.2 or msi_busy():
+            active = now
+        cpu, active = used, max(active, last_output[0])
+        if hint and not hinted and now - active > INSTALL_HINT:
+            hinted = True
+            job_progress("Still installing. If a window popped up, answer it", force=True)
+        elif hinted and now - active < 5:
+            hinted = False
+            job_progress("Installing", force=True)
+        if now - active > INSTALL_STALLED or now - start > INSTALL_LONGEST:
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            try:
+                proc.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            return None
+
+
 def winget_install(package_id, name):
     import codecs
     winget = shutil.which("winget")
@@ -985,7 +1058,7 @@ def winget_install(package_id, name):
         [winget, "install", "--id", package_id, "--exact", "--source", "winget", *WINGET_ARGS.get(package_id, []),
          "--accept-source-agreements", "--accept-package-agreements", "--disable-interactivity", "--silent"],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    out, job = [], getattr(JOB_LOCAL, "job", None)
+    out, job, last_output = [], getattr(JOB_LOCAL, "job", None), [time.time()]
 
     def pump():  # read the output as it streams (read1: whatever has arrived), for the progress and the log
         JOB_LOCAL.job = job
@@ -996,6 +1069,7 @@ def winget_install(package_id, name):
                 break
             text = decoder.decode(chunk)
             out.append(text)
+            last_output[0] = time.time()
             recent = (recent + text)[-400:]  # a redraw split across two reads still parses
             winget_progress(recent, seen)
         out.append(decoder.decode(b"", True))
@@ -1003,21 +1077,19 @@ def winget_install(package_id, name):
     reader = threading.Thread(target=pump, daemon=True)
     reader.start()
     try:
-        code = proc.wait(timeout=1800)
-    except subprocess.TimeoutExpired:  # as subprocess.run did: stop winget, then say so
-        proc.kill()
-        proc.wait()
-        raise
+        code = watch_install(proc, last_output)
     finally:
         reader.join(30)
-    return winget_result(package_id, name, code, out)
+    return winget_result(package_id, name, WINGET_STALLED if code is None else code, out)
 
 
 def winget_result(package_id, name, code, out):
     if code & 0xffffffff not in (0, 0x8A15002B):  # already installed with no upgrade is also success
         with open(os.path.join(DATA, "emulator-install.log"), "a", encoding="utf-8") as log:
-            log.write(f"--- {time.strftime('%Y-%m-%d %H:%M')} winget install {package_id}: code {code & 0xffffffff:#x}\n"
-                      f"{''.join(out)}\n")
+            log.write(f"--- {time.strftime('%Y-%m-%d %H:%M')} winget install {package_id}: code {code & 0xffffffff:#x}"
+                      f"{' (stopped: no activity)' if code & 0xffffffff == WINGET_STALLED else ''}\n{''.join(out)}\n")
+        if code & 0xffffffff == WINGET_STALLED:
+            raise ValueError(STALLED_TEXT.format(name=name))
         raise ValueError(f"{name} didn't install (winget code {code & 0xffffffff:#x}). Try again, or use its "
                          "project page. Details are in emulator-install.log in the data folder.")
 
@@ -1109,7 +1181,8 @@ def winget_via_broker(package_id, name):
         BROKER["jobs"].append({"id": job, "package": package_id})
         BROKER["out"][job] = []
         BROKER_COND.notify_all()
-    seen, recent, deadline, everything = {"installing": False}, "", time.time() + 1800, []
+    seen, recent, deadline, everything = {"installing": False}, "", time.time() + INSTALL_LONGEST + 300, []
+    heard, hinted = time.time(), False
     while True:
         with BROKER_COND:
             BROKER_COND.wait_for(lambda: BROKER["out"][job] or job in BROKER["done"] or not broker_alive(), timeout=5)
@@ -1117,8 +1190,15 @@ def winget_via_broker(package_id, name):
             code = BROKER["done"].pop(job, None)
         for text in chunks:
             everything.append(text)
+            heard = time.time()
             recent = (recent + text)[-400:]
             winget_progress(recent, seen)
+        if not hinted and time.time() - heard > INSTALL_HINT:  # (the elevated helper does the stopping: it can see the installer)
+            hinted = True
+            job_progress("Still installing. If a window popped up, answer it", force=True)
+        elif hinted and chunks:
+            hinted = False
+            job_progress("Installing", force=True)
         if code is not None:
             BROKER["out"].pop(job, None)
             return code, "".join(everything)
@@ -1169,13 +1249,20 @@ def broker_loop(port, token):
         proc = subprocess.Popen([winget, "install", "--id", job["package"], "--exact", "--source", "winget", "--accept-source-agreements",
                                  "--accept-package-agreements", "--disable-interactivity", "--silent"], cwd=system32,
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        decoder = codecs.getincrementaldecoder("utf-8")("replace")
-        while True:
-            chunk = proc.stdout.read1(65536)
-            if not chunk:
-                break
-            post("/out", {"job": job["id"], "text": decoder.decode(chunk)})
-        post("/done", {"job": job["id"], "exit": proc.wait() & 0xffffffff})
+        decoder, last_output = codecs.getincrementaldecoder("utf-8")("replace"), [time.time()]
+
+        def pump(job_id=job["id"]):
+            while True:
+                chunk = proc.stdout.read1(65536)
+                if not chunk:
+                    break
+                last_output[0] = time.time()
+                post("/out", {"job": job_id, "text": decoder.decode(chunk)})
+        reader = threading.Thread(target=pump, daemon=True)
+        reader.start()
+        code = watch_install(proc, last_output, hint=False)
+        reader.join(30)
+        post("/done", {"job": job["id"], "exit": WINGET_STALLED if code is None else code & 0xffffffff})
         last_answer = last_job = time.time()  # a long install isn't the helper going quiet
 
 
