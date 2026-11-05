@@ -94,6 +94,15 @@ def check_github(repo, version):
         sys.exit(f"VERSION in server.py is {version}, but {tag} is already out: raise it first.")
 
 
+def inno_compiler():
+    """Inno Setup's command-line compiler (winget install JRSoftware.InnoSetup), per-user or machine-wide."""
+    for base in (os.environ.get("LOCALAPPDATA", ""), os.environ.get("ProgramFiles(x86)", ""), os.environ.get("ProgramFiles", "")):
+        p = os.path.join(base, "Programs" if base == os.environ.get("LOCALAPPDATA") else "", "Inno Setup 6", "ISCC.exe")
+        if base and os.path.isfile(p):
+            return p
+    sys.exit("Inno Setup 6 isn't installed: winget install JRSoftware.InnoSetup")
+
+
 def make_venv(path):
     path = os.path.abspath(path)
     if os.path.exists(path) and not os.path.isfile(os.path.join(path, "pyvenv.cfg")):
@@ -179,13 +188,14 @@ def main():
     notices = os.path.join(out, NOTICES)
     shutil.copyfile(os.path.join(ROOT, NOTICES), notices)
     licenses = shutil.make_archive(os.path.join(out, "licenses"), "zip", ROOT, "licenses")
-    # the installer people download first: the same exe inside, installed per user (installer.py, Setup.spec)
-    with open(os.path.join(out, "version.txt"), "w", encoding="utf-8") as f:
-        f.write(version)
-    if not args.skip_build:
-        run(py, "-m", "PyInstaller", "--noconfirm", "--clean", "Setup.spec")
+    # the installer people download first: the same exe inside, installed per user (installer/UltraFrontEnd.iss, Inno Setup)
     setup_built = os.path.join(ROOT, "dist", SETUP)
-    if not os.path.isfile(setup_built) or os.path.getsize(setup_built) <= os.path.getsize(exe):
+    if not args.skip_build:
+        if os.path.isfile(setup_built):
+            os.remove(setup_built)
+        run(inno_compiler(), f"/DAppVersion={version}", f"/DSourceExe={exe}", f"/DOutDir={os.path.dirname(setup_built)}", "/Q",
+            os.path.join(ROOT, "installer", "UltraFrontEnd.iss"))
+    if not os.path.isfile(setup_built) or os.path.getsize(setup_built) <= os.path.getsize(exe) // 2:
         sys.exit(f"No proper {SETUP} at {setup_built}.")
     setup = os.path.join(out, SETUP)
     shutil.copyfile(setup_built, setup)
