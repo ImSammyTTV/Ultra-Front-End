@@ -73,7 +73,7 @@ PORT = int(sys.argv[sys.argv.index("--port") + 1]) if "--port" in sys.argv else 
 # This copy's build, noted at start: an update swaps the exe while the old build can still be running in the tray
 BUILD = "%d-%d" % (int(os.path.getmtime(sys.executable)), os.path.getsize(sys.executable)) if getattr(sys, "frozen", False) else "source"
 QUIT = [lambda: os._exit(0)]  # how this helper leaves when a newer build takes over; Game Frontend.exe takes its tray icon down too
-VERSION = "1.0.0"  # the release this is; tools/release.py publishes it as tag v1.0.0
+VERSION = "1.1.0"  # the release this is; tools/release.py publishes it as tag v1.0.0
 UPDATE_REPO = "ImSammyTTV/Ultra-Front-End"  # whose GitHub releases a copy of the exe keeps itself current from
 os.makedirs(DATA, exist_ok=True)
 
@@ -1393,6 +1393,107 @@ def switch_titles():
         return {}
 
 
+# ---------- shortcuts in a games folder (.lnk and .url): each one is a game ----------
+LNK_CACHE = {}  # (path, modified) -> {"target", "args", "dir"}
+LNK_SCRIPT = r"""
+$paths = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{paths}')) | ConvertFrom-Json
+$sh = New-Object -ComObject WScript.Shell
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
+$out = @{}
+foreach ($p in $paths) { try { $l = $sh.CreateShortcut($p); $out[$p] = @{ target = $l.TargetPath; args = $l.Arguments; dir = $l.WorkingDirectory } } catch {} }
+$out | ConvertTo-Json -Compress
+"""
+
+
+def shortcut_targets(paths):
+    """What Windows shortcuts (.lnk) point at: {path: {"target", "args", "dir"}}. Read through Windows' own shortcut
+    object, all of a folder's at once, and kept until a shortcut changes."""
+    def stamp(p):
+        try:
+            return os.path.getmtime(p)
+        except OSError:  # gone since the folder was listed
+            return None
+    todo = [p for p in paths if stamp(p) is not None and (p, stamp(p)) not in LNK_CACHE]
+    for i in range(0, len(todo) if WIN else 0, 40):  # 40 at a time: the paths travel on PowerShell's command line
+        batch = todo[i:i + 40]
+        code = LNK_SCRIPT.replace("{paths}", base64.b64encode(json.dumps(batch).encode("utf-8")).decode())
+        try:
+            r = subprocess.run([POWERSHELL, "-NoProfile", "-NonInteractive", "-EncodedCommand", base64.b64encode(code.encode("utf-16-le")).decode()],
+                               capture_output=True, timeout=60)
+            found = json.loads(r.stdout.decode("utf-8", "replace").strip()) if r.returncode == 0 and r.stdout.strip() else None
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            found = None
+        if isinstance(found, dict):  # a failed read is tried again at the next scan, not remembered as "nothing"
+            for p in batch:
+                LNK_CACHE[(p, stamp(p))] = found.get(p) or {}
+    return {p: LNK_CACHE.get((p, stamp(p)), {}) for p in paths}
+
+
+def command_args(text):
+    """A shortcut's arguments split the way Windows splits a command line."""
+    if not text.strip():
+        return []
+    import ctypes
+    shell, k32 = ctypes.WinDLL("shell32"), ctypes.WinDLL("kernel32")
+    shell.CommandLineToArgvW.restype = ctypes.POINTER(ctypes.c_wchar_p)
+    shell.CommandLineToArgvW.argtypes = [ctypes.c_wchar_p, ctypes.POINTER(ctypes.c_int)]
+    k32.LocalFree.argtypes = [ctypes.c_void_p]
+    n = ctypes.c_int()
+    argv = shell.CommandLineToArgvW("x " + text, ctypes.byref(n))  # a program name first, so the arguments are parsed as arguments
+    try:
+        return [argv[i] for i in range(1, n.value)]
+    finally:
+        k32.LocalFree(argv)
+
+
+def url_of(path):
+    """The address in an internet shortcut (.url)."""
+    try:
+        m = re.search(r"^\s*URL\s*=\s*(\S.*?)\s*$", read(path), re.M | re.I)
+    except OSError:
+        return ""
+    return m.group(1) if m else ""
+
+
+def shortcut_games(folder, group, cfg):
+    """The shortcuts directly in a games folder, as games. One to a game's program starts that program (so it's followed
+    while it runs); a Steam shortcut is that Steam game; anything else opens the way double-clicking it would."""
+    files = sorted(f for f in os.listdir(folder) if f.lower().endswith((".lnk", ".url")) and os.path.isfile(os.path.join(folder, f)))
+    links = shortcut_targets([os.path.join(folder, f) for f in files if f.lower().endswith(".lnk")])
+    games, windows = [], os.path.normcase(os.environ.get("SystemRoot") or r"C:\Windows") + os.sep
+    for f in files:
+        path, title = os.path.join(folder, f), clean_title(os.path.splitext(f)[0])
+        link = links.get(path) or {}
+        target = url_of(path) if f.lower().endswith(".url") else link.get("target") or ""
+        steam = (re.match(r"steam://(?:rungameid|run)/(\d+)", target, re.I)
+                 or os.path.basename(target).lower() == "steam.exe" and re.search(r"(?:^|\s)-applaunch\s+(\d+)", link.get("args") or ""))
+        if steam and int(steam.group(1)) < 2 ** 32:  # (a bigger number is a non-Steam game Steam made a shortcut for)
+            g = steam_game(steam.group(1), title, True)
+        elif target.lower().endswith(".exe") and os.path.isfile(target) and not os.path.normcase(target).startswith(windows):
+            # (not Windows' own programs: their folder would make every program there count as this game)
+            g = exe_game(title, target, group, cfg, os.path.dirname(target))
+            g["id"] = gid("lnk", path)
+            g["launch"]["args"] = command_args(link.get("args") or "")
+            if link.get("dir") and os.path.isdir(link["dir"]):  # the shortcut's "Start in": some games need it
+                g["launch"]["cwd"] = link["dir"]
+            if g["launch"]["args"]:  # an emulator or launcher given a game: its folder says nothing about which game is running
+                g["launch"]["noFolder"] = True
+        elif target:
+            folder_of = os.path.dirname(target) if os.path.isfile(target) and not os.path.normcase(target).startswith(windows) else None
+            img = find_image([folder_of], {"cover", "boxart", "poster", title}) if folder_of else None
+            g_id = gid("lnk", path)
+            g = {"id": g_id, "title": title, "group": group, "source": group, "installed": True, "minutes": 0, "lastPlayed": 0,
+                 "cover": local_art(g_id, img) if img else (online_cover(title) if cfg["onlineCovers"] else ""),
+                 "launch": {"type": "uri", "uri": path}}
+            if folder_of and len(folder_of) > 12:  # never a whole drive or Windows itself
+                g["folder"] = folder_of
+        else:
+            continue
+        g["shortcut"] = path
+        games.append(g)
+    return games
+
+
 def scan_library(lib, cfg):
     path, kind = lib["path"], lib["type"]
     if kind == "game":
@@ -1422,6 +1523,8 @@ def scan_library(lib, cfg):
             exe = os.path.isdir(full) and best_exe(full)
             if exe:
                 games.append(exe_game(clean_title(sub), exe, lib["name"], cfg, full))
+        if WIN:  # and the shortcuts in it: a folder of shortcuts is a common way to keep games together
+            games += shortcut_games(path, lib["name"], cfg)
         return games
     # ROM folder
     order = [e for e in (lib.get("exts") or []) if e not in ARCHIVES]   # the console's own file types, best first
@@ -2778,6 +2881,8 @@ def scan():
             counts[key or label] = len(found)
             for g in found:
                 old = games.get(g["id"])
+                if old and g.get("shortcut"):  # a Steam shortcut to a game Steam has listed: Steam's entry stays as it is
+                    continue
                 if old:  # e.g. Steam account + local install: keep install state and best stats
                     g["launch"] = (g if g["installed"] else old)["launch"]
                     g["installed"] = g["installed"] or old["installed"]
@@ -2843,6 +2948,8 @@ def scan():
                 g["customLogo"] = True
             if g and o.get("hidden"):
                 g["hidden"] = True
+            if g and o.get("title"):
+                g["renameTo"] = o["title"]  # applied after the duplicate merge below, which goes by the game's own name
             if g and o.get("favorite"):
                 g["favorite"] = True
             if g and o.get("collections"):
@@ -2884,6 +2991,9 @@ def scan():
                     if c is not keep:
                         keep["minutes"], keep["lastPlayed"] = max(keep["minutes"], c["minutes"]), max(keep["lastPlayed"], c["lastPlayed"])
                         del games[c["id"]]
+        for g in games.values():
+            if g.get("renameTo"):
+                g["title"], g["renamed"] = g.pop("renameTo"), True
         STATE.update(games=list(games.values()), byId=games, errors=errors, counts=counts, scanned=time.time())
         sync_systems(counts)
 
@@ -2918,6 +3028,10 @@ def folder_snapshot():
     for lib in cfg["libraries"]:
         if lib["type"] == "pc":  # one folder per game: only new or removed game folders matter, not what's inside
             fingerprint(lib["path"], 1, out, files=False)
+            try:  # and the shortcuts directly in it
+                out += sorted(os.path.join(lib["path"], f) for f in os.listdir(lib["path"]) if f.lower().endswith((".lnk", ".url")))
+            except OSError:
+                pass
         elif lib["type"] != "game":
             fingerprint(lib["path"], 4, out)
     return sorted(out)
@@ -3669,7 +3783,7 @@ def game_folders():
         L = g.get("launch") or {}
         if g.get("folder"):
             add(g["folder"], g["id"])
-        elif L.get("type") == "exe" and len(os.path.dirname(L.get("exe", ""))) > 12:  # never a whole drive or Windows itself
+        elif L.get("type") == "exe" and not L.get("noFolder") and len(os.path.dirname(L.get("exe", ""))) > 12:  # never a whole drive or Windows itself
             add(os.path.dirname(L["exe"]), g["id"])
     RUN_DIRS[0], RUN_DIRS[1] = time.time(), found
     return found
@@ -5068,7 +5182,7 @@ def start_game(game, L):
             open_target(L["uri"])
         return
     if L["type"] == "exe":
-        cmd, cwd = [program(L["exe"]), *L.get("args", [])], os.path.dirname(L["exe"].rstrip("/"))
+        cmd, cwd = [program(L["exe"]), *L.get("args", [])], L.get("cwd") or os.path.dirname(L["exe"].rstrip("/"))
     else:  # emulator: no shell, the ROM path is passed as a single argument
         rom = L["rom"]
         try:
@@ -7297,6 +7411,22 @@ class Handler(SimpleHTTPRequestHandler):
                 store("overrides.json", overrides)
                 g["hidden"] = bool(body.get("hidden"))
                 return self.reply({"ok": True})
+            if path == "/api/game/rename":  # a name of the user's own; an empty one goes back to the game's own name
+                g = STATE["byId"].get(body.get("id"))
+                if not g:
+                    raise ValueError("Game not found")
+                title = " ".join(str(body.get("title") or "").split())[:120]
+                overrides = load("overrides.json", {})
+                o = overrides.setdefault(g["id"], {})
+                if title:
+                    o["title"] = title
+                else:
+                    o.pop("title", None)
+                    if not o:
+                        overrides.pop(g["id"])
+                store("overrides.json", overrides)
+                scan()
+                return self.reply({"ok": True, "title": title})
             if path == "/api/game/favorite":
                 g = STATE["byId"].get(body.get("id"))
                 if not g:
