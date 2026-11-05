@@ -12,7 +12,7 @@ val parts = appVersion.split(".").map { it.toInt() } + listOf(0, 0, 0)
 
 // The release key lives outside the repo (see android/README.md); without it the build is signed with the debug key
 val keyProps = Properties().apply {
-    val f = file(System.getenv("UFE_ANDROID_KEY") ?: "${System.getenv("LOCALAPPDATA")}/Ultra Front End/android-key.properties")
+    val f = file(System.getenv("UFE_ANDROID_KEY") ?: "${System.getProperty("user.home")}/.ultrafrontend-signing/android-key.properties")
     if (f.isFile) f.inputStream().use { load(it) }
 }
 
