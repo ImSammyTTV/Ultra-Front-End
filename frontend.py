@@ -592,7 +592,7 @@ def main():
         ctypes.windll.kernel32.CloseHandle(ctypes.c_void_p(TRAY["mutex"]))
     if own and TRAY["icon"] and not TRAY["quit"].is_set():  # window closed: stay in the tray until Exit there
         TRAY["quit"].wait()
-    elif own and server.config().get("guideOpens"):  # keep listening for the Xbox button after the window closes
+    elif own and server.config().get("guideOpens") and not server.MAC:  # keep listening for the Xbox button after the window closes (a Mac app just quits)
         threading.Event().wait()
     os._exit(0)  # window closed: stop the helper threads too
 
