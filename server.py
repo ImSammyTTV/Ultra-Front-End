@@ -5922,7 +5922,8 @@ def settings_view():
             "errors": STATE["errors"], "steamDetected": bool(steam_path()), "steamSuggestedId": steam_suggested_id(),
             "localSteamCount": STATE["counts"].get("Steam (installed)", 0), "romRoot": cfg.get("romRoot") or "", "platforms": platforms,
             "queue": queue_view(), "profile": profile(), "update": update_view(), "extras": extras_view(),
-            "launchers": launchers_view() if WIN else [], "autologon": autologon_view() if WIN else {"available": False}}
+            "launchers": launchers_view() if WIN else [], "autologon": autologon_view() if WIN else {"available": False},
+            **({"homeOpensUs": mac_home_opens_us()} if MAC else {})}
 
 
 def profile():
@@ -7855,6 +7856,9 @@ class Handler(SimpleHTTPRequestHandler):
                     threading.Thread(target=update_step, args=[body["action"]], daemon=True).start()
                     time.sleep(0.3)
                 return self.reply(update_view())
+            if path == "/api/mac/controller-settings" and MAC:  # Settings > Controllers: the home button's setting is Apple's
+                subprocess.Popen(["open", "x-apple.systempreferences:com.apple.Game-Controller-Settings.extension"])
+                return self.reply({"ok": True})
             if path == "/api/uninstall" and MAC:  # Settings > About > Uninstall: to the Trash, then the app quits
                 failed, data = uninstall_mac(bool(body.get("wipe")))
                 if not failed:
@@ -8753,6 +8757,15 @@ def uninstall_mac(wipe):
     return trash(paths), lambda: trash(data)
 
 
+def mac_home_opens_us():
+    """Does the controller's Xbox / home button open this app? (System Settings > Game Controllers > Press Home Button to Open)"""
+    try:
+        r = subprocess.run(["defaults", "read", "com.apple.GameController", "homeButtonLongPressAction"], capture_output=True, text=True, timeout=5)
+        return r.stdout.strip() == "com.imsammyttv.ultrafrontend"
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 # The controller, read through macOS' GameController framework (any pad the Mac knows: Xbox, PlayStation, Switch Pro, MFi).
 # Like the XInput reader on Windows: the frontend's menus while it's in front, the home button to bring it forward.
 MAC_BUTTONS = {"a": "ok", "b": "back", "y": "options", "menu": "options", "l1": "prevTab", "r1": "nextTab"}
@@ -8763,7 +8776,11 @@ def watch_controller_mac():
         from GameController import GCController
     except Exception:
         return
-    held, repeat, combo, last_open = {}, {}, {}, 0.0
+    try:  # presses reach this app from behind other apps too, so the Xbox button can bring the frontend forward
+        GCController.setShouldMonitorBackgroundEvents_(True)
+    except Exception:
+        pass
+    held, repeat, combo, last_open, claimed = {}, {}, {}, 0.0, set()
     while True:
         front = frontend_in_front()
         time.sleep(0.016 if front else 0.05)
@@ -8778,6 +8795,12 @@ def watch_controller_mac():
             if g is None:
                 continue
             pads += 1
+            if id(c) not in claimed:  # while the frontend is in front, the Xbox button is ours, not macOS' Games app (2 = disabled)
+                claimed.add(id(c))
+                try:
+                    g.buttonHome().setPreferredSystemGestureState_(2)
+                except Exception:
+                    pass
             try:
                 b = {"a": g.buttonA(), "b": g.buttonB(), "x": g.buttonX(), "y": g.buttonY(), "menu": g.buttonMenu(), "view": g.buttonOptions(),
                      "home": g.buttonHome(), "l1": g.leftShoulder(), "r1": g.rightShoulder()}

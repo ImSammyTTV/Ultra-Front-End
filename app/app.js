@@ -2185,9 +2185,13 @@ function panelItems() {
       sub: P.mapping ? 'Press the button you want now (for example Y)…  Esc cancels' : 'If Y does nothing, choose this, then press Y',
       value: S.optKey ? `Key: ${S.optKey === ' ' ? 'Space' : S.optKey}` : 'Y / O', act: () => { P.mapping = true; renderPanel(); } },
     { kind: 'html', html: '<div id="padlive" class="pnote padlive">Checking…</div>' },
+    ...(API && ON_MAC ? [{ kind: 'row', label: 'Xbox button opens Ultra Front End', value: d?.homeOpensUs ? 'On' : 'Set up',  // macOS' own setting: only System Settings can change it
+      sub: d?.homeOpensUs ? 'From anywhere, even when it’s closed. Change it in System Settings › Game Controllers'
+        : 'Otherwise it opens Apple’s Games app. In System Settings › Game Controllers, set Press Home Button to Open to Other…, then Ultra Front End',
+      act: () => api('/api/mac/controller-settings', {}).then(() => toast('Next to Press Home Button to Open, choose Other…, then Ultra Front End in Applications', 8000), e => toast(e.message)) }] : []),
     ...(API ? [{ kind: 'row', ic: icon('pad'), label: 'Controller tester', sub: 'See every button, trigger and stick respond live: Steam Controller, Xbox, DualSense, DualShock and others', act: openPadTester },
-      { kind: 'row', label: 'Wii Remote motion from the Steam Controller', value: onOff(P.data?.options?.wiiMotion),
-        sub: 'Shake and tilt in Dolphin. Adds keys to Wii Remote 1 in Dolphin’s settings (a copy of them is kept)', act: () => setOpt('wiiMotion').then(renderPanel) }] : []),
+      ...(ON_MAC ? [] : [{ kind: 'row', label: 'Wii Remote motion from the Steam Controller', value: onOff(P.data?.options?.wiiMotion),  // Windows only
+        sub: 'Shake and tilt in Dolphin. Adds keys to Wii Remote 1 in Dolphin’s settings (a copy of them is kept)', act: () => setOpt('wiiMotion').then(renderPanel) }])] : []),
   ];
   if (P.view === 'about') return [
     { kind: 'head', label: 'Ultra Front End' },
@@ -3357,7 +3361,10 @@ function padLive() {
   const el = $('#padlive'); if (!el) return;
   const pads = [...(navigator.getGamepads?.() || [])].filter(Boolean);
   const keys = `<br><br><b>Keys received:</b> ${recentKeys.length ? recentKeys.map(esc).join(', ') : 'none yet'}`;
-  el.innerHTML = !pads.length
+  el.innerHTML = ON_MAC && !pads.length && HP.pads  // a Mac reads controllers through macOS (the helper), not the page
+    ? `<b>Controller connected</b> (${HP.pads === 1 ? 'one' : HP.pads}). Ultra Front End reads it through macOS.${keys}`
+    : ON_MAC && !pads.length ? `<b>No controller connected.</b> Pair it in System Settings › Bluetooth, or plug it in with a cable.${keys}`
+    : !pads.length
     ? `<b>No controller seen directly.</b> If pressing its buttons adds entries below, Steam is turning your controller into keyboard keys (Steam Input desktop mode). Add the frontend to Steam as a non-Steam game and open it from there, or use “Set the quick-menu button” above for Y.${keys}`
     : pads.map(p => {
       const down = p.buttons.map((x, i) => x.pressed ? `${i}${p.mapping === 'standard' && PAD_NAMES[i] ? ` (${PAD_NAMES[i]})` : ''}` : null).filter(Boolean);
