@@ -1,0 +1,17 @@
+data/
+__pycache__/
+build/
+dist/
+*.exe
+.venv-mac/
+*.dmg
+
+# promo renders are hundreds of MB; docs/promo.py rebuilds them
+docs/*.mp4
+
+# kept on the developer's PC only, not part of the public project
+concepts/
+prototype/
+.claude/
+docs/
+tools/extract_covers.py
