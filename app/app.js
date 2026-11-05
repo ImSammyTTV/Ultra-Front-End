@@ -2088,17 +2088,19 @@ function updateRows(u) {
   if (!u) return [];
   const ready = u.latest && u.state === 'ready';
   const note = u.off || u.error || { checking: 'Checking for a new version…', downloading: `Downloading version ${u.latest}…`,
-    ready: `Version ${u.latest} is ready. It installs by itself once the frontend is closed.`, installing: `Installing version ${u.latest}…`,
+    ready: `Version ${u.latest} is ready. It installs by itself when the frontend is closed or left alone for a few minutes.`, installing: `Installing version ${u.latest}…`,
     installed: `Version ${u.latest} is installed and takes over the next time the frontend opens` }[u.state]
     || (u.latest ? `Version ${u.latest} is available` : u.state === 'current' ? 'This is the newest version' : 'Looks for new versions every few hours');
   return [{ kind: 'info', label: `Version ${u.version}`, sub: note },
-    ...(u.off ? [] : [{ kind: 'row', label: ready ? 'Install the update now' : 'Check for updates', sub: ready ? 'The frontend closes and opens again on the new version' : '',
-      act: () => updateNow(ready ? 'install' : 'check') }])];
+    // one press: it checks, downloads, and the frontend opens again on the new version (never over a game)
+    ...(u.off ? [] : [{ kind: 'row', label: u.latest ? `Update now to version ${u.latest}` : 'Check for updates',
+      sub: u.latest ? 'The frontend closes and opens again on the new version' : 'If there’s a new version, it installs and the frontend opens again on it',
+      act: () => updateNow('install') }])];
 }
 async function updateNow(action) {
   let u;
   try { u = await api('/api/update', { action }); } catch (e) { return toast(e.message); }
-  if (action === 'install') toast('Installing the update…', 4000);
+  if (action === 'install') toast(u.latest ? `Updating to version ${u.latest}…` : 'Checking for a new version…', 4000);
   for (let i = 0; i < 120 && P.open && P.view === 'about' && ['checking', 'downloading', 'installing'].includes(u.state); i++) {  // show progress while About is open
     if (P.data) P.data.update = u;
     renderPanel();
@@ -2108,7 +2110,7 @@ async function updateNow(action) {
   if (P.data) P.data.update = u;
   renderPanel();
   // say how it went, so pressing it never looks like nothing happened
-  toast(u.error || u.off || { current: 'You have the newest version', ready: `Version ${u.latest} is ready: choose Install the update now`,
+  toast(u.error || u.off || { current: 'You have the newest version', ready: `Version ${u.latest} is ready: choose Update now`,
     installed: `Version ${u.latest} takes over the next time the frontend opens`, checking: 'Still checking…', downloading: `Still downloading version ${u.latest}…` }[u.state]
     || (u.latest ? `Version ${u.latest} is available` : 'Couldn’t reach GitHub just now. Try again in a minute'), 5000);
 }
@@ -2120,17 +2122,24 @@ if (API) api('/api/update').then(u => {
 }).catch(() => {});
 if (API) api('/api/whatsnew/unseen').then(r => { if (r.unseen) { NEWS_DOT = true; drawButtons(); } }).catch(() => {});
 // An update that arrives while the frontend is open waits for it to close (never mid-game): say so once, with the way to install it now
-let readyShown = '';
+// and left alone for three minutes with no game running, it updates by itself and opens again (a handheld is rarely closed)
+let readyShown = '', lastActive = Date.now();
+['pointerdown', 'pointermove', 'keydown', 'wheel'].forEach(t => addEventListener(t, () => { lastActive = Date.now(); }, { passive: true }));
 if (API) setInterval(async () => {
-  if (RUN.size || P.open && P.view === 'about') return;  // not over a game; About shows it already
+  if (RUN.size) return;  // never over a game
   try {
     const u = await api('/api/update');
-    if (u.state === 'ready' && u.latest && readyShown !== u.latest) {
+    if (u.state !== 'ready' || !u.latest) return;
+    if (Date.now() - lastActive > 180000) {
+      toast(`Updating to version ${u.latest}…`, 4000);
+      return api('/api/update', { action: 'install' }).catch(() => {});
+    }
+    if (readyShown !== u.latest && !(P.open && P.view === 'about')) {
       readyShown = u.latest;
-      toast(`Version ${u.latest} is ready. It installs when you close Ultra Front End, or now from Settings › About`, 8000);
+      toast(`Version ${u.latest} is ready. Update now from Settings › About, or it installs when the frontend is left alone`, 8000);
     }
   } catch {}
-}, 120000);
+}, 60000);
 async function openPanel(view = P.cat || SETTINGS[0].id) {  // the category used last this session, or the first
   if (view === 'main') view = P.cat || SETTINGS[0].id;
   P.open = true; P.view = view; P.focus = 0; P.confirm = null; P.game = null; P.side = true;
@@ -3241,7 +3250,7 @@ async function helperPad() {
 const LAST_INPUT = {};
 let lastSrc = null;  // 'key', 'xinput', 'pad' or 'mouse': A on a text field opens the on-screen keyboard unless it came from a real keyboard
 function inputFrom(src, act) {
-  wake();
+  wake(); lastActive = Date.now();
   const now = performance.now(), last = LAST_INPUT[act];
   if (last && last.src !== src && now - last.t < 220) return;
   LAST_INPUT[act] = { src, t: now }; lastSrc = src;
