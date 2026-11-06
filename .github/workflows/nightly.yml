@@ -76,6 +76,14 @@ jobs:
               git log --no-merges --format='- %s' -15
             fi
           } > notes.md
-          gh release delete nightly --cleanup-tag --yes 2>/dev/null || true
-          gh release create nightly dist/UltraFrontEnd.exe THIRD_PARTY_NOTICES.md --prerelease --title "$version" \
-            --notes-file notes.md --target "$(git rev-parse HEAD)"
+          # GitHub sometimes answers a release request with a server error (HTTP 500): a few tries, a minute apart
+          for try in 1 2 3 4; do
+            gh release delete nightly --cleanup-tag --yes 2>/dev/null || true
+            if gh release create nightly dist/UltraFrontEnd.exe THIRD_PARTY_NOTICES.md --prerelease --title "$version" \
+                 --notes-file notes.md --target "$(git rev-parse HEAD)"; then
+              exit 0
+            fi
+            echo "GitHub didn't take the release (try $try), trying again in a minute"
+            sleep 60
+          done
+          exit 1
