@@ -35,6 +35,10 @@ def shipped(name):
 
 
 WIN, MAC = os.name == "nt", sys.platform == "darwin"
+# Everything in one place on Windows: C:\Ultra-Front-End\App (Setup), \ROMs (a new ROMs folder) and \Emulators (installs)
+UFE_HOME = os.path.join((os.environ.get("SystemDrive") or "C:") + os.sep, "Ultra-Front-End") if WIN else os.path.expanduser("~")
+EMU_HOME = os.path.join(UFE_HOME, "Emulators")  # (on a Mac, ~/Emulators: apps themselves go in Applications)
+OLD_EMU_HOME = os.path.join(os.path.expanduser("~"), "Emulators")  # where installs went before 1.2.5
 if MAC:
     import plat_mac  # the Mac side of every Windows-only piece below
 if WIN and not getattr(subprocess.Popen.__init__, "no_window", False):
@@ -853,7 +857,7 @@ EMU_INSTALL = {
     "Apple II": ("AppleWin", "AppleWin.AppleWin"),
     "Flash": ("Ruffle", "github"),
 }
-WINGET_ARGS = {"MAMEdev.MAME": ["--location", os.path.join(os.path.expanduser("~"), "Emulators", "MAME")]}  # its package needs a folder
+WINGET_ARGS = {"MAMEdev.MAME": ["--location", os.path.join(EMU_HOME, "MAME")]}  # its package needs a folder
 # Packages that need to be told their folder, a fixed one in Program Files: given both ways of installing, the elevated
 # helper's included (so it isn't a folder the page or the user's own files could change)
 FIXED_ARGS = {"Blizzard.BattleNet": ["--location", os.path.join(os.environ.get("ProgramFiles(x86)") or r"C:\Program Files (x86)", "Battle.net")]}
@@ -968,7 +972,7 @@ def cpu_avx2():
 def install_download(name, url, filename, program_name, digest="", size=0):
     """Download an emulator's archive, unpack it and keep the folder its program is in as ~/Emulators/<name>."""
     import tempfile
-    target = os.path.join(os.path.expanduser("~"), "Emulators", name)
+    target = os.path.join(EMU_HOME, name)
     with tempfile.TemporaryDirectory(prefix="frontend-emu-") as staging:
         archive = os.path.join(staging, filename)
         with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=120) as response, open(archive, "wb") as output:
@@ -1056,7 +1060,7 @@ def install_core(retroarch, core):
 def install_dolphin():
     # Official release, verified against https://dolphin-emu.org/download/.
     import tempfile
-    target = os.path.join(os.path.expanduser("~"), "Emulators", "Dolphin-2609a")
+    target = os.path.join(EMU_HOME, "Dolphin-2609a")
     exe = os.path.join(target, "Dolphin-x64", "Dolphin.exe")
     if not os.path.isfile(exe):
         with tempfile.TemporaryDirectory(prefix="frontend-dolphin-") as staging:
@@ -1181,17 +1185,31 @@ def watch_install(proc, last_output, hint=True):
             return None
 
 
-def winget_install(package_id, name):
+def winget_install(package_id, name, plain=False):
+    """plain: without asking for C:\\Ultra-Front-End\\Emulators (the second go, if an installer won't take a folder)."""
+    try:
+        return winget_install_once(package_id, name, plain)
+    except ValueError as e:
+        if plain or not emu_location(package_id) or "winget code" not in str(e):
+            raise
+        return winget_install(package_id, name, plain=True)
+
+
+def winget_install_once(package_id, name, plain=False):
     import codecs
     winget = shutil.which("winget")
     if not winget:
         raise ValueError("Install Microsoft App Installer from the Microsoft Store first, then restart the frontend")
     if package_id in broker_packages() and start_broker():  # one administrator prompt for all of setup's installs
-        code, text = winget_via_broker(package_id, name)
+        code, text = winget_via_broker(package_id, name, plain)
         if code != BROKER_NO_WINGET:  # (it couldn't find winget where only administrators can change it: the usual way)
             return winget_result(package_id, name, code, [text])
+    where = "" if plain else emu_location(package_id)
+    if where:
+        os.makedirs(where, exist_ok=True)
     proc = subprocess.Popen(
         [winget, "install", "--id", package_id, "--exact", "--source", "winget", *WINGET_ARGS.get(package_id, []), *FIXED_ARGS.get(package_id, []),
+         *(["--location", where] if where else []),
          "--accept-source-agreements", "--accept-package-agreements", "--disable-interactivity", "--silent"],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     out, job, last_output = [], getattr(JOB_LOCAL, "job", None), [time.time()]
@@ -1256,6 +1274,30 @@ def protected_winget():
     return max(found)[1] if found else ""
 
 
+def emu_location(package_id):
+    """C:\\Ultra-Front-End\\Emulators\\<emulator> for an emulator's winget package (RetroArch's included), else "". Made
+    from the app's own tables and fixed folder, never from a request. Installers that ignore it go to their usual place."""
+    if not WIN or package_id in WINGET_ARGS or package_id in FIXED_ARGS:
+        return ""
+    names = {p[1]: p[0] for p in EMU_INSTALL.values() if p and p[1]}
+    names["Libretro.RetroArch"] = "RetroArch"
+    name = names.get(package_id)
+    return os.path.join(EMU_HOME, re.sub(r'[<>:"/\\|?*]', "", name)) if name else ""
+
+
+def plain_folder(path):
+    """True if no part of the path that exists is a link or junction to somewhere else: the elevated helper only installs
+    into C:\\Ultra-Front-End\\Emulators when it is really there (the folder is the user's, so it could be pointed elsewhere)."""
+    part = path
+    while True:
+        if os.path.lexists(part) and (os.path.islink(part) or os.path.normcase(os.path.realpath(part)) != os.path.normcase(os.path.abspath(part))):
+            return False
+        parent = os.path.dirname(part)
+        if parent == part:
+            return True
+        part = parent
+
+
 def broker_packages():
     """The winget packages the elevated helper may install: the launchers' and the emulators' (MAME's needs a folder in the
     user's own home, so it installs the usual way)."""
@@ -1309,12 +1351,15 @@ def shell_runas(program, params):
         raise ValueError("Windows' permission prompt was cancelled" if ctypes.get_last_error() == 1223 else "Windows' permission prompt couldn't open")
 
 
-def winget_via_broker(package_id, name):
+def winget_via_broker(package_id, name, plain=False):
     """winget install through the elevated helper: its output comes back as it runs, for the progress bar. Returns winget's exit code."""
+    where = "" if plain else emu_location(package_id)
+    if where:
+        os.makedirs(where, exist_ok=True)  # made by the user's own copy, so it's theirs; the helper checks it's really there
     with BROKER_COND:
         BROKER["next"] += 1
         job = BROKER["next"]
-        BROKER["jobs"].append({"id": job, "package": package_id})
+        BROKER["jobs"].append({"id": job, "package": package_id, "plain": bool(plain)})
         BROKER["out"][job] = []
         BROKER_COND.notify_all()
     seen, recent, deadline, everything = {"installing": False}, "", time.time() + INSTALL_LONGEST + 300, []
@@ -1382,7 +1427,11 @@ def broker_loop(port, token):
         if not winget:
             post("/done", {"job": job.get("id"), "exit": BROKER_NO_WINGET})
             continue
-        proc = subprocess.Popen([winget, "install", "--id", job["package"], "--exact", "--source", "winget", *FIXED_ARGS.get(job["package"], []), "--accept-source-agreements",
+        where = "" if job.get("plain") else emu_location(job["package"])  # the app's own folder for it, never one from the request
+        if where and not (os.path.isdir(where) and plain_folder(where)):
+            where = ""  # not there, or pointed somewhere else: installed to its usual place
+        proc = subprocess.Popen([winget, "install", "--id", job["package"], "--exact", "--source", "winget", *FIXED_ARGS.get(job["package"], []),
+                                 *(["--location", where] if where else []), "--accept-source-agreements",
                                  "--accept-package-agreements", "--disable-interactivity", "--silent"], cwd=system32,
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         decoder, last_output = codecs.getincrementaldecoder("utf-8")("replace"), [time.time()]
@@ -1510,7 +1559,7 @@ def find_emulators(keep_retroarch=False):
     roots = [os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs"), os.environ.get("ProgramFiles", ""), os.environ.get("ProgramFiles(x86)", ""),
              os.path.join(os.environ.get("LOCALAPPDATA", ""), "Microsoft", "WinGet", "Packages"),
              os.path.join(os.environ.get("LOCALAPPDATA", ""), "Microsoft", "WinGet", "Links"),
-             os.path.join(home, "Emulators"), os.path.join(home, "Desktop"), os.path.join(home, "Downloads"), os.path.join(home, "Documents"),
+             EMU_HOME, os.path.join(home, "Emulators"), os.path.join(home, "Desktop"), os.path.join(home, "Downloads"), os.path.join(home, "Documents"),
              os.path.join(os.environ.get("LOCALAPPDATA", ""), "DOSBox"), "C:\\RetroArch-Win64",  # DOSBox Staging's and RetroArch's own installers
              "C:\\Emulators", "C:\\Games"] + [f"{d}:\\" for d in "DEFGH" if os.path.isdir(f"{d}:\\")]
     found = {}
@@ -6191,6 +6240,7 @@ def settings_view():
     return {"options": {**{k: cfg.get(k, True) for k in OPTION_KEYS}, "startup": cfg.get("startup")}, "services": services, "libraries": libs, "accounts": acc,
             "errors": STATE["errors"], "steamDetected": bool(steam_path()), "steamSuggestedId": steam_suggested_id(),
             "localSteamCount": STATE["counts"].get("Steam (installed)", 0), "romRoot": cfg.get("romRoot") or "", "platforms": platforms,
+            "homeMove": (lambda m: {"roms": bool(m["roms"]), "emus": [os.path.basename(a) for a, _ in m["emus"]], "why": m["why"], "home": UFE_HOME})(home_move_plan(cfg)),
             "queue": queue_view(), "profile": profile(), "update": update_view(), "extras": extras_view(),
             "launchers": launchers_view() if WIN else [], "autologon": autologon_view() if WIN else {"available": False},
             **({"homeOpensUs": mac_home_opens_us()} if MAC else {})}
@@ -6204,8 +6254,8 @@ def profile():
 
 
 def default_rom_root():
-    """ROMs on the Windows drive (C:/ROMs), made if it isn't there: where setup puts ROMs unless you choose another folder."""
-    folder = os.path.join((os.environ.get("SystemDrive") or "C:") + os.sep, "ROMs") if WIN else os.path.expanduser("~/ROMs")
+    """C:\\Ultra-Front-End\\ROMs, made if it isn't there: where setup puts ROMs unless you choose another folder."""
+    folder = os.path.join(UFE_HOME, "ROMs") if WIN else os.path.expanduser("~/ROMs")
     os.makedirs(folder, exist_ok=True)
     return folder
 
@@ -6219,6 +6269,163 @@ def set_rom_root(path):
     made = sum(ensure_folders(s, cfg) for s in cfg.get("systems") or [])
     apply_soon()
     return made, found
+
+
+# ---------------------------------------------------------------- moving everything into C:\Ultra-Front-End
+# For people set up before 1.2.5 (ROMs in C:\ROMs, downloaded emulators in ~\Emulators): one press in Settings moves them.
+# A game's id comes from its path, so everything kept by id (playtime, favourites, art, captures...) goes to the new id.
+OWN_EMUS = None  # the emulator folders Ultra Front End itself downloads into ~\Emulators (never the user's own others)
+ID_STORES = ("overrides.json", "playlog.json", "ra-match.json", "info-cache.json")  # {game id: ...}
+ID_LISTS = ("sessions.json", "captures.json")  # [{"game": game id, ...}]
+CONFIG_TEXT = (".yml", ".yaml", ".ini", ".cfg", ".json", ".toml", ".xml", ".conf")
+
+
+def own_emu_names():
+    return set(GITHUB_EMUS) | {"Dolphin-2609a", "Hatari", "MAME"}
+
+
+def under(path, root):
+    """path is root or inside it (Windows: any case)."""
+    a, b = os.path.normcase(os.path.abspath(path or "")), os.path.normcase(os.path.abspath(root)).rstrip("\\/")
+    return a == b or a.startswith(b + os.sep)
+
+
+def moved_path(path, moves):
+    for old, new in moves:
+        if path and under(path, old):
+            return new + os.path.abspath(path)[len(os.path.abspath(old).rstrip("\\/")):]
+    return path
+
+
+def home_move_plan(cfg=None):
+    """What a move would do: {"roms": (from, to) or None, "emus": [(from, to)], "why": reason it can't, or ""}."""
+    cfg = cfg or config()
+    plan = {"roms": None, "emus": [], "why": ""}
+    if not WIN:
+        return plan
+    root, target = cfg.get("romRoot") or "", os.path.join(UFE_HOME, "ROMs")
+    if root and os.path.isdir(root) and not under(root, UFE_HOME):
+        if os.path.splitdrive(os.path.abspath(root))[0].lower() != os.path.splitdrive(target)[0].lower():
+            plan["why"] = f"Your ROMs folder is on another drive ({os.path.splitdrive(root)[0]}), so it stays there"
+        elif os.path.exists(target) and os.listdir(target):
+            plan["why"] = f"{target} already has files in it, so your ROMs folder stays where it is"
+        else:
+            plan["roms"] = (os.path.abspath(root), target)
+    paths = [e.get("path", "") for e in (cfg.get("emulators") or {}).values()]
+    paths += [l.get("emulator") or "" for l in cfg.get("libraries", [])] + [l.get("path", "") for l in cfg.get("libraries", []) if l.get("type") == "game"]
+    names = own_emu_names()
+    for name in sorted(names):
+        src = os.path.join(OLD_EMU_HOME, name)
+        if os.path.isdir(src) and any(under(x, src) for x in paths) and not os.path.exists(os.path.join(EMU_HOME, name)):
+            plan["emus"].append((src, os.path.join(EMU_HOME, name)))
+    return plan
+
+
+def game_id_sources(g):
+    """The text a game's id was made from (its file, its game folder, or an emulator and its arguments), found by trying."""
+    L = g.get("launch") or {}
+    cands = []  # (program or file, its arguments): the id was made from the file, or from the program and arguments joined
+    if L.get("rom"):
+        f = L["rom"]
+        cands.append((f, []))
+        d = os.path.dirname(f)
+        for _ in range(6):  # a Switch game kept as a folder: the id is the folder's
+            cands.append((d, []))
+            d = os.path.dirname(d)
+    if L.get("exe"):
+        cands += [(L["exe"], []), (L["exe"], list(L.get("args") or []))]
+    prefix = g["id"].split("-", 1)[0]
+    return [c for c in cands if gid(prefix, " ".join([c[0], *c[1]])) == g["id"]]
+
+
+def rekey_games(mapping):
+    """Everything kept by game id goes to the game's new id."""
+    if not mapping:
+        return
+    for name in ID_STORES:
+        d = load(name, {})
+        if isinstance(d, dict) and any(k in mapping for k in d):
+            store(name, {mapping.get(k, k): v for k, v in d.items()})
+    for name in ID_LISTS:
+        d = load(name, [])
+        if isinstance(d, list) and any(isinstance(x, dict) and x.get("game") in mapping for x in d):
+            store(name, [{**x, "game": mapping[x["game"]]} if isinstance(x, dict) and x.get("game") in mapping else x for x in d])
+
+
+def fix_emulator_settings(folder, old, new):
+    """A moved emulator's own settings files that name its old folder name the new one instead (RPCS3's games.yml, ...)."""
+    pairs = [(old, new), (old.replace("\\", "/"), new.replace("\\", "/")), (old.replace("\\", "\\\\"), new.replace("\\", "\\\\"))]
+    base = folder.rstrip("\\/").count(os.sep)
+    for dirpath, dirs, files in os.walk(folder):
+        if dirpath.count(os.sep) - base >= 4:
+            dirs[:] = []
+        for f in files:
+            full = os.path.join(dirpath, f)
+            try:
+                if not f.lower().endswith(CONFIG_TEXT) or os.path.getsize(full) > 2 << 20:
+                    continue
+                with open(full, "rb") as fh:
+                    raw = fh.read()
+                text = raw.decode("utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            changed = text
+            for a, b in pairs:
+                changed = re.sub(re.escape(a), lambda m: b, changed, flags=re.I)
+            if changed != text:
+                with open(full, "w", encoding="utf-8", newline="") as fh:
+                    fh.write(changed)
+
+
+def move_to_home():
+    """Settings › Libraries: the ROMs folder and Ultra Front End's own emulator downloads into C:\\Ultra-Front-End."""
+    if update_busy():
+        raise ValueError("Close the game first, then try again")
+    cfg = config()
+    plan = home_move_plan(cfg)
+    moves = ([plan["roms"]] if plan["roms"] else []) + plan["emus"]
+    if not moves:
+        raise ValueError(plan["why"] or "Everything is already in C:\\Ultra-Front-End")
+    with SCAN_LOCK:
+        before = {g["id"]: game_id_sources(g) for g in STATE["games"]}
+    os.makedirs(EMU_HOME, exist_ok=True)
+    done, failed = [], []
+    for src, dst in moves:
+        try:
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            if os.path.isdir(dst) and not os.listdir(dst):
+                os.rmdir(dst)  # (the empty one a fresh setup may have made)
+            os.rename(src, dst)  # same drive: instant, nothing copied
+            done.append((src, dst))
+        except OSError:
+            failed.append(os.path.basename(src))
+    for src, dst in done:
+        if under(dst, EMU_HOME):
+            fix_emulator_settings(dst, src, dst)
+    if plan["roms"] and plan["roms"] in done:
+        cfg["romRoot"] = plan["roms"][1]
+    for e in (cfg.get("emulators") or {}).values():
+        e["path"] = moved_path(e.get("path", ""), done)
+        if isinstance(e.get("args"), list):
+            e["args"] = [moved_path(a, done) if isinstance(a, str) and os.path.isabs(a) else a for a in e["args"]]
+    for l in cfg.get("libraries", []):
+        for k in ("path", "emulator"):
+            if l.get(k):
+                l[k] = moved_path(l[k], done)
+        if isinstance(l.get("args"), list):
+            l["args"] = [moved_path(a, done) if isinstance(a, str) and os.path.isabs(a) else a for a in l["args"]]
+    store("config.json", cfg)
+    mapping = {}
+    for old_id, sources in before.items():
+        for first, args in sources:
+            new_x = " ".join([moved_path(first, done), *[moved_path(a, done) if os.path.isabs(a) else a for a in args]])
+            new_id = gid(old_id.split("-", 1)[0], new_x)
+            if new_id != old_id:
+                mapping[old_id] = new_id
+                break
+    rekey_games(mapping)
+    scan()
+    return {"moved": [os.path.basename(d) for _, d in done], "failed": failed, "games": len(mapping)}
 
 
 # ---------------------------------------------------------------- systems: the consoles you play, and their BIOS files
@@ -8331,6 +8538,9 @@ class Handler(SimpleHTTPRequestHandler):
                 made, found = set_rom_root(folder)
                 scan()
                 return self.reply({**settings_view(), "made": made, "found": found})
+            if path == "/api/home/move":  # Settings › Libraries: ROMs and downloaded emulators into C:\Ultra-Front-End
+                r = move_to_home()
+                return self.reply({**settings_view(), **r})
             if path == "/api/romroot/open":
                 root = config().get("romRoot")
                 if not root or not os.path.isdir(root):

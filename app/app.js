@@ -2441,6 +2441,19 @@ function panelItems() {
     { kind: 'head', label: 'ROMs folder' },
     { kind: 'row', ic: icon('folder'), label: d.romRoot ? 'ROMs folder' : 'Set up a ROMs folder', value: d.romRoot ? 'Change' : 'Choose',
       sub: d.romRoot || 'One folder with a subfolder for each console. Drop ROMs and ISOs into the matching folder.', act: chooseRomRoot },
+    // set up before 1.2.5: ROMs and the emulators the app downloaded can join everything else in C:\Ultra-Front-End
+    ...(d.homeMove && (d.homeMove.roms || d.homeMove.emus.length) ? [(() => {
+      const m = d.homeMove, what = [m.roms && 'your ROMs folder', m.emus.length && `${m.emus.join(', ')}`].filter(Boolean).join(' and ');
+      return { kind: 'row', key: 'home-move', ic: icon('folder'), warn: P.confirm === 'home-move', label: `Move into ${m.home}`, value: 'Move',
+        sub: P.confirm === 'home-move' ? 'Press A / Enter again to move. Close any emulator first'
+          : `Moves ${what} there, with every game’s playtime, favourites and artwork${m.why ? `. ${m.why}` : ''}`,
+        act: async () => {
+          if (P.confirm !== 'home-move') { P.confirm = 'home-move'; return renderPanel(); }
+          P.confirm = null;
+          const r = await work(api('/api/home/move', {}));
+          if (r) { toast(r.failed?.length ? `Moved ${r.moved.join(', ') || 'nothing'}. Not moved (in use?): ${r.failed.join(', ')}` : `Moved into ${m.home}`, 6000); await afterLibraryChange(); }
+        } };
+    })()] : []),
     ...(d.romRoot ? [{ kind: 'row', label: 'Open ROMs folder', sub: `Opens it in ${ON_ANDROID ? 'Files' : 'File Explorer'} so you can add games`, act: () => api('/api/romroot/open', {}).then(() => toast(ON_ANDROID ? 'Opened in Files' : 'Opened in File Explorer')) }] : []),
     ...(ON_ANDROID ? [{ kind: 'note', label: 'Android games on this device show up by themselves.' }] : [
     { kind: 'head', label: 'Other libraries' },
@@ -2783,7 +2796,7 @@ function setupItems(d, prof) {
       return [
         { kind: 'note', label: 'Emulated games: pick one ROMs folder and the frontend makes a subfolder for every console. Drop your ROMs and ISOs into the right one.' },
         ...(d.romRoot ? [{ kind: 'row', label: 'ROMs folder', sub: d.romRoot, value: '✓ Change', act: chooseRomRoot }]
-          : [{ kind: 'row', label: ON_ANDROID ? 'Use the ROMs folder on this device (recommended)' : ON_MAC ? 'Use the ROMs folder in your home folder (recommended)' : 'Use C:\\ROMs (recommended)',
+          : [{ kind: 'row', label: ON_ANDROID ? 'Use the ROMs folder on this device (recommended)' : ON_MAC ? 'Use the ROMs folder in your home folder (recommended)' : 'Use C:\\Ultra-Front-End\\ROMs (recommended)',
             sub: ON_ANDROID ? 'Internal storage › ROMs, with a folder for each system you play inside' : ON_MAC ? '~/ROMs, with a folder for each system you play inside' : 'A folder for each system you play goes inside', value: 'Use', act: () => chooseRomRoot(true) },
             { kind: 'row', label: 'Choose a different folder', sub: 'Somewhere else, like another drive', value: 'Choose', act: chooseRomRoot }]),
         { kind: 'row', label: 'Find installed emulators', sub: withEmu.length ? `Ready: ${withEmu.map(p => `${p.name} (${p.emulator})`).join(', ')}` : `Looks for emulators already on ${HERE}`, act: () => work(api('/api/emulators/find', {})).then(r => r && toast(r.found ? `Found ${r.found} emulator${r.found === 1 ? '' : 's'}` : 'No new emulators found', 3000)) },

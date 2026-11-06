@@ -139,9 +139,10 @@ and a UI scale setting.
 ## 🚀 Quick start
 
 1. **Download** `UltraFrontEnd-Setup.exe` from the [latest release](https://github.com/ImSammyTTV/Ultra-Front-End/releases/latest) and run it.
-   It installs for your own Windows account (no administrator prompt) and adds Start menu and desktop shortcuts.
+   It installs into `C:\Ultra-Front-End` (no administrator prompt), with the app in `App` and your `ROMs` and `Emulators`
+   beside it, and adds Start menu and desktop shortcuts.
    Prefer a portable copy? Download `UltraFrontEnd.exe` instead and put it in a folder of its own: its settings live in a `data` folder beside it.
-2. **Follow the setup guide.** It asks for your name and time zone, your ROMs folder (`C:\ROMs` unless you choose another),
+2. **Follow the setup guide.** It asks for your name and time zone, your ROMs folder (`C:\Ultra-Front-End\ROMs` unless you choose another),
    the consoles you play, and whether it should start with Windows.
 3. **Play.** Your installed Steam games are already there. Connect your store accounts in **Settings → Accounts** to add the rest.
 
@@ -176,7 +177,7 @@ On a keyboard: arrow keys, **Enter** and **Esc**. A mouse and touch screens work
 Setup makes one folder per console inside your ROMs folder. Drop your games into the right one:
 
 ```
-C:\ROMs
+C:\Ultra-Front-End\ROMs
 ├── PS2
 │   ├── BIOS          ← the console's BIOS files, see the README.txt inside
 │   └── My Game.iso
@@ -238,8 +239,9 @@ You don't have to: new versions download by themselves and install when you're n
 <details>
 <summary><b>Where are my settings and logs?</b></summary>
 
-In the `data` folder beside `UltraFrontEnd.exe` (or `%LocalAppData%\Ultra Front End\data` if that folder can't be written to,
-for example inside Program Files). `errors.log` holds any errors. Updating never removes it.
+In the `data` folder beside `UltraFrontEnd.exe`: `C:\Ultra-Front-End\App\data` when installed with Setup (or
+`%LocalAppData%\Ultra Front End\data` if that folder can't be written to). `errors.log` holds any errors, `window.log` how
+it started, and `emulator-install.log` any install that failed. Updating never removes them.
 </details>
 
 🐛 **Found a bug or have an idea?** [Open an issue](https://github.com/ImSammyTTV/Ultra-Front-End/issues/new). For bugs, say what you
