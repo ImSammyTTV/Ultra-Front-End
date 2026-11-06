@@ -1082,8 +1082,13 @@ function detailsFor(g) {
   const c = DCACHE[g.id];
   if (c && Date.now() - c.t < 600000) return c;
   const q = encodeURIComponent(g.id);
-  return DCACHE[g.id] = { t: Date.now(), info: api('/api/game?id=' + q).catch(e => { delete DCACHE[g.id]; throw e; }),
-    news: g.source === 'Emulators' ? Promise.resolve([]) : api('/api/game/news?id=' + q).then(r => r.news).catch(() => []) };  // emulated games show achievements instead
+  const entry = { t: Date.now() };
+  entry.info = api('/api/game?id=' + q).then(d => {
+    if (!d?.description) entry.t = Date.now() - 540000;  // nothing found yet: asked again after a minute, not ten
+    return d;
+  }).catch(e => { delete DCACHE[g.id]; throw e; });
+  return DCACHE[g.id] = Object.assign(entry, {
+    news: g.source === 'Emulators' ? Promise.resolve([]) : api('/api/game/news?id=' + q).then(r => r.news).catch(() => []) });  // emulated games show achievements instead
 }
 let prefetchTimer;
 function schedulePrefetch(g) { clearTimeout(prefetchTimer); prefetchTimer = setTimeout(() => detailsFor(g), 450); }  // while browsing the row
