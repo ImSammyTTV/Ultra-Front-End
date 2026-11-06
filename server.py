@@ -2020,6 +2020,9 @@ def scan_library(lib, cfg):
             stem = os.path.basename(dumps[f])
         elif f in dumps:  # Switch game folder
             stem = switch_titles().get(npdm_title_id(f + ".npdm")) or re.sub(r"\s+(rom|dump)$", "", os.path.basename(dumps[f]), flags=re.I)
+        elif lib["name"] in ("Switch", "Switch 2") and re.search(r"\[[0-9a-f]{16}\]", stem, re.I):  # "Game [0100...].nup"
+            tid = re.search(r"\[([0-9a-f]{16})\]", stem, re.I).group(1).upper()
+            stem = switch_titles().get(tid) or stem
         elif os.path.basename(f).lower() in by_name:  # folder game: name it after its folder, not "EBOOT"
             d = os.path.dirname(f)
             while os.path.basename(d).lower() in ("usrdir", "ps3_game", "sce_sys", "app", "eboot", "uroot") and os.path.dirname(d) != d:  # uroot: PkgTool's PFS root
@@ -2515,6 +2518,7 @@ def hero_local(g, url):
 
 def metadata_title(title):
     title = re.sub(r"\s*\([^)]*\)|\s*\[[^]]*\]", "", title).strip()
+    title = re.sub(r"[\s\-–:]+(nintendo\s+)?switch\s*2\s+edition\b.*$", "", title, flags=re.I) or title  # the game's own page
     title = re.sub(r"^(.+?) The - ", r"The \1: ", title)
     title = title.replace("Pokemon", "Pokémon")
     title = re.sub(r"^Pokémon\s*-\s*(.+?)(?: Version)?$", r"Pokémon \1", title)
@@ -2744,8 +2748,9 @@ def wiki_game_info(title):
             text = summary.get("extract", "")
             if summary.get("type") != "standard" or "game" not in text.lower():
                 continue
-            if rank == 3 and re.search(r"\b(series|franchise)\b", re.split(r"(?<=[.!?])\s", text)[0], re.I):
-                continue  # the main title's page is about the whole series, not this game
+            first = re.split(r"(?<=[.!?])\s", text)[0]
+            if (rank == 3 and re.search(r"\b(series|franchise)\b", first, re.I)) or re.search(r"\bis an? (\w+ )*(series|franchise)\b", first, re.I):
+                continue  # a page about the whole series ("Star Fox is a series of..."), not this game
             sentences = re.split(r"(?<=[.!?])\s+", text)
             bio = ""
             for sentence in sentences:
