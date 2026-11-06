@@ -7995,6 +7995,8 @@ def check_emulator_updates():
         if not asset:
             continue
         had = versions.get(name) or {}
+        if had.get("keep"):  # a build picked by hand (emu-versions.json "keep": true) stays until it's set back
+            continue
         if had.get("asset"):
             newer = asset["name"] != had["asset"] or published > (had.get("published") or "")
         else:  # installed before versions were kept: newer than the program on disk, by more than a day
