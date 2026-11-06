@@ -969,10 +969,12 @@ def cpu_avx2():
         return False
 
 
-def install_download(name, url, filename, program_name, digest="", size=0):
-    """Download an emulator's archive, unpack it and keep the folder its program is in as ~/Emulators/<name>."""
+def install_download(name, url, filename, program_name, digest="", size=0, target=None):
+    """Download an emulator's archive, unpack it and keep the folder its program is in as C:\\Ultra-Front-End\\Emulators\\<name>
+    (target: an installed copy to update). Unpacked over what's there, so its saves and settings stay; a settings file the
+    emulator already has is never replaced by the download's default one."""
     import tempfile
-    target = os.path.join(EMU_HOME, name)
+    target = target or os.path.join(EMU_HOME, name)
     with tempfile.TemporaryDirectory(prefix="frontend-emu-") as staging:
         archive = os.path.join(staging, filename)
         with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=120) as response, open(archive, "wb") as output:
@@ -987,11 +989,13 @@ def install_download(name, url, filename, program_name, digest="", size=0):
             raise ValueError(f"The {name} download has no {program_name}")
         job_progress("Setting up")
         os.makedirs(target, exist_ok=True)
-        shutil.copytree(os.path.dirname(min(programs, key=len)), target, dirs_exist_ok=True)  # the program's folder, whatever wraps it
+        keep = lambda src, dst: dst if os.path.exists(dst) and dst.lower().endswith(EMU_SETTINGS) else shutil.copy2(src, dst)
+        shutil.copytree(os.path.dirname(min(programs, key=len)), target, dirs_exist_ok=True, copy_function=keep)  # the program's folder, whatever wraps it
     return os.path.join(target, program_name)
 
 
-def install_from_github(name):
+def github_latest(name):
+    """The newest Windows download of a GitHub emulator: (asset, published) or (None, "")."""
     repo, pattern, program_name = GITHUB_EMUS[name]
     releases = http_json(f"https://api.github.com/repos/{repo}/releases?per_page=30", timeout=30)
     try:  # the list isn't always newest first (RPCS3's is by tag name), so the newest full release goes in too
@@ -1002,14 +1006,23 @@ def install_from_github(name):
     found = sorted(((r.get("published_at") or "", a) for r in releases if not r.get("draft")
                     for a in r.get("assets", []) if re.search(pattern, a["name"]) and (avx2 or "AVX2" not in a["name"])),
                    key=lambda x: (x[0], "AVX2" in x[1]["name"]), reverse=True)
-    if not found:
+    return (found[0][1], found[0][0]) if found else (None, "")
+
+
+def install_from_github(name, target=None):
+    repo, pattern, program_name = GITHUB_EMUS[name]
+    asset, published = github_latest(name)
+    if not asset:
         raise ValueError(f"{name} has no Windows download right now. Its project page may have one.")
-    asset = found[0][1]
     url = asset["browser_download_url"]
     if not url.startswith(f"https://github.com/{repo}/releases/download/"):
         raise ValueError(f"{name}'s download isn't on its own project")
     # GitHub's SHA-256 of the file, on everything uploaded since mid-2025
-    return install_download(name, url, asset["name"], program_name, asset.get("digest") or "", asset.get("size") or 0)
+    exe = install_download(name, url, asset["name"], program_name, asset.get("digest") or "", asset.get("size") or 0, target)
+    versions = load("emu-versions.json", {})
+    versions[name] = {"asset": asset["name"], "published": published, "at": time.time()}
+    store("emu-versions.json", versions)
+    return exe
 
 
 def install_hatari():
@@ -6240,6 +6253,8 @@ def settings_view():
     return {"options": {**{k: cfg.get(k, True) for k in OPTION_KEYS}, "startup": cfg.get("startup")}, "services": services, "libraries": libs, "accounts": acc,
             "errors": STATE["errors"], "steamDetected": bool(steam_path()), "steamSuggestedId": steam_suggested_id(),
             "localSteamCount": STATE["counts"].get("Steam (installed)", 0), "romRoot": cfg.get("romRoot") or "", "platforms": platforms,
+            "emuUpdates": {"checked": EMU_UPDATES["checked"], "list": [{"name": n, "to": i.get("to", ""), "systems": i["systems"], "installer": k == "winget"}
+                                                                   for k in ("github", "winget") for n, i in EMU_UPDATES[k].items()]},
             "homeMove": (lambda m: {"roms": bool(m["roms"]), "emus": [os.path.basename(a) for a, _ in m["emus"]], "why": m["why"], "home": UFE_HOME})(home_move_plan(cfg)),
             "queue": queue_view(), "profile": profile(), "update": update_view(), "extras": extras_view(),
             "launchers": launchers_view() if WIN else [], "autologon": autologon_view() if WIN else {"available": False},
@@ -7476,6 +7491,15 @@ def install_worker():
 
 
 def install_job(job):
+    if job.get("update"):  # a newer version of an emulator that's already set up
+        try:
+            update_emulator(job["update"])
+            job.update(state="ready", error="")
+        except Exception as e:
+            job.update(state="failed", error=(str(e) or type(e).__name__)[:200])
+            if not isinstance(e, ValueError):
+                log_error()
+        return
     if job.get("launcher"):  # a game launcher (Steam, GOG Galaxy...): winget, then its games are looked for
         try:
             winget_install(job["package"][0], job["emulator"])
@@ -7515,6 +7539,155 @@ def install_job(job):
     except Exception:
         log_error()
     apply_soon()
+
+
+# ---------------------------------------------------------------- emulators kept up to date
+EMU_SETTINGS = (".yml", ".yaml", ".ini", ".cfg", ".json", ".toml", ".xml", ".conf", ".txt")
+EMU_UPDATES = {"checked": 0.0, "github": {}, "winget": {}, "error": ""}  # what's newer: {name: {"system", "from", "to"}}
+EMU_UPDATE_LOCK = threading.Lock()
+
+
+def own_github_emus(cfg=None):
+    """The downloaded emulators Ultra Front End installed and uses: {name: (folder, systems)}. Only its own folders in
+    C:\\Ultra-Front-End\\Emulators or ~\\Emulators (never a build you put somewhere yourself)."""
+    cfg = cfg or config()
+    out = {}
+    for name, (_, _, program) in GITHUB_EMUS.items():
+        for home in (EMU_HOME, OLD_EMU_HOME):
+            folder = os.path.join(home, name)
+            systems = [s for s, e in (cfg.get("emulators") or {}).items() if under(e.get("path", ""), folder)]
+            if systems and os.path.isfile(os.path.join(folder, program)):
+                out[name] = (folder, systems)
+                break
+    return out
+
+
+def winget_emus(cfg=None):
+    """Emulators with an installer from winget that Ultra Front End can install: {package id: (name, systems)}."""
+    cfg = cfg or config()
+    out = {}
+    for system, entry in EMU_INSTALL.items():
+        if not entry:
+            continue
+        name, source = entry
+        pkg = "Libretro.RetroArch" if source.startswith("retroarch:") else source
+        if re.fullmatch(r"[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+", pkg or "") and os.path.exists((cfg.get("emulators") or {}).get(system, {}).get("path", "")):
+            n, systems = out.get(pkg, ("RetroArch" if pkg == "Libretro.RetroArch" else name, []))
+            out[pkg] = (n, systems + [system])
+    return out
+
+
+def winget_upgrades(ids):
+    """{package id: (installed version, newer version)} for those of ids that winget has an update for."""
+    winget = shutil.which("winget")
+    if not winget or not ids:
+        return {}
+    r = subprocess.run([winget, "upgrade", "--source", "winget", "--accept-source-agreements", "--disable-interactivity"],
+                       capture_output=True, timeout=180, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    text = r.stdout.decode("utf-8", "replace")
+    out = {}
+    for line in text.splitlines():
+        words = line.split()
+        for i, w in enumerate(words):
+            if w in ids and len(words) > i + 2 and re.match(r"^[<>]?[0-9v]", words[i + 1]):
+                out[w] = (words[i + 1].lstrip("<>"), words[i + 2])
+    return out
+
+
+def check_emulator_updates():
+    """Which of the app's own emulators have something newer (GitHub downloads by release date, installers by winget)."""
+    cfg, versions = config(), load("emu-versions.json", {})
+    github = {}
+    for name, (folder, systems) in own_github_emus(cfg).items():
+        try:
+            asset, published = github_latest(name)
+        except (urllib.error.URLError, ValueError, KeyError, TimeoutError):
+            continue
+        if not asset:
+            continue
+        had = versions.get(name) or {}
+        if had.get("asset"):
+            newer = asset["name"] != had["asset"] or published > (had.get("published") or "")
+        else:  # installed before versions were kept: newer than the program on disk, by more than a day
+            exe = os.path.join(folder, GITHUB_EMUS[name][2])
+            newer = published > time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(os.path.getmtime(exe) + 86400))
+        if newer:
+            github[name] = {"systems": systems, "to": asset["name"], "folder": folder}
+    wing = winget_emus(cfg)
+    try:
+        ups = winget_upgrades(set(wing))
+    except (OSError, subprocess.TimeoutExpired):
+        ups = {}
+    winget = {wing[p][0]: {"systems": wing[p][1], "package": p, "from": a, "to": b} for p, (a, b) in ups.items()}
+    EMU_UPDATES.update(checked=time.time(), github=github, winget=winget, error="")
+    versions["_checked"] = time.time()
+    store("emu-versions.json", versions)
+
+
+def emulator_running(folder):
+    """A program from this emulator's folder is running (an update would fail on its files, or pull them from under it)."""
+    if not WIN:
+        return False
+    try:
+        r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command",
+                            "Get-Process | Where-Object { $_.Path } | ForEach-Object { $_.Path }"],
+                           capture_output=True, timeout=30, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        return any(under(p.strip(), folder) for p in r.stdout.decode("utf-8", "replace").splitlines() if p.strip())
+    except (OSError, subprocess.TimeoutExpired):
+        return True  # can't tell: try another time
+
+
+def update_emulator(name):
+    """Bring one of the app's emulators up to date: a newer download unpacked over it, or its installer through winget."""
+    info = EMU_UPDATES["github"].get(name)
+    if info:
+        if emulator_running(info["folder"]):
+            raise ValueError(f"Close {name} first, then try again")
+        install_from_github(name, info["folder"])
+        EMU_UPDATES["github"].pop(name, None)
+        return
+    info = EMU_UPDATES["winget"].get(name)
+    if info:
+        winget_install(info["package"], name)  # installing a package that's there brings it up to date
+        EMU_UPDATES["winget"].pop(name, None)
+        return
+    raise ValueError(f"{name} is up to date")
+
+
+def queue_emulator_updates(names):
+    """Each into the install queue as an update job (progress in Settings › Systems)."""
+    added = 0
+    with QUEUE_COND:
+        for name in names:
+            info = EMU_UPDATES["github"].get(name) or EMU_UPDATES["winget"].get(name)
+            if not info or any(j.get("update") == name and j["state"] in ("waiting", "installing") for j in QUEUE["jobs"]):
+                continue
+            new_batch()
+            QUEUE["next"] += 1
+            QUEUE["jobs"].append({"id": QUEUE["next"], "emulator": name, "update": name, "systems": list(info["systems"]),
+                                  "package": (name, "update"), "state": "waiting", "error": ""})
+            added += 1
+        if added and not QUEUE["worker"]:
+            QUEUE["worker"] = threading.Thread(target=install_worker, daemon=True)
+            QUEUE["worker"].start()
+        QUEUE_COND.notify_all()
+    return added
+
+
+def watch_emulator_updates():
+    """Once a day: look for newer emulators. Downloaded ones update by themselves while nothing is running; ones with an
+    installer wait for a press in Settings › Systems (their installers may ask Windows for permission)."""
+    time.sleep(300)  # after start-up, an update of the app itself, and the first scans
+    while True:
+        try:
+            if time.time() - (load("emu-versions.json", {}).get("_checked") or 0) > 86400 or not EMU_UPDATES["checked"]:
+                with EMU_UPDATE_LOCK:
+                    check_emulator_updates()
+            if EMU_UPDATES["github"] and not update_busy() and not any(j["state"] in ("waiting", "installing") for j in QUEUE["jobs"]):
+                queue_emulator_updates([n for n, i in EMU_UPDATES["github"].items() if not emulator_running(i["folder"])])
+        except Exception:
+            log_error()
+        time.sleep(1800)
 
 
 def job_for(system):
@@ -8547,6 +8720,14 @@ class Handler(SimpleHTTPRequestHandler):
                     raise ValueError("Set up your ROMs folder first")
                 open_target(root)
                 return self.reply({"ok": True})
+            if path == "/api/emulators/update":  # Settings › Systems: one emulator ("name"), or every one with an update
+                if body.get("check"):
+                    with EMU_UPDATE_LOCK:
+                        check_emulator_updates()
+                else:
+                    names = [body["name"]] if isinstance(body.get("name"), str) else [*EMU_UPDATES["github"], *EMU_UPDATES["winget"]]
+                    queue_emulator_updates(names)
+                return self.reply(settings_view())
             if path == "/api/emulators/install":  # waits its turn in the install queue (/api/systems/queue)
                 if body.get("system") not in EMU_INSTALL:
                     raise ValueError("No such console")
@@ -9483,6 +9664,7 @@ def main():
             threading.Thread(target=watch_controller, daemon=True).start()
             threading.Thread(target=watch_steam_button, daemon=True).start()
             threading.Thread(target=watch_running, daemon=True).start()
+            threading.Thread(target=watch_emulator_updates, daemon=True).start()  # the app's own emulators, kept up to date
             import hud
             hud.start(DATA, hud_visible, load("hud.json", {}).get("mode") if hud.presentmon(DATA) else "off")  # an extra: off until installed
             sync_autostart()
