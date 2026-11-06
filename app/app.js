@@ -2247,6 +2247,7 @@ function panelItems() {
     { kind: 'head', label: 'Ultra Front End' },
     { kind: 'note', label: ON_ANDROID ? 'A fullscreen, controller-friendly launcher for your Android games and emulators.' : 'A fullscreen, controller-friendly launcher for Steam, Epic, your own game folders, emulators and ports.' },
     ...updateRows(P.data?.update),
+    ...(P.data ? emuUpdateRows(P.data) : []),  // the emulators it installed, beside the app's own updates
     // information only: these can't be highlighted, so A never seems to do nothing
     { kind: 'info', label: 'Your data', sub: `Libraries, accounts, artwork and play history are kept on ${HERE} only, in the frontend’s data folder.` },
     { kind: 'info', label: 'Artwork and info', sub: 'Steam, Epic, SteamGridDB, libretro and Wikipedia. Descriptions from Wikipedia are under CC BY-SA 4.0' },
@@ -2289,12 +2290,12 @@ function panelItems() {
   if (P.view === 'systems') {
     const mine = d.platforms.filter(p => p.chosen && p.group !== 'Other'), odd = d.platforms.filter(p => p.chosen && p.group === 'Other');
     return [
+      ...emuUpdateRows(d),  // first, where it's seen: below a long list of systems it was missed
       { kind: 'head', label: 'Your systems' },
       ...(mine.length ? mine.map(p => ({ kind: 'row', key: 'sys-' + p.name, ...sysLogo(p.name), label: p.name,
         sub: [p.emulator || (p.recommended ? `${p.recommended} not installed` : 'No emulator yet'), `${p.count} game${p.count === 1 ? '' : 's'}`, p.bios?.label, jobText(p)].filter(Boolean).join(' · '),
         value: p.job?.state === 'installing' ? jobValue(p.job) : p.emulator ? 'Ready' : p.job?.state === 'waiting' ? 'Waiting' : 'Set up', ...jobBar(p), act: () => { P.system = p.name; setView('system'); } }))
         : [{ kind: 'note', label: 'No systems yet. Add the ones you play.' }]),
-      ...emuUpdateRows(d),
       // a ROMs subfolder named after no system: its games can't start until it's renamed
       ...odd.map(p => ({ kind: 'info', label: `ROMs › ${p.name}`, sub: 'Folder not recognised: rename it to a system’s name, for example SNES or Genesis', value: `${p.count} game${p.count === 1 ? '' : 's'}` })),
       { kind: 'row', key: 'sys-add', label: '+ Add a system', sub: ON_ANDROID ? 'Makes its folders in your ROMs folder' : 'Installs its emulator and makes its folders', act: () => setView('add-system') },
@@ -2909,7 +2910,7 @@ function emuUpdateRows(d) {
     ...list.map(u => ({ kind: 'row', key: 'emu-up-' + u.name, ic: icon('download'), label: `Update ${u.name}`, value: 'Update',
       sub: [u.to && `New: ${u.to}`, u.systems.join(', '), u.installer && 'Its installer may ask Windows for permission'].filter(Boolean).join(' · '), act: () => run(u.name) })),
     ...(list.length > 1 ? [{ kind: 'row', key: 'emu-up-all', label: 'Update all', value: `${list.length}`, sub: 'One after another, with one Windows prompt for the installers', act: () => run() }] : []),
-    { kind: 'row', key: 'emu-up-check', label: list.length ? 'Check again' : 'Check for emulator updates',
+    { kind: 'row', key: 'emu-up-check', label: 'Check for emulator updates',
       sub: d.emuUpdates.checked ? `Checked ${fmtDate(d.emuUpdates.checked)}${list.length ? '' : ': all up to date'}. Checked every day; downloaded emulators update by themselves` : 'Checked every day; downloaded emulators update by themselves',
       act: () => work(api('/api/emulators/update', { check: true })).then(r => r && toast(r.emuUpdates?.list?.length ? `${r.emuUpdates.list.length} update${r.emuUpdates.list.length === 1 ? '' : 's'} found` : 'Your emulators are up to date', 3000)) },
   ];
