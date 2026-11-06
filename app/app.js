@@ -2293,7 +2293,7 @@ function panelItems() {
       ...emuUpdateRows(d),  // first, where it's seen: below a long list of systems it was missed
       { kind: 'head', label: 'Your systems' },
       ...(mine.length ? mine.map(p => ({ kind: 'row', key: 'sys-' + p.name, ...sysLogo(p.name), label: p.name,
-        sub: [p.emulator || (p.recommended ? `${p.recommended} not installed` : 'No emulator yet'), `${p.count} game${p.count === 1 ? '' : 's'}`, p.bios?.label, jobText(p)].filter(Boolean).join(' · '),
+        sub: [p.emulator ? p.emulator + (p.emulatorVersion ? ` ${p.emulatorVersion}` : '') : p.recommended ? `${p.recommended} not installed` : 'No emulator yet', `${p.count} game${p.count === 1 ? '' : 's'}`, p.bios?.label, jobText(p)].filter(Boolean).join(' · '),
         value: p.job?.state === 'installing' ? jobValue(p.job) : p.emulator ? 'Ready' : p.job?.state === 'waiting' ? 'Waiting' : 'Set up', ...jobBar(p), act: () => { P.system = p.name; setView('system'); } }))
         : [{ kind: 'note', label: 'No systems yet. Add the ones you play.' }]),
       // a ROMs subfolder named after no system: its games can't start until it's renamed
@@ -2323,7 +2323,7 @@ function panelItems() {
     const b = p.bios || { needs: [], folder: false, label: 'Nothing needed' }, job = p.job && p.job.state !== 'ready' && !p.emulator ? p.job : null;
     return [  // the page title names the system
       { kind: 'info', label: p.emulator ? `Plays in ${p.emulator}` : p.recommended ? `Emulator: ${p.recommended}` : 'No emulator chosen',
-        sub: [`${p.count} game${p.count === 1 ? '' : 's'}`, b.label, job && !p.install && jobText(p)].filter(Boolean).join(' · ') },  // (the Install row says it otherwise)
+        sub: [p.emulatorVersion && `Version ${p.emulatorVersion}`, `${p.count} game${p.count === 1 ? '' : 's'}`, b.label, job && !p.install && jobText(p)].filter(Boolean).join(' · ') },  // (the Install row says it otherwise)
       ...(!p.emulator && p.install ? [{ kind: 'row', key: 'sys-install', ic: icon('pad'), label: `Install ${p.install}`, value: job && job.state !== 'failed' ? jobValue(job) : job ? 'Try again' : 'Install',
         sub: job ? jobText(p) : 'Downloads it from the emulator’s own project. It can take a few minutes: watch for Windows prompts.', ...jobBar(p),
         act: () => job && job.state !== 'failed' ? toast('It’s on its way', 2500) : work(api('/api/emulators/install', { system: p.name })).then(r => { if (r) { toast(`Installing ${p.install}…`, 3000); watchQueue(); } }) }] : []),

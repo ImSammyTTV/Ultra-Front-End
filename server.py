@@ -1031,7 +1031,9 @@ def install_from_github(name, target=None):
     # GitHub's SHA-256 of the file, on everything uploaded since mid-2025
     exe = install_download(name, url, asset["name"], program_name, asset.get("digest") or "", asset.get("size") or 0, target)
     versions = load("emu-versions.json", {})
-    versions[name] = {"asset": asset["name"], "published": published, "at": time.time()}
+    tag = (re.search(r"/releases/download/([^/]+)/", url) or [None, ""])[1]
+    versions[name] = {"asset": asset["name"], "published": published, "tag": urllib.parse.unquote(tag), "folder": os.path.dirname(exe), "at": time.time()}
+    EMU_VERSIONS.clear()
     store("emu-versions.json", versions)
     return exe
 
@@ -7922,7 +7924,12 @@ def check_emulator_updates():
     except (OSError, subprocess.TimeoutExpired):
         ups = {}
     winget = {wing[p][0]: {"systems": wing[p][1], "package": p, "from": a, "to": b} for p, (a, b) in ups.items()}
-    EMU_UPDATES.update(checked=time.time(), github=github, winget=winget, error="")
+    try:
+        installed = winget_installed(set(wing))
+    except (OSError, subprocess.TimeoutExpired):
+        installed = EMU_UPDATES.get("installed") or {}
+    EMU_UPDATES.update(checked=time.time(), github=github, winget=winget, installed=installed, error="")
+    EMU_VERSIONS.clear()
     versions["_checked"] = time.time()
     store("emu-versions.json", versions)
 
@@ -7975,6 +7982,95 @@ def queue_emulator_updates(names):
             QUEUE["worker"].start()
         QUEUE_COND.notify_all()
     return added
+
+
+# ---------- which version each emulator is ----------
+EMU_VERSIONS = {}  # (program, modified) -> what to show
+
+
+def exe_version(path):
+    """The version written in a Windows program (its version resource), or ""."""
+    if not WIN:
+        return ""
+    import ctypes
+    import ctypes.wintypes as W
+    ver = ctypes.windll.version
+    size = ver.GetFileVersionInfoSizeW(path, None)
+    buf = ctypes.create_string_buffer(size) if size else None
+    if not buf or not ver.GetFileVersionInfoW(path, 0, size, buf):
+        return ""
+    ptr, n = ctypes.c_void_p(), W.UINT()
+    if ver.VerQueryValueW(buf, "\\VarFileInfo\\Translation", ctypes.byref(ptr), ctypes.byref(n)) and n.value >= 4:
+        lang, cp = ctypes.cast(ptr, ctypes.POINTER(ctypes.c_ushort * 2)).contents
+        for key in ("ProductVersion", "FileVersion"):
+            sptr, sn = ctypes.c_void_p(), W.UINT()
+            if ver.VerQueryValueW(buf, f"\\StringFileInfo\\{lang:04x}{cp:04x}\\{key}", ctypes.byref(sptr), ctypes.byref(sn)) and sn.value:
+                text = ctypes.wstring_at(sptr, sn.value).strip("\x00 ").strip()
+                if text and text not in ("0.0.0.0", "1.0.0.0"):
+                    return text
+    if ver.VerQueryValueW(buf, "\\", ctypes.byref(ptr), ctypes.byref(n)) and n.value >= 52:
+        f = ctypes.cast(ptr, ctypes.POINTER(ctypes.c_uint32 * 13)).contents
+        nums = (f[4] >> 16, f[4] & 0xFFFF, f[5] >> 16, f[5] & 0xFFFF)
+        if any(nums) and nums != (1, 0, 0, 0):
+            return ".".join(map(str, nums))
+    return ""
+
+
+def tidy_version(v):
+    """"2.1.1+137ae7ce3bf3..." -> "2.1.1+137ae7c"; ".0.1.5664-2df3434" -> "0.1.5664-2df3434"."""
+    v = v.strip().lstrip(".")
+    return re.sub(r"([+-])([0-9a-f]{7})[0-9a-f]{5,}$", r"\1\2", v)
+
+
+def emulator_version(program, system=None):
+    """What version an emulator is, from the best place there is: the release Ultra Front End installed, the version in
+    the program, Windows' list of installed apps (winget, read with the daily update check), a build code in its folder's
+    name, or when the program was built."""
+    try:
+        stamp = os.path.getmtime(program)
+    except OSError:
+        return ""
+    key = (os.path.normcase(program), stamp)
+    if key in EMU_VERSIONS:
+        return EMU_VERSIONS[key]
+    v = ""
+    versions = load("emu-versions.json", {})
+    for name in GITHUB_EMUS:
+        rec = versions.get(name) or {}
+        if rec.get("folder") and under(program, rec["folder"]):
+            v = rec.get("tag") or (f"build of {rec['published'][:10]}" if rec.get("published") else "")
+            break
+    v = v or tidy_version(exe_version(program))
+    if not v and system:
+        package = (EMU_INSTALL.get(system) or (None, ""))[1]
+        v = (EMU_UPDATES.get("installed") or {}).get(package, "")
+    if not v:  # "eglantine-windows-x86_64-ec667e25f9ab...", "Dolphin-2609a" (its program is a folder further in): the build in the folder's name
+        here = os.path.dirname(program)
+        for folder in (os.path.basename(here), os.path.basename(os.path.dirname(here))):
+            m = re.search(r"[-_ ]v?(\d+(?:\.\d+)+[\w.-]*|\d{3,6}[a-z]?|[0-9a-f]{7,40})$", folder, re.I)
+            if m and not re.search(r"x86|x64|win(32|64)|_[0-9a-z]{13}$", m.group(0), re.I):  # (not "x86_64", nor a Windows package's publisher code)
+                code = m.group(1)
+                v = f"build {code[:7]}" if re.fullmatch(r"[0-9a-f]{7,40}", code, re.I) and re.search(r"[a-f]", code, re.I) and len(code) >= 7 and not re.fullmatch(r"\d{3,6}[a-z]?", code) else code
+                break
+    v = v or time.strftime("build of %d %b %Y", time.localtime(stamp))
+    EMU_VERSIONS[key] = v
+    return v
+
+
+def winget_installed(ids):
+    """{package id: installed version} from winget's list, for the emulators that don't say their version themselves."""
+    winget = shutil.which("winget")
+    if not winget or not ids:
+        return {}
+    r = subprocess.run([winget, "list", "--source", "winget", "--accept-source-agreements", "--disable-interactivity"],
+                       capture_output=True, timeout=180, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    out = {}
+    for line in r.stdout.decode("utf-8", "replace").splitlines():
+        words = line.split()
+        for i, w in enumerate(words):
+            if w in ids and len(words) > i + 1 and re.match(r"^[<>]?[0-9v]", words[i + 1]):
+                out[w] = words[i + 1].lstrip("<>")
+    return out
 
 
 def watch_emulator_updates():
@@ -8451,7 +8547,8 @@ def system_view(system, cfg, chosen):
     emu = cfg.get("emulators", {}).get(system, {}).get("path", "")
     package, job = emu_table().get(system), job_for(system)
     view = {"name": system, "group": SYSTEM_GROUP.get(system, "Other"), "chosen": system in chosen, "count": STATE["counts"].get(f"ROMs/{system}", 0),
-            "emulator": os.path.basename(emu), "emulatorDir": os.path.dirname(emu) if emu else "", "install": package[0] if (WIN or MAC) and package and package[1] != "manual" else None,
+            "emulator": os.path.basename(emu), "emulatorDir": os.path.dirname(emu) if emu else "",
+            "emulatorVersion": emulator_version(emu, system) if emu and WIN else "", "install": package[0] if (WIN or MAC) and package and package[1] != "manual" else None,
             "recommended": emulator_for(system), "site": system_site(system), "steps": BIOS_STEPS.get(system),
             "job": job_info(job) if job else None}
     if system in chosen:  # (only these are looked through: hashing every console's folder would slow Settings down)
