@@ -4107,6 +4107,45 @@ def set_autostart(mode):
             winreg.SetValueEx(k, "Ultra Front End", 0, winreg.REG_SZ, command)
 
 
+# ---------- games kept on screen when the in-game menu opens ----------
+# SDL games (and so many Steam games) minimize as they lose the focus, which the in-game menu takes. Programs started from
+# here are told not to (top of this file); games Steam starts only hear it from the Windows account's own settings, so
+# Settings › General › Keep games on screen (on unless turned off) puts it there, and turning it off takes it away again.
+SDL_KEEP = "SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS"
+
+
+def keep_on_screen(on):
+    """Set or clear SDL's switch in the Windows account's environment (HKCU\\Environment), and tell Windows, so programs
+    started from now on get it. Leaves a value someone set to something else alone. Returns True if it changed."""
+    if not WIN:
+        return False
+    import ctypes
+    import winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0, winreg.KEY_READ | winreg.KEY_SET_VALUE) as k:
+            try:
+                current = str(winreg.QueryValueEx(k, SDL_KEEP)[0])
+            except OSError:
+                current = None
+            if on and current is None:
+                winreg.SetValueEx(k, SDL_KEEP, 0, winreg.REG_SZ, "0")
+            elif not on and current == "0":
+                winreg.DeleteValue(k, SDL_KEEP)
+            else:
+                return False
+    except OSError:
+        return False
+    result = ctypes.c_size_t()
+    ctypes.windll.user32.SendMessageTimeoutW(ctypes.c_void_p(0xFFFF), 0x001A, 0, "Environment", 0x0002, 3000, ctypes.byref(result))  # WM_SETTINGCHANGE, to every window
+    return True
+
+
+def sync_keep_on_screen():
+    """At start: the account's setting follows Settings (on unless turned off)."""
+    if WIN and getattr(sys, "frozen", False) and "--port" not in sys.argv:
+        keep_on_screen(config().get("keepOnScreen", True))
+
+
 def sync_autostart():
     """Keep the sign-in entry pointing at this exe, wherever it has been moved since, once setup has been through it."""
     if not autostart_copy() or not profile().get("setupDone"):
@@ -6177,7 +6216,7 @@ LOCAL_PROVIDERS = {"ea": "EA app", "ubisoft": "Ubisoft Connect", "gog": "GOG", "
 # each launcher has installed on this PC from the entries it writes to Windows' installed-programs list, and starts
 # games through the launcher so sign-in, updates and cloud saves still work.
 SERVICE_SCANS = ("ea", "ubisoft", "gog", "battlenet")   # each has an on/off option "<id>Local" (on by default)
-OPTION_KEYS = ("steamLocal", "onlineCovers", "showUninstalled", "artBackground", "guideOpens", "wiiMotion") + tuple(p + "Local" for p in SERVICE_SCANS)
+OPTION_KEYS = ("steamLocal", "onlineCovers", "showUninstalled", "artBackground", "guideOpens", "wiiMotion", "keepOnScreen") + tuple(p + "Local" for p in SERVICE_SCANS)
 SERVICE_APPS = {
     "ea": [r"C:\Program Files\Electronic Arts\EA Desktop\EA Desktop\EADesktop.exe"],
     "ubisoft": [r"C:\Program Files (x86)\Ubisoft\Ubisoft Game Launcher\UbisoftConnect.exe", r"C:\Program Files (x86)\Ubisoft\Ubisoft Game Launcher\upc.exe"],
@@ -8863,6 +8902,8 @@ class Handler(SimpleHTTPRequestHandler):
                 store("config.json", cfg)
                 if "startup" in body:
                     set_autostart(cfg["startup"])
+                if "keepOnScreen" in body:
+                    keep_on_screen(cfg["keepOnScreen"])
                 scan()
                 return self.reply(settings_view())
             if path == "/api/profile":
@@ -9863,6 +9904,7 @@ def main():
             threading.Thread(target=watch_running, daemon=True).start()
             threading.Thread(target=watch_emulator_updates, daemon=True).start()  # the app's own emulators, kept up to date
             threading.Thread(target=watch_key_guard, daemon=True).start()  # Steam's desktop keys kept out of games it didn't start
+            threading.Thread(target=sync_keep_on_screen, daemon=True).start()  # Settings › General › Keep games on screen
             import hud
             hud.start(DATA, hud_visible, load("hud.json", {}).get("mode") if hud.presentmon(DATA) else "off")  # an extra: off until installed
             sync_autostart()
