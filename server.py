@@ -35,6 +35,11 @@ def shipped(name):
 
 
 WIN, MAC = os.name == "nt", sys.platform == "darwin"
+# Games made with SDL (Hades II, many ports and emulators) minimize when they lose the focus, which the in-game menu takes:
+# every program started from here is told not to (Steam too, when started from here, and so its games). A value you set
+# yourself stays.
+if WIN:
+    os.environ.setdefault("SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS", "0")
 # Everything in one place on Windows: C:\Ultra-Front-End\App (Setup), \ROMs (a new ROMs folder) and \Emulators (installs)
 UFE_HOME = os.path.join((os.environ.get("SystemDrive") or "C:") + os.sep, "Ultra-Front-End") if WIN else os.path.expanduser("~")
 EMU_HOME = os.path.join(UFE_HOME, "Emulators")  # (on a Mac, ~/Emulators: apps themselves go in Applications)
