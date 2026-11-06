@@ -983,6 +983,8 @@ function moreItems() {
   return [
     { label: g.favorite ? 'Remove from Favourites' : 'Add to Favourites', run: () => setFavorite(g, !g.favorite) },
     { label: 'Collections', run: () => openCollections(g) },
+    { label: 'Rename', run: () => renameGame(g) },  // also here, not only in the game menu (Y / hold), so it's found
+    ...(g.renamed ? [{ label: 'Restore original name', run: () => setGameName(g, '') }] : []),
     ...(g.source === 'Emulators' ? [] : [{ label: 'Change app location', run: () => changeAppLocation(g) }]),  // a ROM's program is its console's emulator
     ...(g.appPath ? [{ label: 'Restore default app location', run: () => changeAppLocation(g, true) }] : []),
     { label: 'Change cover', run: () => openGame(g, 'cover') },
@@ -1672,7 +1674,7 @@ function openLibraryPage(mode) {
   if (!LIB.length) return toast('No games yet. Open Settings to add your libraries and accounts.');
   Object.assign(LP, { open: true, mode, cat: 0, i: 0, zone: 'grid', h: 0 });
   LP.cats = lpCategories();
-  if (mode === 'emu' && LP.cats.length < 2 && !lpBase().length) { LP.open = false; return toast('Add a ROM folder in Settings › Libraries first'); }
+  if (mode === 'emu' && LP.cats.length < 2 && !lpBase().length) { LP.open = false; return toast('No emulated games yet. Put your games in the console folders inside your ROMs folder (Settings › Systems shows them), and they appear here by themselves', 6000); }
   document.body.classList.add('lib-open'); tick(600, .07); renderLibraryPage();
 }
 function closeLibraryPage() {
@@ -2231,7 +2233,7 @@ function panelItems() {
   if (!d) return [{ kind: 'note', label: 'Loading…' }];
   const acc = d.accounts;
   const prof = d.profile || PROFILE;
-  const typeName = { pc: 'PC games folder', roms: 'ROM folder', game: 'Single game' };
+  const typeName = { pc: 'PC games folder', roms: 'ROM folder', game: 'Single game', folder: 'Folder' };
   const removable = (key, label, sub, url, body, done = `Removed ${label}`, again = 'Press A / Enter again to remove') => ({ kind: 'row', key, label, sub: P.confirm === key ? again : sub, warn: P.confirm === key,
     act: () => P.confirm === key ? work(api(url, body), done) : (P.confirm = key, renderPanel()) });
   if (P.view === 'profile') return [
@@ -2294,6 +2296,9 @@ function panelItems() {
         act: () => job && job.state !== 'failed' ? toast('It’s on its way', 2500) : work(api('/api/emulators/install', { system: p.name })).then(r => { if (r) { toast(`Installing ${p.install}…`, 3000); watchQueue(); } }) }] : []),
       ...(p.site ? [{ kind: 'row', ic: icon('link'), label: ON_ANDROID ? `Get ${p.recommended}` : `${p.recommended} project page`, sub: ON_ANDROID ? 'From Google Play, or from its own website' : p.site.replace(/^https:\/\/(www\.)?/, '').replace(/\/$/, ''), value: 'Open',
         act: () => api('/api/emulators/site', { system: p.name }).then(() => toast(ON_ANDROID ? 'Opened Google Play' : 'Opened in your browser', 3000), e => toast(e.message)) }] : []),
+      // where it went: an install from here lands where its maker's installer puts it
+      ...(p.emulator && p.emulatorDir ? [{ kind: 'row', key: 'sys-emudir', ic: icon('folder'), label: 'Open emulator folder', sub: p.emulatorDir, value: 'Open',
+        act: () => api('/api/systems/emulator-folder', { system: p.name }).then(() => toast(ON_MAC ? 'Opened in Finder' : 'Opened in File Explorer', 3000), e => toast(e.message)) }] : []),
       { kind: 'row', key: 'sys-choose', ic: icon('folder'), label: 'Choose program', sub: p.emulator || `Select an emulator already on ${HERE}`, value: p.emulator ? 'Change' : 'Choose',
         act: () => work(api('/api/emulators/set', { system: p.name })).then(r => { const e = r?.platforms?.find(x => x.name === p.name)?.emulator; if (e) toast(`${p.name} games will start in ${e}`, 3000); }) },
       // a second A to stop, like every removal
@@ -2439,11 +2444,13 @@ function panelItems() {
     ...(d.romRoot ? [{ kind: 'row', label: 'Open ROMs folder', sub: `Opens it in ${ON_ANDROID ? 'Files' : 'File Explorer'} so you can add games`, act: () => api('/api/romroot/open', {}).then(() => toast(ON_ANDROID ? 'Opened in Files' : 'Opened in File Explorer')) }] : []),
     ...(ON_ANDROID ? [{ kind: 'note', label: 'Android games on this device show up by themselves.' }] : [
     { kind: 'head', label: 'Other libraries' },
-    ...d.libraries.map(l => removable(l.id, l.name, `${typeName[l.type]} · ${l.path} · ${l.count} game${l.count === 1 ? '' : 's'}`, '/api/libraries/remove', { id: l.id })),
+    ...d.libraries.map(l => removable(l.id, l.type === 'folder' ? `Folder: ${l.path.split(/[\\/]/).filter(Boolean).pop() || l.path}` : l.name,
+      l.type === 'folder' ? l.path : `${typeName[l.type]} · ${l.path} · ${l.count} game${l.count === 1 ? '' : 's'}`, '/api/libraries/remove', { id: l.id })),
     ...(d.libraries.length ? [{ kind: 'note', label: 'Select a library twice to remove it (your files are not touched).' }] : []),
     { kind: 'row', label: '+ Add a folder of PC games', sub: 'Each subfolder becomes a game, e.g. decompiled ports or DRM-free games', act: () => addLib('pc') },
     { kind: 'row', label: '+ Add a ROM folder and emulator', sub: 'Pick the ROM folder, then the emulator’s .exe', act: () => addLib('roms') },
-    { kind: 'row', label: '+ Add a single game', sub: 'Pick any game’s .exe', act: () => addLib('game') }]),
+    { kind: 'row', label: '+ Add a single game', sub: 'Pick any game’s .exe', act: () => addLib('game') },
+    { kind: 'row', label: '+ Add a folder', sub: `A tile that opens a folder in ${ON_MAC ? 'Finder' : 'File Explorer'}, for apps, movies or anything you open often`, act: () => addLib('folder') }]),
   ];
   if (P.view === 'artwork') return [
     { kind: 'row', ic: icon('bolt'), label: 'Intro and outro', value: onOff(introOn()), sub: 'The short animation and sound when the frontend opens and closes', act: () => { try { localStorage.setItem('fe-intro', introOn() ? 'off' : 'on'); } catch {} renderPanel(); } },
@@ -2844,7 +2851,7 @@ async function setOpt(k) { await work(api('/api/options', { [k]: !P.data.options
 async function addLib(kind) {
   toast('Choose in the window that just opened…', 4000);
   const r = await work(api('/api/libraries/add', { kind }));
-  if (r?.added) toast(`Added ${r.added}: ${r.count} game${r.count === 1 ? '' : 's'}`, 3000);
+  if (r?.added) toast(kind === 'folder' ? 'Folder added: Play opens it' : `Added ${r.added}: ${r.count} game${r.count === 1 ? '' : 's'}`, 3000);
 }
 // Run a request, then refresh the panel and the game row.
 // Settings › About › Uninstall (Mac): press twice; the helper moves things to the Trash and the app quits

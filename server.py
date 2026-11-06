@@ -77,6 +77,28 @@ def note_data_folder(folder):
             pass
 
 
+def older_copy_data(here):
+    """The settings of a copy from before 1.1.4 (which noted nowhere where they were): a set-up data folder beside an
+    UltraFrontEnd exe in Downloads, the Desktop or Documents, or one folder down. The most recently used one wins, so a person
+    moving from an old download to the installed app keeps everything."""
+    home, found = os.path.expanduser("~"), []
+    for base in (os.path.join(home, d) for d in ("Downloads", "Desktop", "Documents")):
+        try:
+            subs = [base] + [os.path.join(base, n) for n in os.listdir(base) if os.path.isdir(os.path.join(base, n))][:200]
+        except OSError:
+            continue
+        for folder in subs:
+            data = os.path.join(folder, "data")
+            if os.path.normcase(os.path.abspath(data)) == os.path.normcase(os.path.abspath(here)) or not set_up_in(data):
+                continue
+            try:
+                if any(n.lower().startswith(("ultrafrontend", "ultra front end", "game frontend")) and n.lower().endswith(".exe") for n in os.listdir(folder)):
+                    found.append((os.path.getmtime(os.path.join(data, "config.json")), data))
+            except OSError:
+                pass
+    return max(found)[1] if found else None
+
+
 def data_folder():
     """Beside the exe, so a copy and its settings stay together, unless Windows won't let it write there (Program Files):
     then the user's own app data. A copy with no finished setup beside it uses the settings the last copy used, when they
@@ -93,6 +115,10 @@ def data_folder():
             before = ""
         if before and os.path.normcase(os.path.abspath(before)) != os.path.normcase(os.path.abspath(here)) and set_up_in(before):
             return before
+        if not before:  # no note: copies before 1.1.4 never wrote one. Their settings are beside the old download
+            found = older_copy_data(here)
+            if found:
+                return found
     try:
         import tempfile
         os.makedirs(here, exist_ok=True)
@@ -1793,6 +1819,15 @@ def exe_game(title, exe, group, cfg, folder=None):
             "cover": cover, "launch": {"type": "exe", "exe": exe, "args": []}}
 
 
+def folder_game(title, folder, group):
+    """A folder that isn't a game (Apps, Movies...): Play opens it in File Explorer. Its own picture if it has one, never
+    one looked up online by a name like "Apps"."""
+    gid_ = gid("folder", folder)
+    img = find_image([folder], {"cover", "folder", "poster", title})
+    return {"id": gid_, "title": title, "group": group, "source": group, "installed": True, "minutes": 0, "lastPlayed": 0,
+            "cover": local_art(gid_, img) if img else "", "isFolder": True, "launch": {"type": "uri", "uri": folder}}
+
+
 # Switch games kept as folders, in the layouts Eglantine finds: <game>/exefs/main, or <game>/base/exefs/main with each update
 # in <game>/updates/<version>/exefs/main. An update folder holds the whole updated game, so the newest one is what plays.
 def switch_dump(folder):
@@ -1954,6 +1989,10 @@ def scan_library(lib, cfg):
         if lib.get("system"):  # an emulator set up for one game (PlayStation Home in its own RPCS3): listed with that console
             g.update({"id": gid("rom", " ".join([path, *(lib.get("args") or [])])), "source": "Emulators", "system": lib["system"], "group": lib["system"]})
         return [g]
+    if kind == "folder":  # a folder of anything, added as one tile: Play opens it
+        if not os.path.isdir(path):
+            return []
+        return [folder_game(lib.get("title") or os.path.basename(path.rstrip("\\/")) or path, path, lib["name"])]
     if not os.path.isdir(path):
         raise FileNotFoundError(f"{path} isn't available")
     if kind == "pc" and MAC:
@@ -1969,6 +2008,9 @@ def scan_library(lib, cfg):
         games = []
         for sub in sorted(os.listdir(path)):
             full = os.path.join(path, sub)
+            if os.path.isdir(full) and SHELF_DIRS.fullmatch(sub):  # "Apps", "Software": a folder of things, not a game
+                games.append(folder_game(sub, full, lib["name"]))
+                continue
             exe = os.path.isdir(full) and best_exe(full)
             if exe:
                 games.append(exe_game(clean_title(sub), exe, lib["name"], cfg, full))
@@ -2864,6 +2906,8 @@ def info_fresh(hit, g):
 
 def remote_info(g, appid, local):
     """Store text, screenshots, trailers and online art for a game. Network lookups run in parallel; cached on disk."""
+    if g.get("isFolder"):  # nothing to look up for a folder
+        return {"description": "", "genres": [], "developer": "", "released": "", "screenshots": [], "trailers": [], "descSource": "", "hero": "", "logo": ""}
     cache = load("info-cache.json", {})
     hit = cache.get(g["id"])
     if info_fresh(hit, g):
@@ -3493,7 +3537,7 @@ def folder_snapshot():
                 out += sorted(os.path.join(lib["path"], f) for f in os.listdir(lib["path"]) if f.lower().endswith((".lnk", ".url")))
             except OSError:
                 pass
-        elif lib["type"] != "game":
+        elif lib["type"] not in ("game", "folder"):  # (a folder tile doesn't change with what's in it: a big movies folder isn't walked)
             fingerprint(lib["path"], 4, out)
     return sorted(out)
 
@@ -6057,7 +6101,7 @@ def launchers_view():
 
 
 def add_library(kind, provider=None):
-    if provider and (provider not in LOCAL_PROVIDERS or kind not in ("pc", "game")):
+    if provider and (provider not in LOCAL_PROVIDERS or kind not in ("pc", "game")):  # (not "folder")
         raise ValueError("Unknown game service")
     cfg = config()
     if kind == "pc":
@@ -6065,6 +6109,11 @@ def add_library(kind, provider=None):
         if not path:
             return None
         lib = {"type": "pc", "path": path, "name": os.path.basename(path) or path}
+    elif kind == "folder":
+        path = pick("dir", "Choose a folder to open from the home screen")
+        if not path:
+            return None
+        lib = {"type": "folder", "path": path, "name": "Folders", "title": os.path.basename(path.rstrip("\\/")) or path}
     elif kind == "game":
         path = pick("file", "Choose the game's .exe")
         if not path:
@@ -7699,7 +7748,7 @@ def system_view(system, cfg, chosen):
     emu = cfg.get("emulators", {}).get(system, {}).get("path", "")
     package, job = emu_table().get(system), job_for(system)
     view = {"name": system, "group": SYSTEM_GROUP.get(system, "Other"), "chosen": system in chosen, "count": STATE["counts"].get(f"ROMs/{system}", 0),
-            "emulator": os.path.basename(emu), "install": package[0] if (WIN or MAC) and package and package[1] != "manual" else None,
+            "emulator": os.path.basename(emu), "emulatorDir": os.path.dirname(emu) if emu else "", "install": package[0] if (WIN or MAC) and package and package[1] != "manual" else None,
             "recommended": emulator_for(system), "site": system_site(system), "steps": BIOS_STEPS.get(system),
             "job": job_info(job) if job else None}
     if system in chosen:  # (only these are looked through: hashing every console's folder would slow Settings down)
@@ -8279,10 +8328,17 @@ class Handler(SimpleHTTPRequestHandler):
                     raise ValueError("Send a list of systems")
                 choose_systems(picked, bool(body.get("install")))
                 return self.reply(settings_view())
-            if path in ("/api/systems/add", "/api/systems/remove", "/api/systems/bios"):
+            if path in ("/api/systems/add", "/api/systems/remove", "/api/systems/bios", "/api/systems/emulator-folder"):
                 system = body.get("system") or ""
                 if system not in SYSTEM_GROUP:
                     raise ValueError("No such system")
+                if path.endswith("emulator-folder"):  # where its emulator is: the folder of the program in its settings, never a path from the page
+                    emu = config().get("emulators", {}).get(system, {}).get("path", "")
+                    folder = emu if os.path.isdir(emu) else os.path.dirname(emu)
+                    if not emu or not os.path.isdir(folder):
+                        raise ValueError(f"{system} has no emulator on this PC yet")
+                    open_target(folder)
+                    return self.reply({"ok": True})
                 if path.endswith("bios"):  # its BIOS folder, made if missing: a path built here, never one from the page
                     if system not in BIOS_NEEDS:
                         raise ValueError(f"{system} needs no BIOS files")
