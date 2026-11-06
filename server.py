@@ -5796,13 +5796,36 @@ def watch_key_guard():
             on = bool(open_session()) and guarded_game_in_front()
         except Exception:
             on = False
-        KEY_GUARD["on"] = on
+        was, KEY_GUARD["on"] = KEY_GUARD["on"], on
         if on and not KEY_GUARD["thread"]:
             threading.Thread(target=key_guard_hook, daemon=True).start()
         elif not on and KEY_GUARD["thread"]:
             ctypes.windll.user32.PostThreadMessageW(KEY_GUARD["thread"], 0x0012, 0, 0)  # WM_QUIT: the hook goes
             KEY_GUARD["thread"] = 0
+        if on and not was:
+            threading.Thread(target=keep_steam_keyboard_shut, daemon=True).start()
         time.sleep(0.25 if on else 0.5)
+
+
+STEAM_KEYBOARD = "Steam Input On-screen Keyboard"  # steamwebhelper's window, a new one for each time it opens
+
+
+def keep_steam_keyboard_shut():
+    """Steam's Desktop Layout puts its on-screen keyboard on X (not a key, so the hook can't catch it): in a guarded game
+    it's closed as it appears, checked 50 times a second. If it won't close, it's hidden."""
+    import ctypes
+    user32 = ctypes.windll.user32
+    user32.FindWindowW.restype = ctypes.c_void_p
+    user32.FindWindowW.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p]
+    while KEY_GUARD["on"]:
+        hwnd = user32.FindWindowW("SDL_app", STEAM_KEYBOARD)
+        if hwnd and user32.IsWindowVisible(ctypes.c_void_p(hwnd)):
+            user32.PostMessageW(ctypes.c_void_p(hwnd), 0x0010, 0, 0)  # WM_CLOSE
+            time.sleep(0.08)
+            if user32.IsWindowVisible(ctypes.c_void_p(hwnd)):
+                user32.ShowWindow(ctypes.c_void_p(hwnd), 0)  # SW_HIDE
+            KEY_GUARD["keyboards"] = KEY_GUARD.get("keyboards", 0) + 1
+        time.sleep(0.02)
 
 
 def steam_button_reader(path, active):
