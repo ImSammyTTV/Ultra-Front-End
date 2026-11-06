@@ -2928,7 +2928,10 @@ function renderPanel() {
   // on the page's own clock (startTime 0), so the bar slides on smoothly when the rows are drawn again
   document.querySelectorAll('#panel .pbar.busy i').forEach(i => { i.animate([{ transform: 'translateX(-100%)' }, { transform: 'translateX(334%)' }], { duration: 1400, iterations: Infinity, easing: 'ease-in-out' }).startTime = 0; });
   const cur = $('#panel .plist .sel');
-  cur?.scrollIntoView({ block: 'nearest' });
+  // only when the highlight moved: an install's progress redraws twice a second, and scrolling back each time held the
+  // list on its row so it couldn't be scrolled with the mouse or by touch
+  const at = P.view + '|' + (selI >= 0 ? rowKey(P.items[selI]) || selI : '');
+  if (at !== P.scrolledTo) { cur?.scrollIntoView({ block: 'nearest' }); P.scrolledTo = at; }
   const input = cur?.querySelector('input');
   if (input && !SR.open) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }  // typing goes on the end
   else document.activeElement?.blur?.();  // under the on-screen keyboard, real keys type there
