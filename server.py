@@ -3707,6 +3707,7 @@ def session_start(game_id):
                 s["end"] = now
         sessions.append({"game": game_id, "start": now, "end": None})
         store("sessions.json", sessions[-3000:])
+    threading.Timer(0.3, warm_overlay).start()  # the in-game menu, ready before the game's window is up
 
 
 def session_end(game_id=None, min_age=0):
@@ -4694,12 +4695,57 @@ def focus_process(pid, timeout=120):
 # ---------- in-game overlay ----------
 # Hold View + Start in a game: a see-through topmost window opens over it, like Steam's, while the game keeps running. It's a
 # second copy of the program with --overlay showing app/overlay.html.
-OVERLAY = {"proc": None, "game": None, "pids": [], "opened": 0.0}
+OVERLAY = {"proc": None, "game": None, "pids": [], "opened": 0.0, "shown": False}
 OVERLAY_LOCK = threading.Lock()
+OVERLAY_COND = threading.Condition()  # the overlay process waits on this to be shown or hidden (/api/overlay/wake)
+
+
+def overlay_alive():
+    return OVERLAY["proc"] is not None and OVERLAY["proc"].poll() is None
 
 
 def overlay_open():
-    return OVERLAY["proc"] is not None and OVERLAY["proc"].poll() is None
+    """The menu is on screen over the game (its process may also be waiting, hidden, for the next time)."""
+    return overlay_alive() and OVERLAY["shown"]
+
+
+def overlay_show(shown):
+    with OVERLAY_COND:
+        OVERLAY["shown"] = shown
+        OVERLAY_COND.notify_all()
+
+
+def overlay_process(warm):
+    """Start the overlay program: warm (hidden, waiting) as a game starts, or shown at once if none was ready."""
+    with OVERLAY_LOCK:
+        if overlay_alive():
+            return OVERLAY["proc"]
+        proc = subprocess.Popen([frontend_exe(), "--overlay", *(["--warm"] if warm else [])], cwd=os.path.dirname(frontend_exe()))
+        OVERLAY["proc"] = proc
+
+    def wait():
+        proc.wait()
+        overlay_finish(proc)
+    threading.Thread(target=wait, daemon=True).start()
+    return proc
+
+
+def warm_overlay():
+    """Made ahead while the game is still starting (so no window of ours appears once it's playing): opening the menu
+    is then only the slide."""
+    if WIN and not MAC and getattr(sys, "frozen", False) and open_session() and not overlay_alive():
+        overlay_process(warm=True)
+
+
+def overlay_wake(want, timeout=25):
+    """The overlay process asks: wait until the menu is wanted ("open") or put away ("hide"). "quit" once the game is over."""
+    with OVERLAY_COND:
+        OVERLAY_COND.wait_for(lambda: OVERLAY["shown"] == (want == "open"), timeout=timeout)
+        if OVERLAY["shown"] == (want == "open"):
+            return {want: True}
+    if want == "open" and not open_session():
+        return {"quit": True}
+    return {"wait": True}
 
 
 def fullscreen_process():
@@ -4741,13 +4787,8 @@ def toggle_overlay():
         return open_frontend()
     with OVERLAY_LOCK:
         OVERLAY.update(game=session["game"], pids=sorted(tree), opened=time.time())
-        proc = subprocess.Popen([frontend_exe(), "--overlay"], cwd=os.path.dirname(frontend_exe()))
-        OVERLAY["proc"] = proc
-
-    def wait():
-        proc.wait()
-        overlay_finish(proc)
-    threading.Thread(target=wait, daemon=True).start()
+    overlay_process(warm=False)  # the waiting one if there is one (it's woken below), else one shown straight away
+    overlay_show(True)
 
 
 def overlay_finish(proc=None):
@@ -4756,6 +4797,7 @@ def overlay_finish(proc=None):
         if proc is not None and OVERLAY["proc"] is not proc:
             return
         OVERLAY["pids"], OVERLAY["proc"] = [], None
+    overlay_show(False)
 
 
 
@@ -4940,8 +4982,11 @@ def overlay_action(action):
     if action != "close" and pids:  # the game in front first, so closing the overlay doesn't hand the focus to some other window
         bring_back_game(pids)
         time.sleep(0.1)
-    subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True)
-    overlay_finish(proc)
+    if action == "close":  # the game's over: the menu goes with it
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True)
+        overlay_finish(proc)
+    else:  # put away, ready for the next time: hidden by its own program (it waits on /api/overlay/wake)
+        overlay_show(False)
     if action == "close":
         for pid in pids:
             subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)], capture_output=True)
@@ -8344,6 +8389,9 @@ class Handler(SimpleHTTPRequestHandler):
             return self.wfile.write(data)
         if path == "/api/overlay":
             return self.reply(overlay_state())
+        if path == "/api/overlay/wake":  # the overlay program, waiting to be shown or hidden
+            want = (urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("want") or ["open"])[0]
+            return self.reply(overlay_wake("hide" if want == "hide" else "open"))
         if path == "/api/nowplaying":
             return self.reply(now_playing())
         if path == "/api/nowplaying/art":

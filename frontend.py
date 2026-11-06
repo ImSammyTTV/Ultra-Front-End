@@ -191,7 +191,9 @@ def take_focus(overlay_hwnd, seconds=0.0, game_hwnd=None):
     until = time.time() + seconds
     while not OVL.get("closing"):
         if game_hwnd and user32.IsIconic(ctypes.c_void_p(game_hwnd)):
+            OVL["minimized"] = True
             user32.ShowWindow(ctypes.c_void_p(game_hwnd), 4)  # SW_SHOWNOACTIVATE
+            OVL["restored_at"] = time.time()
             # on top of the other windows (the frontend's among them), under the overlay: topmost and back lifts it
             user32.SetWindowPos(ctypes.c_void_p(game_hwnd), ctypes.c_void_p(-1), 0, 0, 0, 0, 0x0013)  # TOPMOST; NOSIZE|NOMOVE|NOACTIVATE
             user32.SetWindowPos(ctypes.c_void_p(game_hwnd), ctypes.c_void_p(-2), 0, 0, 0, 0, 0x0013)  # NOTOPMOST
@@ -294,17 +296,19 @@ def cover_window(img, x, y, w, h, overlay_hwnd, shown, done):
             user32.ReleaseDC(None, screen)
 
 
-def lift_cover(done, game_hwnd, longest=2.0):
-    """Take the still away once the game is back on screen behind the overlay (at least a moment, at most two seconds)."""
+def lift_cover(done, game_hwnd, since=0.0, longest=2.0):
+    """Take the still away as soon as the game is back on screen behind the overlay and has drawn a new frame since the
+    focus moved (the live capture says when): a fraction of a second, at most two."""
     import ctypes
     user32 = ctypes.windll.user32
     start, steady = time.time(), 0
-    time.sleep(0.3)
+    time.sleep(0.06)
     while time.time() - start < longest:
         steady = steady + 1 if not (game_hwnd and user32.IsIconic(ctypes.c_void_p(game_hwnd))) else 0
-        if steady >= 5:  # back for a tenth of a second
+        drawn = OVL.get("frame_at", 0) > max(since, OVL.get("restored_at", 0))
+        if steady >= 3 and (drawn or time.time() - start > 0.35):  # back, and drawing (or no capture to tell: a moment)
             break
-        time.sleep(0.02)
+        time.sleep(0.015)
     done.set()
 
 
@@ -455,34 +459,48 @@ def already_open():
     return True
 
 
+MINIMIZERS = "overlay-games.json"  # {game program: True if it minimizes when it loses the focus}, learned as the menu opens
+
+
+def minimizes(game_hwnd):
+    """Whether this game minimizes itself when the menu takes the focus: None if not seen yet."""
+    exe = os.path.basename(server.process_image(window_pid(game_hwnd)) or "").lower() if game_hwnd else ""
+    return server.load(MINIMIZERS, {}).get(exe) if exe else None, exe
+
+
+def window_pid(hwnd):
+    import ctypes
+    pid = ctypes.c_ulong()
+    ctypes.windll.user32.GetWindowThreadProcessId(ctypes.c_void_p(hwnd), ctypes.byref(pid))
+    return pid.value
+
+
 def overlay():
     """The in-game overlay: a topmost side panel, so the live game stays in full view beside it. (A transparent WebView2
-    window shows its own backdrop, not what is behind it, so a full-screen page can't be see-through.)"""
+    window shows its own backdrop, not what is behind it, so a full-screen page can't be see-through.)
+    With --warm it's made ahead, hidden, while a game runs, and waits for the helper to ask for it: opening is then only
+    the slide, with no program to start (which used to hold a still of the game on screen for a second)."""
     import ctypes
     webview_args()
-    x, y, w, h = game_screen()
+    warm = "--warm" in sys.argv
     scale = ctypes.windll.user32.GetDpiForSystem() / 96 or 1
-    ow = min(int(h * .62), w)  # Quick Access's width (62% of the height), but never wider than a portrait screen
-    x += w - ow  # on the right of the screen, as Quick Access is in the frontend
     user32 = ctypes.windll.user32
     user32.GetForegroundWindow.restype = ctypes.c_void_p
-    game = user32.GetForegroundWindow()  # the game's window, for games that can't give up the focus (below)
-    # A blurred snapshot of the game, taken before the overlay covers it: the backdrop wherever Windows' live glass can't be
-    frost = frosted_backdrop(x, y, ow, h)
-    screen = game_screen()
-    still = game_still(*screen)  # the whole screen as it is, for the moment the focus moves (freeze_cover)
-    # up first, before any window of this program exists: one of them can take the focus as it's made, and a game that
-    # minimizes itself then shows the frontend (or the desktop) instead of itself; with the still up, the game shows
-    t0 = time.perf_counter()
-    cover = freeze_cover(still, *screen, 0) if still is not None else None
-    window_log(f"overlay: still {'up' if cover else 'missing' if still is None else 'too slow'} after {(time.perf_counter() - t0) * 1000:.0f} ms; "
-               f"game {'minimized' if game and ctypes.windll.user32.IsIconic(ctypes.c_void_p(game)) else 'on screen'}")
-    window = webview.create_window("Ultra Front End Overlay", URL + "/overlay.html", x=int(x / scale), y=int(y / scale), width=int(ow / scale), height=int(h / scale),
-                                   on_top=True, frameless=True, easy_drag=False, background_color="#1c1d1f", hidden=True, js_api=Api())
+    at = {}
 
-    def snapshot():
-        if frost:
-            window.evaluate_js(f"frost('{frost}')")
+    def place():
+        """Where the panel goes: the right of the game's screen, Quick Access's width (62% of the height)."""
+        sx, sy, sw, sh = game_screen()
+        ow = min(int(sh * .62), sw)  # never wider than a portrait screen
+        at.update(screen=(sx, sy, sw, sh), rect=(sx + sw - ow, sy, ow, sh), game=user32.GetForegroundWindow())
+    place()
+    cover, still = None, None
+    if not warm:  # opened cold: a still goes up first, since this program's own windows can take the focus as they're made
+        still, cover = cover_up(at)
+    x, y, ow, h = at["rect"]
+    window = webview.create_window("Ultra Front End Overlay", URL + "/overlay.html" + ("?warm" if warm else ""),
+                                   x=int(x / scale), y=int(y / scale), width=int(ow / scale), height=int(h / scale),
+                                   on_top=True, frameless=True, easy_drag=False, background_color="#1c1d1f", hidden=True, js_api=Api())
 
     def edge_to_edge():
         """Windows keeps a frameless window off the screen edges and rounds it: pin it to the full height, square."""
@@ -496,8 +514,92 @@ def overlay():
         ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 33, ctypes.byref(square), ctypes.sizeof(square))
         no_border = ctypes.c_uint(0xFFFFFFFE)  # DWMWA_COLOR_NONE: Windows 11 draws a light edge otherwise
         ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(no_border), ctypes.sizeof(no_border))
-        snapshot()  # the first frame; live_frost keeps it moving with the game once the overlay is up
-        OVL.update(hwnd=raw, rect=(x, y, ow, h))
+        nonlocal cover, still
+        waiting = warm
+        while True:  # one program for the whole game: shown when asked for, hidden after, until the game ends
+            if waiting:
+                window_log("overlay: ready, waiting")
+                if not wait_for_wake("open"):
+                    os._exit(0)  # the game ended: nothing to open over
+                t0 = time.perf_counter()
+                place()
+                still, cover = cover_up(at)
+                window.evaluate_js("wake()")
+                window_log(f"overlay: woken, still {'up' if cover else 'not needed'} after {(time.perf_counter() - t0) * 1000:.0f} ms")
+            reveal(window, raw, at, still, cover)
+            if not wait_for_wake("hide"):
+                os._exit(0)
+            put_away(window, raw)
+            waiting = True
+    webview.start(edge_to_edge, private_mode=True, storage_path=os.path.join(server.DATA, "webview-overlay"))
+    os._exit(0)
+
+
+def wait_for_wake(want):
+    """The overlay waits here for the helper: True when the menu is asked for ("open") or put away ("hide"), False when
+    the game has ended (or the helper has gone)."""
+    while True:
+        try:
+            with urllib.request.urlopen(URL + f"/api/overlay/wake?want={want}", timeout=30) as r:
+                answer = json.load(r)
+        except (OSError, ValueError):
+            if not helper_up():
+                return False
+            time.sleep(0.5)
+            continue
+        if answer.get(want):
+            return True
+        if answer.get("quit"):
+            return False
+
+
+def put_away(window, raw):
+    """Hidden again (it has slid out already), its capture stopped, ready for the next time."""
+    import ctypes
+    OVL["closing"], OVL["gone"] = True, True
+    try:
+        window.evaluate_js("hidden()")
+    except Exception:
+        pass
+    try:
+        from System import Func, Type
+        window.native.Invoke(Func[Type](lambda: window.native.Hide()))
+    except Exception:
+        ctypes.windll.user32.ShowWindow(ctypes.c_void_p(raw), 0)
+
+
+def cover_up(at):
+    """A still of the game over its screen, under the menu, for the moment the focus moves to the menu, if this game
+    minimizes itself then (it would flash the desktop otherwise). Games known not to get none: they never stop moving.
+    Returns (the still, the Event that lifts it) or (still or None, None)."""
+    import ctypes
+    known, _ = minimizes(at["game"])
+    still = game_still(*at["screen"])
+    if known is False or still is None:
+        return still, None
+    t0 = time.perf_counter()
+    cover = freeze_cover(still, *at["screen"], 0)
+    window_log(f"overlay: still {'up' if cover else 'too slow'} after {(time.perf_counter() - t0) * 1000:.0f} ms; "
+               f"game {'minimized' if at['game'] and ctypes.windll.user32.IsIconic(ctypes.c_void_p(at['game'])) else 'on screen'}")
+    return still, cover
+
+
+def reveal(window, raw, at, still, cover):
+    """Show the menu and slide it in over the game, with the game's frosted frame behind it from the first moment."""
+    import ctypes
+    user32 = ctypes.windll.user32
+    hwnd = ctypes.c_void_p(raw)
+    x, y, ow, h = at["rect"]
+    game = at["game"]
+    if True:
+        sx, sy = at["screen"][:2]
+        if still is not None:  # the first frame from the still just taken; the live capture takes over within a frame or two
+            try:
+                window.evaluate_js(f"frost('{frost_url(still.crop((x - sx, y - sy, x - sx + ow, y - sy + h)), scale=3)}')")
+            except Exception:
+                pass
+        OVL.update(hwnd=raw, rect=(x, y, ow, h), closing=False, gone=False, minimized=False, frame_at=0.0)
+        threading.Thread(target=live_backdrop, args=[window, game, x, y, ow, h], daemon=True).start()  # frames from now on
         # at the screen's right edge with only a sliver in its region: showing it (below) can't put a dark, still empty
         # panel in view; the slide brings it in once the page has drawn (a window wholly off screen wouldn't draw at all)
         user32.SetWindowRgn(hwnd, ctypes.windll.gdi32.CreateRectRgn(0, 0, 2, h), False)
@@ -508,6 +610,7 @@ def overlay():
         except Exception:
             window.show()
         # from now: the game stops taking the controls, and if it minimized it goes straight back behind the still
+        focus_at = time.time()
         threading.Thread(target=take_focus, args=[raw, 3, game], daemon=True).start()
         window.evaluate_js("document.body.classList.add('on')")
         deadline = time.time() + 0.8  # drawn, frosted and faded in before any of it comes into view (else a dark block shows)
@@ -519,8 +622,8 @@ def overlay():
                 break
             time.sleep(0.03)
         time.sleep(0.05)  # that frame on screen
-        if cover:  # away once the game is steady behind the overlay again
-            threading.Thread(target=lift_cover, args=[cover, game], daemon=True).start()
+        if cover:  # away as soon as the game is back on screen and drawing behind the menu
+            threading.Thread(target=lift_cover, args=[cover, game, focus_at], daemon=True).start()
         try:
             overlay_slide(True)
         except Exception:
@@ -532,9 +635,20 @@ def overlay():
             window.native.Invoke(Func[Type](lambda: window.native.browser.webview.Focus()))
         except Exception:
             pass
-        threading.Thread(target=live_backdrop, args=[window, game, x, y, ow, h], daemon=True).start()
-    webview.start(edge_to_edge, private_mode=True, storage_path=os.path.join(server.DATA, "webview-overlay"))
-    os._exit(0)
+        threading.Thread(target=note_minimizes, args=[game], daemon=True).start()
+
+
+def note_minimizes(game):
+    """Remember whether this game minimized itself when the menu took the focus: one that doesn't needs no still next time."""
+    time.sleep(3.2)  # take_focus has watched for 3 seconds by then
+    known, exe = minimizes(game)
+    seen = bool(OVL.get("minimized"))
+    if exe and known is not seen:
+        try:
+            server.store(MINIMIZERS, {**server.load(MINIMIZERS, {}), exe: seen})
+        except OSError:
+            pass
+        window_log(f"overlay: {exe} {'minimizes' if seen else 'stays on screen'} when the menu opens")
 
 
 FROST_SCALE = 6  # the frost is worked on at a sixth of the size: blurred anyway, and quick
@@ -653,6 +767,7 @@ def live_backdrop(window, game, x, y, w, h):
             strip = Image.frombuffer("RGB", (fw, fh), view, "raw", "BGRX", pitch, 1)
             latest[0] = frost_url(strip, scale=3)
             frames[0] += 1
+            OVL["frame_at"] = time.time()
             ready.set()
         except Exception:
             pass
