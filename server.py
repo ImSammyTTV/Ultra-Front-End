@@ -3173,9 +3173,10 @@ def whats_new():
     for x in releases or []:
         if not x.get("version"):
             continue
-        key, mine = version_key(x["version"]), version_key(VERSION)
+        key, mine, body = version_key(x["version"]), version_key(VERSION), in_app_notes(x["notes"])
         items.append({"version": x["version"], "title": x["name"] or f"Ultra Front End {x['version']}", "date": x["date"], "page": x["page"],
-                      "summary": release_summary(in_app_notes(x["notes"])), "body": in_app_notes(x["notes"]),
+                      "summary": release_summary(body), "body": body,
+                      "image": next((b["src"] for b in body if b["t"] == "img"), ""),  # its own picture: the first in its notes
                       "state": "installed" if key == mine else "update" if key > mine else ""})
     items.sort(key=lambda n: version_key(n["version"]), reverse=True)
     # an answer is kept an hour; nothing at all (offline at start-up, say) only a minute, so it's asked again soon
