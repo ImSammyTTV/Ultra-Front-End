@@ -254,15 +254,15 @@ ART = {}
 
 def local_art(game_id, path):
     ART[game_id] = path
-    if game_id.endswith("--anim"):
-        light_anim(path)  # its light copy, made in the background if it isn't there yet
     return f"/api/art/{game_id}?v={int(os.path.getmtime(path))}"
 
 
 # Animated covers from SteamGridDB can be huge (animated PNG or WebP of 15-50 MB, up to 170 full-size frames): one takes
 # seconds to load and decode, so a cover that only animates while it's selected never got going. Each gets a light copy
-# made once, sized for the tiles: animated WebP, 400 px wide, at most 90 frames. The original file is kept as it is.
-LIGHT_W, LIGHT_FRAMES = 400, 90
+# made once, sized for the tiles: animated WebP, 400 px wide, at most 20 frames a second and 150 frames. A cover is only
+# offered as animated once its light copy exists (scan), so the originals are never played; the files are kept as they are.
+LIGHT_W, LIGHT_FRAMES, LIGHT_MS = 400, 150, 50
+LIGHT_VERSION = 2  # raised when the copies are made differently, so they're made again
 LIGHT_LOCK = threading.Lock()
 LIGHT_TODO = []
 LIGHT_FAILED = set()
@@ -270,7 +270,7 @@ LIGHT_FAILED = set()
 
 def light_anim_path(src):
     st = os.stat(src)
-    tag = hashlib.sha1(f"{os.path.abspath(src)}|{st.st_size}|{int(st.st_mtime)}".encode()).hexdigest()[:16]
+    tag = hashlib.sha1(f"{os.path.abspath(src)}|{st.st_size}|{int(st.st_mtime)}|{LIGHT_VERSION}".encode()).hexdigest()[:16]
     return os.path.join(DATA, "art", "playing", f"{tag}.webp")
 
 
@@ -291,13 +291,21 @@ def light_anim(src):
 
 
 def light_anim_worker():
+    made, last_scan = 0, time.time()
     while True:
         with LIGHT_LOCK:
             if not LIGHT_TODO:
+                if made:
+                    threading.Thread(target=scan, daemon=True).start()  # the new ones show as animated
+                    prune_light()
                 return
             src = LIGHT_TODO[0]
+        if made and time.time() - last_scan > 60:  # a long batch: what's ready so far shows now and then
+            made, last_scan = 0, time.time()
+            threading.Thread(target=scan, daemon=True).start()
         try:
             make_light_anim(src, light_anim_path(src))
+            made += 1
         except Exception:
             LIGHT_FAILED.add(src)  # (the original is served instead)
             log_error()
@@ -305,21 +313,44 @@ def light_anim_worker():
             LIGHT_TODO.remove(src)
 
 
+def prune_light():
+    """Light copies no animated cover uses any more (a changed cover, older settings) are deleted."""
+    keep = set()
+    for o in load("overrides.json", {}).values():
+        f = o.get("coverStill") and o.get("cover") and os.path.join(ART_DIR, o["cover"])
+        if f and os.path.isfile(f):
+            keep.add(os.path.normcase(light_anim_path(f)))
+    for f in glob.glob(os.path.join(DATA, "art", "playing", "*.webp")):
+        if os.path.normcase(f) not in keep:
+            try:
+                os.remove(f)
+            except OSError:
+                pass
+
+
 def make_light_anim(src, out):
     from PIL import Image, ImageSequence
     with Image.open(src) as im:
-        n = getattr(im, "n_frames", 1)
-        step = max(1, -(-n // LIGHT_FRAMES))  # every frame, or every 2nd, 3rd...: the timing is kept
-        scale = LIGHT_W / im.width
-        size = (LIGHT_W, max(1, round(im.height * scale)))
+        size = (LIGHT_W, max(1, round(im.height * LIGHT_W / im.width)))
         frames, times = [], []
-        for i, frame in enumerate(ImageSequence.Iterator(im)):
-            ms = int(frame.info.get("duration") or 40)
-            if i % step:
+        for frame in ImageSequence.Iterator(im):
+            frame.load()  # (a WebP frame's duration is only known once it's loaded)
+            ms = float(frame.info.get("duration") or im.info.get("duration") or 40)
+            if frames and times[-1] < LIGHT_MS:  # too soon after the last one kept: this frame's time joins it
                 times[-1] += ms
                 continue
             frames.append(frame.convert("RGBA").resize(size, Image.LANCZOS))
             times.append(ms)
+        if len(frames) > LIGHT_FRAMES:  # a long loop: frames spread evenly over it, the timing kept
+            target, kept, kept_ms = sum(times) / LIGHT_FRAMES, [], []
+            for frame, ms in zip(frames, times):
+                if kept_ms and kept_ms[-1] < target:
+                    kept_ms[-1] += ms
+                    continue
+                kept.append(frame)
+                kept_ms.append(ms)
+            frames, times = kept, kept_ms
+        times = [max(20, round(t)) for t in times]
     os.makedirs(os.path.dirname(out), exist_ok=True)
     part = out + ".part"
     frames[0].save(part, "WEBP", save_all=True, append_images=frames[1:], duration=times, loop=0, quality=75, method=4)
@@ -3349,7 +3380,9 @@ def scan():
             if g and f and os.path.isfile(f):
                 still = o.get("coverStill") and os.path.join(ART_DIR, o["coverStill"])
                 if still and os.path.isfile(still):
-                    g["cover"], g["coverAnim"] = local_art(game_id, still), local_art(game_id + "--anim", f)
+                    g["cover"] = local_art(game_id, still)
+                    if light_anim(f):  # animated once its light copy is made (asked for here if it isn't)
+                        g["coverAnim"] = local_art(game_id + "--anim", f)
                 else:
                     g["cover"] = local_art(game_id, f)
                 g["custom"] = True
@@ -7955,7 +7988,9 @@ class Handler(SimpleHTTPRequestHandler):
             if not f or not os.path.isfile(f):
                 return self.send_error(404)
             if key.endswith("--anim"):
-                f = light_anim(f) or f  # the light copy once it's made
+                f = light_anim(f)  # only ever the light copy (a cover is offered as animated once it exists)
+                if not f:
+                    return self.send_error(404)
             if self.revalidate(f):
                 return
             with open(f, "rb") as fh:
