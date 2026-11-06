@@ -2163,11 +2163,25 @@ function updateRows(u) {
     ready: `Version ${u.latest} is ready. It installs by itself when the frontend is closed or left alone for a few minutes.`, installing: `Installing version ${u.latest}…`,
     installed: `Version ${u.latest} is installed and takes over the next time the frontend opens` }[u.state]
     || (u.latest ? `Version ${u.latest} is available` : u.state === 'current' ? 'This is the newest version' : 'Looks for new versions every few hours');
+  const nightly = u.channel === 'nightly';
   return [{ kind: 'info', label: `Version ${u.version}`, sub: note },
+    // main releases, or the newest code built every night (and the releases too)
+    ...(u.off ? [] : [{ kind: 'row', label: 'Updates', value: nightly ? 'Nightly' : 'Main',
+      sub: nightly ? 'A build of the newest changes every night, before they’re released. Can have bugs. Choose to go back to Main'
+        : 'Tested releases. Choose to get a build of the newest changes every night instead (can have bugs)',
+      act: () => setChannel(nightly ? 'main' : 'nightly') }]),
     // one press: it checks, downloads, and the frontend opens again on the new version (never over a game)
     ...(u.off ? [] : [{ kind: 'row', label: u.latest ? `Update now to version ${u.latest}` : 'Check for updates',
       sub: u.latest ? 'The frontend closes and opens again on the new version' : 'If there’s a new version, it installs and the frontend opens again on it',
       act: () => updateNow('install') }])];
+}
+async function setChannel(channel) {
+  let u;
+  try { u = await api('/api/update', { action: 'channel', channel }); } catch (e) { return toast(e.message); }
+  if (P.data) P.data.update = u;
+  renderPanel();
+  toast(channel === 'nightly' ? 'Nightly builds on: the newest one installs when the frontend is closed or left alone'
+    : 'Back on Main: the main release installs when the frontend is closed or left alone', 6000);
 }
 async function updateNow(action) {
   let u;

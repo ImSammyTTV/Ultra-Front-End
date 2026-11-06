@@ -1,0 +1,81 @@
+# Nightly build: every night, if main has changed since the last one, build the exe, check it starts, and publish it as
+# the "nightly" pre-release (replacing the previous one). Copies set to Settings › About › Updates: Nightly install it;
+# everyone else stays on the main releases (GitHub's "latest release" never points at a pre-release).
+name: Nightly build
+
+on:
+  schedule:
+    - cron: "0 16 * * *"  # 16:00 UTC: 3 am in Sydney (summer time)
+  workflow_dispatch:       # Actions › Nightly build › Run workflow: build now, even with nothing new
+
+permissions:
+  contents: write  # to replace the nightly pre-release
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+jobs:
+  nightly:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Anything new since the last nightly build?
+        id: new
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          last=$(gh release view nightly --json targetCommitish -q .targetCommitish 2>/dev/null || true)
+          echo "last=$last" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ] && [ "$last" = "$(git rev-parse HEAD)" ]; then
+            echo "build=no" >> "$GITHUB_OUTPUT"
+            echo "Nothing new since the last nightly build"
+          else
+            echo "build=yes" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.new.outputs.build == 'yes'
+        with:
+          python-version: "3.12"
+
+      - name: Build
+        if: steps.new.outputs.build == 'yes'
+        id: build
+        shell: bash
+        run: |
+          python -m pip install --disable-pip-version-check -r tools/build-requirements.txt
+          version=$(python tools/nightly.py version)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          python -m PyInstaller --noconfirm --clean "Game Frontend.spec"
+          cp "dist/Game Frontend.exe" dist/UltraFrontEnd.exe
+
+      - name: Check it starts
+        if: steps.new.outputs.build == 'yes'
+        run: python tools/nightly.py smoke "dist/UltraFrontEnd.exe"
+
+      - name: Publish
+        if: steps.new.outputs.build == 'yes'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${{ steps.build.outputs.version }}"
+          last="${{ steps.new.outputs.last }}"
+          {
+            echo "Nightly build $version, made from the newest changes on main. It can have bugs: Settings › About › Updates goes back to Main."
+            echo
+            echo "Changes since the last nightly build:"
+            if [ -n "$last" ] && git cat-file -e "$last" 2>/dev/null; then
+              git log --no-merges --format='- %s' "$last..HEAD"
+            else
+              git log --no-merges --format='- %s' -15
+            fi
+          } > notes.md
+          gh release delete nightly --cleanup-tag --yes 2>/dev/null || true
+          gh release create nightly dist/UltraFrontEnd.exe THIRD_PARTY_NOTICES.md --prerelease --title "$version" \
+            --notes-file notes.md --target "$(git rev-parse HEAD)"
