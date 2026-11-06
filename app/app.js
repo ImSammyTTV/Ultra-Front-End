@@ -11,6 +11,7 @@ const ICONS = {
   exit: '<path d="M14 4h5v16h-5"/><path d="M4 12h10"/><path d="M10 8l4 4-4 4"/>',
   power: '<path d="M12 3v9"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/>',
   download: '<path d="M12 4v11"/><path d="M7 10.5l5 5 5-5"/><path d="M5 20h14"/>',
+  more: '<circle cx="5.5" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="18.5" cy="12" r="1.3" fill="currentColor"/>',
   friends: '<circle cx="9" cy="8.5" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M15.5 5.3a3.5 3.5 0 0 1 0 6.4"/><path d="M18 14.6a6.5 6.5 0 0 1 3.5 5.4"/>',
   volume: '<path d="M4 9.5v5h4l5 4v-13l-5 4z"/><path d="M16.5 9a4 4 0 0 1 0 6"/><path d="M19 6.5a8 8 0 0 1 0 11"/>',
   mute: '<path d="M4 9.5v5h4l5 4v-13l-5 4z"/><path d="M17 9.5l5 5"/><path d="M22 9.5l-5 5"/>',
@@ -1367,7 +1368,7 @@ function showMedia(i) {
     const im = stage.querySelector('img');
     im.onload = () => im.classList.toggle('px', im.naturalWidth < 800);
   }
-  $('#viewer .v-label').innerHTML = `<span class="v-badge${m.kind === 'video' ? ' video' : ''}">${esc(m.badge || (m.kind === 'video' ? 'Trailer' : 'Screenshot'))}</span>${m.label ? `<span class="v-name">${esc(m.label)}</span>` : ''}`;
+  $('#viewer .v-label').innerHTML = `<span class="v-badge${m.kind === 'video' ? ' video' : ''}">${esc(m.badge || (m.kind === 'video' ? 'Trailer' : 'Screenshot'))}</span>${m.label ? `<span class="v-name">${esc(m.label)}</span>` : ''}${m.capture ? `<button class="v-more" aria-label="Delete this">${icon('more')}</button>` : ''}`;
   document.querySelectorAll('#viewer .v-thumb').forEach((e, j) => e.classList.toggle('sel', j === V.i));
   $('#viewer .v-thumb.sel')?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
   tick(660, .05);
@@ -1381,6 +1382,7 @@ function closeViewer() { stopVideo(); $('#viewer .v-stage').innerHTML = ''; V.op
 function viewerToggle() { if (V.youtube?.getPlayerState) { V.youtube.getPlayerState() === 1 ? V.youtube.pauseVideo() : V.youtube.playVideo(); return; } const v = $('#viewer video'); if (v) v.paused ? v.play() : v.pause(); }
 $('#viewer').addEventListener('click', e => {
   const th = e.target.closest('.v-thumb');
+  if (e.target.closest('.v-more')) return viewerMore();
   if (th) showMedia(+th.dataset.i);
   else if (e.target.closest('.v-arrow.l')) showMedia(V.i - 1);
   else if (e.target.closest('.v-arrow.r')) showMedia(V.i + 1);
@@ -1786,11 +1788,12 @@ function renderAlbum() {
     if (c.game !== game) { game = c.game; html += `<div class="al-game">${esc(c.title)}<span>${items.filter(x => x.game === game).length}</span></div>`; }
     html += `<div class="al-card${c.kind === 'video' ? ' video' : ''}" data-i="${i}" style="animation-delay:${Math.min(i, 16) * 30}ms">
       <div class="al-img" style="background-image:url(&quot;/api/album/thumb?id=${encodeURIComponent(c.id)}&quot;)"></div>
-      <div class="al-meta">${esc(fmtWhen(c.created))}${c.kind === 'video' && c.duration ? ` · ${fmtClock(c.duration)}` : ''}</div></div>`;
+      <div class="al-meta">${esc(fmtWhen(c.created))}${c.kind === 'video' && c.duration ? ` · ${fmtClock(c.duration)}` : ''}</div>
+      <button class="al-more" aria-label="More: open or delete">${icon('more')}</button></div>`;
   });
   const how = 'In a game, use the overlay, or hold View and press RB for a screenshot and View + LB to start or stop recording.';
   $('#albumpage .al-grid').innerHTML = html || `<div class="d-empty">${AL.still ? (AL.view === 'video' ? 'No gameplay recordings yet.' : 'No screenshots yet.') : 'Take a screenshot or record a video from the in-game menu while you play, and it shows up here.'}</div>`;
-  $('#albumpage .np-sub').textContent = how + (items.length ? ' Y deletes.' : '');
+  $('#albumpage .np-sub').textContent = how + (items.length ? ' To delete one, press Y or its ⋯ button.' : '');
   albumFocus();
 }
 function albumFocus() {
@@ -1799,16 +1802,40 @@ function albumFocus() {
   if (card && card.offsetTop < grid.offsetTop + grid.clientHeight / 2 && card === grid.querySelector('.al-card')) grid.scrollTop = 0;  // keep the first heading
   else card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
-function albumDelete() {
-  const c = albumItems()[AL.i];
+// ⋯ on a card (or Y): open it or delete it. Deleting asks once more, and moves the file to the Recycle Bin.
+function albumMore(i = AL.i) {
+  const c = albumItems()[i];
+  if (!c) return;
+  AL.i = i; albumFocus();
+  const what = c.kind === 'video' ? 'video' : 'screenshot';
+  sysMenu(c.kind === 'video' ? 'Gameplay video' : 'Screenshot', [
+    { label: c.kind === 'video' ? 'Play' : 'View', ic: c.kind === 'video' ? ICON_PLAY : icon('image'), run: albumOpen },
+    { label: `Delete this ${what}`, ic: icon('close'), warn: true, run: () => setTimeout(() => albumDelete(c), 0) },
+  ]);
+}
+function albumDelete(c = albumItems()[AL.i], after) {
   if (!c) return;
   const what = c.kind === 'video' ? 'video' : 'screenshot';
   sysMenu(`Delete this ${what}?`, [{ label: 'Cancel', ic: icon('back'), run: () => {} }, { label: 'Move to Recycle Bin', ic: icon('close'), warn: true, run: async () => {
     try { await api('/api/album/delete', { id: c.id }); } catch (e) { return toast(/404/.test(e.message) ? 'This needs the latest frontend update.' : e.message); }
     AL.all = AL.all.filter(x => x.id !== c.id);
     AL.i = clamp(AL.i, 0, Math.max(0, albumItems().length - 1));
-    renderAlbum(); toast(`Moved to the Recycle Bin`);
+    if (AL.open) renderAlbum();
+    after?.();
+    toast(`Moved to the Recycle Bin`);
   } }]);
+}
+// The viewer showing your own captures: ⋯ (or Y) deletes the one on screen, and moves on to the next
+function viewerMore() {
+  const m = V.items[V.i];
+  if (!m?.capture) return;
+  const c = AL.all.find(x => x.id === m.capture);
+  if (!c) return;
+  albumDelete(c, () => {
+    V.items = V.items.filter(x => x.capture !== c.id);
+    if (!V.items.length) return closeViewer();
+    openViewer(Math.min(V.i, V.items.length - 1), V.items);
+  });
 }
 // Cards sit in sections (one per game), so up/down goes to the nearest card above or below by position. Rows are told
 // apart by half a card's height: the selected card is lifted a little, which isn't a row of its own.
@@ -1834,10 +1861,11 @@ function albumOpen() {
   if (!items[AL.i]) return;
   openViewer(AL.i, items.map(c => ({ kind: c.kind === 'video' ? 'video' : 'image', badge: c.kind === 'video' ? 'Gameplay' : 'Screenshot',
     thumb: `/api/album/thumb?id=${encodeURIComponent(c.id)}`, src: `/api/album/file?id=${encodeURIComponent(c.id)}`,
-    label: `${c.title} · ${fmtWhen(c.created)}` })));
+    label: `${c.title} · ${fmtWhen(c.created)}`, capture: c.id })));
 }
 $('#albumpage').addEventListener('click', e => {
   const t = e.target.closest('.al-tab'), c = e.target.closest('.al-card');
+  if (c && e.target.closest('.al-more')) return albumMore(+c.dataset.i);
   if (t) { AL.view = t.dataset.k; AL.i = 0; renderAlbum(); }
   else if (c) { AL.i = +c.dataset.i; albumFocus(); albumOpen(); }
 });
@@ -3215,7 +3243,7 @@ function input(action) {
     : Q.open
       ? { up: () => quickMove(-1), down: () => quickMove(1), ok: quickActivate, back: closeQuick, options: closeQuick }
     : V.open
-      ? { left: () => showMedia(V.i - 1), right: () => showMedia(V.i + 1), ok: viewerToggle, back: closeViewer, prevTab: () => showMedia(V.i - 1), nextTab: () => showMedia(V.i + 1) }
+      ? { left: () => showMedia(V.i - 1), right: () => showMedia(V.i + 1), ok: viewerToggle, back: closeViewer, prevTab: () => showMedia(V.i - 1), nextTab: () => showMedia(V.i + 1), options: viewerMore }
     : R.open
       ? { up: () => readerScroll(-1), down: () => readerScroll(1), ok: () => readerScroll(3), back: closeReader, prevTab: () => readerScroll(-4), nextTab: () => readerScroll(4) }
     : AP.open
@@ -3233,7 +3261,7 @@ function input(action) {
           prevTab: () => lpCat(-1), nextTab: () => lpCat(1), options: lpSort }
     : AL.open
       ? { up: () => albumMove(0, -1), down: () => albumMove(0, 1), left: () => albumMove(-1, 0), right: () => albumMove(1, 0), ok: albumOpen, back: closeAlbum,
-          prevTab: () => albumTab(-1), nextTab: () => albumTab(1), options: albumDelete }
+          prevTab: () => albumTab(-1), nextTab: () => albumTab(1), options: () => albumMore() }
     : D.open
       ? { up: () => detailsMove(0, -1), down: () => detailsMove(0, 1), left: () => detailsMove(-1, 0), right: () => detailsMove(1, 0), ok: detailsActivate, back: detailsBack, options: () => openQuick(D.game) }
       : { up: () => move(0, -1), down: () => move(0, 1), left: () => move(-1, 0), right: () => move(1, 0), ok: activate, back,
@@ -3369,7 +3397,10 @@ async function helperPad() {
     try {
       const r = await (await fetch(`/api/pad?after=${HP.seq}`, { cache: 'no-store' })).json();
       HP.live = true; HP.pads = r.pads;
-      r.actions.forEach(a => { S.pad = true; inputFrom('xinput', a); });
+      // Every page open on the helper hears the controller: only Ultra Front End's own window acts on it, or a browser tab
+      // you're looking at. A tab in the background (or a test page) pressing along opened program pickers by itself.
+      const mine = window.pywebview || window.AndroidApp || (document.visibilityState === 'visible' && document.hasFocus());
+      if (mine) r.actions.forEach(a => { S.pad = true; inputFrom('xinput', a); });
       HP.seq = r.seq;
     } catch {
       HP.live = false;
