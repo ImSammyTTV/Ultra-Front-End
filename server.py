@@ -3440,6 +3440,8 @@ def whats_new_unseen():
     if not saved.get("seen"):
         store("whatsnew.json", {**saved, "seen": VERSION})
         return False
+    if is_nightly(VERSION):
+        return False  # nightly builds have no notes of their own in News: only the releases do
     return version_key(saved["seen"]) < version_key(VERSION)
 
 
@@ -9012,6 +9014,14 @@ class Handler(SimpleHTTPRequestHandler):
             if path == "/api/update":  # Settings > About: check now, install now, or the page has shown "Updated"
                 if body.get("action") == "seen":
                     store("update.json", {**load("update.json", {}), "updated": None})
+                elif body.get("action") == "channel":  # Settings › About: main releases or nightly builds, then a check on that channel
+                    cfg = config()
+                    cfg["updateChannel"] = "nightly" if body.get("channel") == "nightly" else "main"
+                    store("config.json", cfg)
+                    UPDATE.update(latest=None, state="", error="", retry=0.0)
+                    if not updates_off():
+                        threading.Thread(target=update_step, args=["check"], daemon=True).start()
+                        time.sleep(0.3)
                 elif body.get("action") in ("check", "install"):
                     threading.Thread(target=update_step, args=[body["action"]], daemon=True).start()
                     time.sleep(0.3)
@@ -9465,8 +9475,34 @@ UPDATE_EVERY = 3600  # GitHub is asked this often (fixes reach everyone within t
 UPDATE_ASSET = "UltraFrontEnd-mac.zip" if MAC else "UltraFrontEnd.exe"  # the release file tools/release.py uploads (the Mac app zipped)
 
 
+NIGHTLY_TAG = "nightly"  # the pre-release the nightly build job (.github/workflows/nightly.yml) replaces each night
+
+
 def version_key(v):
-    return tuple(int(x) for x in re.findall(r"\d+", v or "")[:3]) or (0,)
+    """Comparable versions: 1.2.7-nightly.202611080300 comes after 1.2.6 and before 1.2.7 (the release it leads up to)."""
+    v = v or ""
+    m = re.search(r"-nightly\.(\d+)", v)
+    nums = tuple(int(x) for x in re.findall(r"\d+", v[:m.start()] if m else v)[:3]) or (0,)
+    return nums + (0,) * (3 - len(nums)) + ((0, int(m.group(1))) if m else (1, 0))
+
+
+def is_nightly(v):
+    return "-nightly." in (v or "")
+
+
+def update_channel():
+    """Settings › About: "main" (the releases) or "nightly" (a build of the newest code every night, and the releases too)."""
+    return "nightly" if config().get("updateChannel") == "nightly" else "main"
+
+
+def wanted_release(rel):
+    """Whether this copy should move to that release: a newer one, or the main release when someone on a nightly build
+    has gone back to the main channel (that one is older, by number)."""
+    if not rel or not rel.get("version") or rel["version"] == VERSION:
+        return False
+    if version_key(rel["version"]) > version_key(VERSION):
+        return True
+    return update_channel() == "main" and is_nightly(VERSION) and not is_nightly(rel["version"])
 
 
 def exe_build(path):
@@ -9510,21 +9546,35 @@ def updates_off():
 
 
 def latest_release():
-    """The newest release on GitHub (version, notes, and its exe with GitHub's SHA-256), or None while there's none."""
+    """The release this copy's channel offers (version, notes, and its exe with GitHub's SHA-256), or None while there's
+    none: the newest main release, or on the nightly channel whichever is newer of that and the latest nightly build."""
+    main = fetch_release(f"https://api.github.com/repos/{UPDATE_REPO}/releases/latest", "release")
+    if update_channel() != "nightly":
+        return main
+    try:
+        night = fetch_release(f"https://api.github.com/repos/{UPDATE_REPO}/releases/tags/{NIGHTLY_TAG}", "nightlyRelease")
+    except (urllib.error.URLError, OSError, ValueError):
+        night = None  # no nightly build yet, or GitHub didn't answer: the main release still counts
+    found = [r for r in (main, night) if r and r.get("version")]
+    return max(found, key=lambda r: version_key(r["version"])) if found else None
+
+
+def fetch_release(api_url, key):
+    """One release from GitHub's API, remembered in update.json under key (with its ETag, so an unchanged answer is free)."""
     saved = load("update.json", {})
-    # a stand-in for GitHub's answer on this PC, to try an update end to end without publishing one
-    test = os.environ.get("UFE_UPDATE_API", "")
+    etag_key = "etag" if key == "release" else key + "Etag"
+    # a stand-in for GitHub's answer on this PC, to try an update end to end without publishing one (main channel only)
+    test = os.environ.get("UFE_UPDATE_API", "") if key == "release" else ""
     test = test if test.startswith(("http://127.0.0.1:", "http://localhost:")) else ""
     headers = {"Accept": "application/vnd.github+json", "User-Agent": UA}
-    if saved.get("etag") and saved.get("release") and not test:
-        headers["If-None-Match"] = saved["etag"]
+    if saved.get(etag_key) and saved.get(key) and not test:
+        headers["If-None-Match"] = saved[etag_key]
     try:
-        url = test or f"https://api.github.com/repos/{UPDATE_REPO}/releases/latest"
-        with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=15) as r:
+        with urllib.request.urlopen(urllib.request.Request(test or api_url, headers=headers), timeout=15) as r:
             rel, etag = json.loads(r.read().decode("utf-8")), r.headers.get("ETag", "")
     except urllib.error.HTTPError as e:
         if e.code == 304:
-            return saved["release"]
+            return saved[key]
         if e.code == 404:  # nothing published yet
             return None
         raise
@@ -9532,10 +9582,14 @@ def latest_release():
     url, digest = asset.get("browser_download_url", ""), str(asset.get("digest") or "").lower()
     # only this project's own download, and only with a SHA-256 to check it against
     ok = digest.startswith("sha256:") and asset.get("size") and (test or url.startswith(f"https://github.com/{UPDATE_REPO}/releases/download/"))
-    release = {"version": str(rel.get("tag_name") or "").lstrip("vV"), "notes": str(rel.get("body") or ""), "page": str(rel.get("html_url") or ""),
+    # a nightly build's version is its release title (its tag, "nightly", stays the same every night)
+    version = str(rel.get("name") if key != "release" else rel.get("tag_name") or "").strip().lstrip("vV")
+    release = {"version": version, "notes": str(rel.get("body") or ""), "page": str(rel.get("html_url") or ""),
                "exe": {"url": url, "size": asset["size"], "sha256": digest[7:]} if ok else None}
+    if key != "release" and not is_nightly(version):
+        release["exe"] = None  # not a nightly build's title: never installed from here
     if not test:
-        store("update.json", {**load("update.json", {}), "etag": etag, "release": release})
+        store("update.json", {**load("update.json", {}), etag_key: etag, key: release})
     return release
 
 
@@ -9671,7 +9725,7 @@ def update_step(action=None):
         if rel and action and rel["version"] in failed:
             failed.pop(rel["version"])
             store("update.json", {**saved, "failed": failed})
-        if not rel or not rel.get("exe") or version_key(rel["version"]) <= version_key(VERSION) or failed.get(rel["version"], 0) > now:
+        if not rel or not rel.get("exe") or not wanted_release(rel) or failed.get(rel["version"], 0) > now:
             UPDATE["state"], UPDATE["error"] = "current", ""
             return
         exe, digest = frontend_exe(), rel["exe"]["sha256"]
@@ -9728,7 +9782,8 @@ def watch_updates():
     saved = load("update.json", {})
     if saved.get("installing") == VERSION:  # this copy is the update: the page says so once, and reopens if it was open
         store("update.json", {**saved, "installing": None, "reopen": False,
-                              "updated": {"version": VERSION, "from": saved.get("from"), "notes": (saved.get("release") or {}).get("notes", "")}})
+                              "updated": {"version": VERSION, "from": saved.get("from"),
+                                          "notes": (saved.get("nightlyRelease" if is_nightly(VERSION) else "release") or {}).get("notes", "")}})
         if saved.get("reopen"):
             threading.Thread(target=open_frontend, daemon=True).start()
     elif saved.get("installing"):  # the release said one version but its exe is another: don't install it over and over
@@ -9744,9 +9799,9 @@ def watch_updates():
 
 def update_view():
     saved = load("update.json", {})
-    rel = UPDATE["latest"] or saved.get("release") or {}
-    newer = bool(rel.get("version")) and version_key(rel["version"]) > version_key(VERSION)
-    return {"version": VERSION, "off": updates_off(), "state": UPDATE["state"], "error": UPDATE["error"],
+    rel = UPDATE["latest"] or (saved.get("release") if update_channel() == "main" else None) or {}
+    newer = wanted_release(rel)
+    return {"version": VERSION, "channel": update_channel(), "off": updates_off(), "state": UPDATE["state"], "error": UPDATE["error"],
             "latest": rel.get("version") if newer else None, "notes": rel.get("notes", "") if newer else "", "updated": saved.get("updated")}
 
 
