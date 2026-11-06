@@ -254,7 +254,76 @@ ART = {}
 
 def local_art(game_id, path):
     ART[game_id] = path
+    if game_id.endswith("--anim"):
+        light_anim(path)  # its light copy, made in the background if it isn't there yet
     return f"/api/art/{game_id}?v={int(os.path.getmtime(path))}"
+
+
+# Animated covers from SteamGridDB can be huge (animated PNG or WebP of 15-50 MB, up to 170 full-size frames): one takes
+# seconds to load and decode, so a cover that only animates while it's selected never got going. Each gets a light copy
+# made once, sized for the tiles: animated WebP, 400 px wide, at most 90 frames. The original file is kept as it is.
+LIGHT_W, LIGHT_FRAMES = 400, 90
+LIGHT_LOCK = threading.Lock()
+LIGHT_TODO = []
+LIGHT_FAILED = set()
+
+
+def light_anim_path(src):
+    st = os.stat(src)
+    tag = hashlib.sha1(f"{os.path.abspath(src)}|{st.st_size}|{int(st.st_mtime)}".encode()).hexdigest()[:16]
+    return os.path.join(DATA, "art", "playing", f"{tag}.webp")
+
+
+def light_anim(src):
+    """The light copy of an animated cover if it's ready, else None, after asking for it to be made."""
+    try:
+        out = light_anim_path(src)
+    except OSError:
+        return None
+    if os.path.isfile(out):
+        return out
+    with LIGHT_LOCK:
+        if src not in LIGHT_TODO and src not in LIGHT_FAILED:
+            LIGHT_TODO.append(src)
+            if len(LIGHT_TODO) == 1:
+                threading.Thread(target=light_anim_worker, daemon=True).start()
+    return None
+
+
+def light_anim_worker():
+    while True:
+        with LIGHT_LOCK:
+            if not LIGHT_TODO:
+                return
+            src = LIGHT_TODO[0]
+        try:
+            make_light_anim(src, light_anim_path(src))
+        except Exception:
+            LIGHT_FAILED.add(src)  # (the original is served instead)
+            log_error()
+        with LIGHT_LOCK:
+            LIGHT_TODO.remove(src)
+
+
+def make_light_anim(src, out):
+    from PIL import Image, ImageSequence
+    with Image.open(src) as im:
+        n = getattr(im, "n_frames", 1)
+        step = max(1, -(-n // LIGHT_FRAMES))  # every frame, or every 2nd, 3rd...: the timing is kept
+        scale = LIGHT_W / im.width
+        size = (LIGHT_W, max(1, round(im.height * scale)))
+        frames, times = [], []
+        for i, frame in enumerate(ImageSequence.Iterator(im)):
+            ms = int(frame.info.get("duration") or 40)
+            if i % step:
+                times[-1] += ms
+                continue
+            frames.append(frame.convert("RGBA").resize(size, Image.LANCZOS))
+            times.append(ms)
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    part = out + ".part"
+    frames[0].save(part, "WEBP", save_all=True, append_images=frames[1:], duration=times, loop=0, quality=75, method=4)
+    os.replace(part, out)
 
 
 # ---------------------------------------------------------------- Steam
@@ -7885,6 +7954,8 @@ class Handler(SimpleHTTPRequestHandler):
             f = ART.get(key) or DETAIL_ART.get(key)
             if not f or not os.path.isfile(f):
                 return self.send_error(404)
+            if key.endswith("--anim"):
+                f = light_anim(f) or f  # the light copy once it's made
             if self.revalidate(f):
                 return
             with open(f, "rb") as fh:
