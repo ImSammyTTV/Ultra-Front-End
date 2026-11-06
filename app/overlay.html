@@ -149,8 +149,9 @@ async function go(it) {
   busy = true;
   await slide(false);  // out of the way first, so it doesn't vanish all at once (or show up in a screenshot)
   // the helper closes this window; if it can't, come back rather than stay an invisible window on top, or close it here
-  const away = setTimeout(() => window.pywebview?.api?.quit(), 5000);
-  post(it.action).then(r => { if (!r.ok) throw r; }).catch(() => { clearTimeout(away); busy = false; slide(true); });
+  clearTimeout(awayTimer);
+  awayTimer = setTimeout(() => window.pywebview?.api?.quit(), 5000);
+  post(it.action).then(r => { if (!r.ok) throw r; }).catch(() => { clearTimeout(awayTimer); busy = false; slide(true); });
 }
 async function padLoop() {
   let seq = 1e12;
@@ -175,6 +176,7 @@ addEventListener('keydown', e => {
 });
 async function song() {  // one at a time: each asks Windows through a PowerShell that can be slow
   clearTimeout(song.t);
+  if (!document.body.classList.contains('on')) return song.t = setTimeout(song, 1000);  // hidden, waiting: nothing to ask
   try {
     const n = await (await fetch('/api/nowplaying', { cache: 'no-store' })).json();
     music = n.title ? { title: n.title, artist: n.artist || '', playing: !!n.playing, art: n.art || '' } : null;  // a paused song stays, so it can be played again
@@ -193,7 +195,13 @@ fetch('/api/profile', { cache: 'no-store' }).then(r => r.json()).then(p => {
   const z = p.timezone;
   if (z && z !== 'auto') { try { Intl.DateTimeFormat('en-US', { timeZone: z }); zone = { timeZone: z }; clock(); } catch {} }
 }).catch(() => {});
-(async () => {
+// Opened straight away, or (?warm) loaded ahead and kept hidden while the game runs, then woken when the menu is asked
+// for: the game's details are read then, and the controller is only listened to from then on.
+let started = false, awayTimer = 0;
+// Put away by the helper (it waits, hidden, for the next time): nothing left to time out, and drawn afresh on wake
+window.hidden = () => { clearTimeout(awayTimer); busy = false; document.body.classList.remove('on'); };
+async function wake() {
+  sel = 0; busy = false;
   const s = await fetch('/api/overlay', { cache: 'no-store' }).then(r => r.ok ? r.json() : {}).catch(() => ({}));  // the menu still works without the game's details
   $('#title').textContent = s.title || '';
   $('#stats').textContent = s.session >= 0 ? `This session ${hm(s.session)}` + (s.minutes ? ` · Total ${hm(s.minutes)}` : '') : '';
@@ -205,11 +213,12 @@ fetch('/api/profile', { cache: 'no-store' }).then(r => r.json()).then(p => {
     { label: 'Take screenshot', action: 'screenshot', icon: 'shot' },
     { label: s.recording ? 'Stop recording' : 'Record video', action: 'record', icon: 'record' },
     { label: 'Close game', action: 'close', warn: true, icon: 'close' }];
-  draw(); clock(); setInterval(clock, 5000); setVolume();
+  draw(); clock(); setVolume();
   document.body.classList.add('on');
-  padLoop();
-  song();
-})();
+  if (!started) { started = true; setInterval(clock, 5000); padLoop(); song(); }
+}
+window.wake = wake;
+if (!new URLSearchParams(location.search).has('warm')) wake();
 </script>
 </body>
 </html>
