@@ -403,16 +403,24 @@ async function closeRunning(g) {
   try { await api('/api/running/close', { id: g.id }); RUN.delete(g.id); showRunning(); toast(`${g.title} closed`); watchRunning(); if (LIB.length) buildRow(false); if (D.open) renderActions(); }
   catch (e) { toast(e.message); }
 }
-// Animated covers (SteamGridDB) play on the selected game only (playSelectedAnim): every cover animating at once made the
-// row and the library lag. g.cover stays the still first frame, shown on the others and where only a still will do. On the home row the animation is a layer above the cover, outside .art, so the
-// reflection mirrors the still: a mirrored animation had to be redrawn every frame, lagged behind and glitched.
-// Animated covers in root: the one inside the selected item (sel, a selector) plays, the others show their still frame
-// (data-still) or nothing (the still cover underneath shows). Only changed when it needs to, so a playing one isn't restarted.
-function playSelectedAnim(root, sel) {
+// Animated covers (SteamGridDB) play while they're on screen, on the home row and on an open Library or search page
+// (watchAnims). Covers scrolled out of view, and those on a page that's closed (hidden, not gone), show their still: with
+// every cover animating at once the Library and search lagged, and kept lagging behind the home row once closed. The
+// helper serves light copies of the animations (server.light_anim): the originals can be 50 MB each. g.cover stays the
+// still first frame, shown where only a still will do. On the home row the animation is a layer above the cover, outside
+// .art, so the reflection mirrors the still: a mirrored animation had to be redrawn every frame, lagged behind and glitched.
+const ANIM_VIEW = new IntersectionObserver(seen => seen.forEach(e => { e.target.animSeen = e.isIntersecting; animShow(e.target); }), { rootMargin: '25%' });
+function animShow(im) {
+  const want = im.animSeen && im.animLive ? im.dataset.anim : im.dataset.still || '';
+  if (!im.dataset.anim || (im.getAttribute('src') || '') === want) return;  // (unchanged: a playing one isn't restarted)
+  if (want) im.src = want; else im.removeAttribute('src');
+}
+// The animated covers in root play while on screen if live (their page is open), else show their still frame (data-still)
+// or nothing (the still cover underneath shows)
+function watchAnims(root, live) {
   root?.querySelectorAll('img[data-anim]').forEach(im => {
-    const want = im.closest(sel) ? im.dataset.anim : im.dataset.still || '';
-    if ((im.getAttribute('src') || '') === want) return;
-    if (want) im.src = want; else im.removeAttribute('src');
+    if (!im.animWatched) { im.animWatched = true; ANIM_VIEW.observe(im); }
+    im.animLive = live; animShow(im);
   });
 }
 function tileHTML(g, i, animate) {
@@ -476,7 +484,7 @@ function update() {
     if (image && image.fetchPriority !== pri) image.fetchPriority = pri;
   });
   placeStrip();
-  playSelectedAnim(strip, '.tile.sel');
+  watchAnims(strip, true);
   [...$('#buttons').children].forEach((e, i) => e.classList.toggle('sel', S.zone === 1 && i === S.btn));
   [...$('#tabs').children].forEach((e, i) => e.classList.toggle('sel', i === S.tab));
   const g = game();
@@ -1551,7 +1559,7 @@ function kbDraw() {
 function closeSearch() {
   const entry = SR.entry;
   SR.open = false; SR.prompt = null; SR.entry = null; document.body.classList.remove('search-open'); tick(420, .06);
-  playSelectedAnim($('#search .sr-results'), ':not(*)');  // hidden, not gone: its animated cover would keep playing
+  watchAnims($('#search .sr-results'), false);  // hidden, not gone: its animated covers would keep playing
   if (entry) renderPanel();  // back on the field's row
 }
 // A text field in Settings or the setup guide, chosen with a controller or the mouse: Done writes the text into it, B leaves it as it was
@@ -1605,7 +1613,7 @@ function searchFocus() {
   document.querySelectorAll('#search .sr-key').forEach(e => e.classList.toggle('sel', SR.zone === 'kb' && +e.dataset.r === SR.row && +e.dataset.c === SR.col));
   document.querySelectorAll('#search .sr-hit').forEach(e => e.classList.toggle('sel', SR.zone === 'res' && +e.dataset.i === SR.r));
   $('#search .sr-hit.sel')?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
-  playSelectedAnim($('#search .sr-results'), '.sr-hit.sel');
+  watchAnims($('#search .sr-results'), SR.open);
 }
 function searchType(k) {
   const q = $('#srq');
@@ -1690,7 +1698,7 @@ function openLibraryPage(mode) {
 }
 function closeLibraryPage() {
   LP.open = false; document.body.classList.remove('lib-open'); tick(420, .06);
-  playSelectedAnim($('#libpage .lp-grid'), ':not(*)');  // hidden, not gone: its animated cover would keep playing
+  watchAnims($('#libpage .lp-grid'), false);  // hidden, not gone: its animated covers would keep playing
 }
 function lpCat(dir) {
   const n = clamp(LP.cat + dir, 0, LP.cats.length - 1);
@@ -1722,7 +1730,7 @@ function lpFocus() {
   $('#libpage .lp-cats').classList.toggle('focus', LP.zone === 'cats');
   document.querySelectorAll('#libpage .lp-hit').forEach(e => e.classList.toggle('sel', LP.zone === 'grid' && +e.dataset.i === LP.i));
   $('#libpage .lp-hit.sel')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  playSelectedAnim($('#libpage .lp-grid'), '.lp-hit.sel');
+  watchAnims($('#libpage .lp-grid'), LP.open);
 }
 function lpMove(dx, dy) {
   const hits = [...document.querySelectorAll('#libpage .lp-hit')];
