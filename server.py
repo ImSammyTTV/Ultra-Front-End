@@ -333,14 +333,18 @@ def make_light_anim(src, out):
     with Image.open(src) as im:
         size = (LIGHT_W, max(1, round(im.height * LIGHT_W / im.width)))
         frames, times = [], []
-        for frame in ImageSequence.Iterator(im):
-            frame.load()  # (a WebP frame's duration is only known once it's loaded)
-            ms = float(frame.info.get("duration") or im.info.get("duration") or 40)
-            if frames and times[-1] < LIGHT_MS:  # too soon after the last one kept: this frame's time joins it
-                times[-1] += ms
-                continue
-            frames.append(frame.convert("RGBA").resize(size, Image.LANCZOS))
-            times.append(ms)
+        try:
+            for frame in ImageSequence.Iterator(im):
+                frame.load()  # (a WebP frame's duration is only known once it's loaded)
+                ms = float(frame.info.get("duration") or im.info.get("duration") or 40)
+                if frames and times[-1] < LIGHT_MS:  # too soon after the last one kept: this frame's time joins it
+                    times[-1] += ms
+                    continue
+                frames.append(frame.convert("RGBA").resize(size, Image.LANCZOS))
+                times.append(ms)
+        except (OSError, EOFError):  # a file cut short (a download that didn't finish): the frames it has
+            if len(frames) < 2:
+                raise
         if len(frames) > LIGHT_FRAMES:  # a long loop: frames spread evenly over it, the timing kept
             target, kept, kept_ms = sum(times) / LIGHT_FRAMES, [], []
             for frame, ms in zip(frames, times):
