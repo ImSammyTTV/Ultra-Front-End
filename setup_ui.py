@@ -1,8 +1,9 @@
 """Setup and Uninstall, in a window of Ultra Front End's own (app/setup.html).
 
 UltraFrontEnd-Setup.exe is the app itself under another name: started under that name (or with --setup) it installs a
-copy of itself into %LOCALAPPDATA%\\Programs\\Ultra Front End for this Windows account (so Windows never asks for
-administrator permission and the copy keeps updating itself), adds Start menu and desktop shortcuts and an entry in
+copy of itself into C:\\Ultra-Front-End\\App, beside the ROMs and Emulators folders (a folder users may make without an
+administrator prompt, so the copy keeps updating itself; %LOCALAPPDATA%\\Programs\\Ultra Front End on a PC that won't allow
+it, which is also where Setup installed before 1.2.5: an install there is moved over, settings and all), adds Start menu and desktop shortcuts and an entry in
 Settings > Apps, then offers to open it. That entry runs the installed copy with --uninstall, which shows the same window.
 
 Runs before the helper (server.py) is imported, so Setup never makes a data folder beside the download. Settings aren't
@@ -22,7 +23,27 @@ NAME = "Ultra Front End"
 KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\UltraFrontEnd"
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 LOCAL = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Local")
-TARGET = os.environ.get("UFE_SETUP_TARGET") or os.path.join(LOCAL, "Programs", NAME)  # (a test can install elsewhere)
+OLD_TARGET = os.path.join(LOCAL, "Programs", NAME)  # where Setup installed before 1.2.5
+HOME = os.path.join((os.environ.get("SystemDrive") or "C:") + os.sep, "Ultra-Front-End")  # App, ROMs and Emulators, side by side
+
+
+def target():
+    """C:\\Ultra-Front-End\\App, beside the ROMs and Emulators folders. A PC that doesn't let its users make folders on C:
+    (some school or work PCs) gets the old place in the user's own app data instead. A test can install elsewhere."""
+    if os.environ.get("UFE_SETUP_TARGET"):
+        return os.environ["UFE_SETUP_TARGET"]
+    app = os.path.join(HOME, "App")
+    try:
+        os.makedirs(app, exist_ok=True)
+        probe = os.path.join(app, f".setup-{os.getpid()}")
+        open(probe, "w").close()
+        os.remove(probe)
+        return app
+    except OSError:
+        return OLD_TARGET
+
+
+TARGET = OLD_TARGET  # set by main(): worked out only when Setup runs (this module is loaded at every start, to check for that)
 NOTE = os.path.join(LOCAL, NAME, "settings-folder.txt")  # where the last copy's settings live (server.note_data_folder)
 BUNDLE = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
 APP = os.path.join(BUNDLE, "app")
@@ -57,9 +78,15 @@ def installed_version():
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, KEY) as k:
             v = str(winreg.QueryValueEx(k, "DisplayVersion")[0])
-        return v if os.path.isfile(os.path.join(TARGET, "UltraFrontEnd.exe")) else ""
+        return v if any(os.path.isfile(os.path.join(t, "UltraFrontEnd.exe")) for t in (TARGET, OLD_TARGET)) else ""
     except OSError:
         return ""
+
+
+def old_install():
+    """An install in the old place (AppData\\Local\\Programs), when Setup now installs somewhere else: moved over, settings and all."""
+    same = os.path.normcase(os.path.abspath(OLD_TARGET)) == os.path.normcase(os.path.abspath(TARGET))
+    return "" if same or not os.path.isfile(os.path.join(OLD_TARGET, "UltraFrontEnd.exe")) else OLD_TARGET
 
 
 def stop_copies(folder):
@@ -135,6 +162,11 @@ class Api:
         self._say("Closing Ultra Front End if it's open…", 0.04)
         stop_copies(TARGET)
         os.makedirs(TARGET, exist_ok=True)
+        old = old_install()
+        if old:  # installed in the old place before: its settings come too, and the old copy goes
+            self._say("Moving your settings to the new folder…", 0.06)
+            stop_copies(old)
+            self._move_settings(os.path.join(old, "data"), os.path.join(TARGET, "data"))
         if os.path.isfile(exe):  # a copy that's still closing can be renamed, not overwritten: the app removes the old one later
             try:
                 os.remove(exe)
@@ -171,7 +203,35 @@ class Api:
                 winreg.SetValueEx(k, name, 0, winreg.REG_SZ, value)
             for name, value in (("NoModify", 1), ("NoRepair", 1), ("EstimatedSize", size)):
                 winreg.SetValueEx(k, name, 0, winreg.REG_DWORD, value)
+        if old:
+            self._say("Removing the old copy…", 0.97)
+            shutil.rmtree(old, ignore_errors=True)  # its settings are in the new folder now
         self._say("Done", 1.0)
+
+    def _move_settings(self, src, dst):
+        """The old install's data folder into the new one: a rename on the same drive. One that's already set up there is
+        kept, and the note of where the settings are points at the new place."""
+        def set_up(folder):
+            try:
+                import json
+                with open(os.path.join(folder, "config.json"), encoding="utf-8") as f:
+                    return bool((json.load(f).get("profile") or {}).get("setupDone"))
+            except (OSError, ValueError, AttributeError):
+                return False
+        if not os.path.isdir(src) or set_up(dst):
+            return
+        if os.path.isdir(dst):  # an empty start made there earlier: set aside, not deleted
+            os.replace(dst, f"{dst}.before-{int(time.time())}")
+        shutil.move(src, dst)
+        try:
+            with open(NOTE, encoding="utf-8") as f:
+                noted = f.read().strip()
+        except OSError:
+            noted = ""
+        if not noted or os.path.normcase(os.path.abspath(noted)) == os.path.normcase(os.path.abspath(src)):
+            os.makedirs(os.path.dirname(NOTE), exist_ok=True)
+            with open(NOTE, "w", encoding="utf-8") as f:
+                f.write(dst)
 
     def _uninstall(self, wipe):
         folder = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else TARGET
@@ -222,7 +282,10 @@ class Api:
             script = (f"Start-Sleep -Seconds 2; $f = [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('{enc(folder)}')); "
                       + ("Remove-Item -LiteralPath $f -Recurse -Force -ErrorAction SilentlyContinue" if wipe
                          else "Get-ChildItem -LiteralPath $f | Where-Object { $_.Name -ne 'data' } | "
-                              "ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }"))
+                              "ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }")
+                      # C:\Ultra-Front-End itself goes only if nothing is left in it (ROMs and emulators stay where they are)
+                      + "; $p = Split-Path -LiteralPath $f; if ((Split-Path -Leaf $p) -eq 'Ultra-Front-End' -and "
+                        "-not (Get-ChildItem -LiteralPath $p -Force -ErrorAction SilentlyContinue)) { Remove-Item -LiteralPath $p -ErrorAction SilentlyContinue }")
             subprocess.Popen(["powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", enc(script)],
                              creationflags=0x00000200 | NO_WINDOW, close_fds=True)
         if self.window:
@@ -240,7 +303,12 @@ def round_corners(window):
 
 
 def main(mode="install"):
+    global TARGET
     import webview
+    if mode == "install":
+        TARGET = target()
+    elif getattr(sys, "frozen", False):
+        TARGET = os.path.dirname(sys.executable)  # Uninstall removes the copy it was started from
     api = Api(mode)
     with open(os.path.join(APP, "setup.html"), encoding="utf-8") as f:
         page = f.read().replace('src="icon.png"', 'src="data:image/png;base64,'
