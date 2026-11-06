@@ -403,34 +403,21 @@ async function closeRunning(g) {
   try { await api('/api/running/close', { id: g.id }); RUN.delete(g.id); showRunning(); toast(`${g.title} closed`); watchRunning(); if (LIB.length) buildRow(false); if (D.open) renderActions(); }
   catch (e) { toast(e.message); }
 }
-// Animated covers (SteamGridDB) play while they're on screen (at most ANIM_MAX, nearest the selected game), on the home row and on an open Library or search page
-// (watchAnims). Covers scrolled out of view, and those on a page that's closed (hidden, not gone), show their still: with
-// every cover animating at once the Library and search lagged, and kept lagging behind the home row once closed. The
-// helper serves light copies of the animations (server.light_anim): the originals can be 50 MB each. g.cover stays the
-// still first frame, shown where only a still will do. On the home row the animation is a layer above the cover, outside
-// .art, so the reflection mirrors the still: a mirrored animation had to be redrawn every frame, lagged behind and glitched.
-const ANIM_MAX = 8;  // at most this many play at once: the ones on screen nearest the selected game
-const ANIM_ROOTS = new Map();  // a row or grid -> { live: its page is open, sel: the selected item's selector }
-const ANIM_VIEW = new IntersectionObserver(seen => {
-  const roots = new Set();
-  seen.forEach(e => { e.target.animSeen = e.isIntersecting; roots.add(e.target.animRoot); });
-  roots.forEach(animPlan);
-}, { rootMargin: '10%' });
-function watchAnims(root, live, sel) {
+// Animated covers (SteamGridDB) all play, all the time: on the home row, and on the Library or search page while it's open
+// (watchAnims; a closed page is hidden, not gone, so its covers would keep playing unseen). The helper serves light copies
+// of the animations (server.light_anim): the originals can be 50 MB each. g.cover stays the still first frame, shown where
+// only a still will do. On the home row the animation is a layer above the cover, outside .art, so the reflection mirrors
+// the still: a mirrored animation had to be redrawn every frame, lagged behind and glitched.
+const ANIM_ROOTS = new Map();  // a row or grid -> whether its page is open
+function watchAnims(root, live) {
   if (!root) return;
-  ANIM_ROOTS.set(root, { live, sel });
-  root.querySelectorAll('img[data-anim]').forEach(im => { if (!im.animWatched) { im.animWatched = true; im.animRoot = root; ANIM_VIEW.observe(im); } });
+  ANIM_ROOTS.set(root, live);
   animPlan(root);
 }
 function animPlan(root) {
-  let { live, sel } = ANIM_ROOTS.get(root) || {};
-  if (root === strip) live &&= !document.body.classList.contains('lib-open') && !document.body.classList.contains('search-open');  // the home row rests while the Library or search covers it
-  const all = [...root.querySelectorAll('img[data-anim]')];
-  const c = live && sel ? root.querySelector(sel)?.getBoundingClientRect() : null;
-  const far = im => { if (!c) return 0; const r = im.getBoundingClientRect(); return Math.hypot(r.x - c.x, r.y - c.y); };
-  const play = new Set(live ? all.filter(im => im.animSeen).map(im => [far(im), im]).sort((x, y) => x[0] - y[0]).slice(0, ANIM_MAX).map(x => x[1]) : []);
-  all.forEach(im => {
-    const want = play.has(im) ? im.dataset.anim : im.dataset.still || '';
+  const live = ANIM_ROOTS.get(root);
+  root.querySelectorAll('img[data-anim]').forEach(im => {
+    const want = live ? im.dataset.anim : im.dataset.still || '';
     if (!im.dataset.anim || (im.getAttribute('src') || '') === want) return;  // (unchanged: a playing one isn't restarted)
     if (want) im.src = want; else im.removeAttribute('src');
   });
@@ -496,7 +483,7 @@ function update() {
     if (image && image.fetchPriority !== pri) image.fetchPriority = pri;
   });
   placeStrip();
-  watchAnims(strip, true, '.tile.sel');
+  watchAnims(strip, true);
   [...$('#buttons').children].forEach((e, i) => e.classList.toggle('sel', S.zone === 1 && i === S.btn));
   [...$('#tabs').children].forEach((e, i) => e.classList.toggle('sel', i === S.tab));
   const g = game();
@@ -1572,7 +1559,6 @@ function closeSearch() {
   const entry = SR.entry;
   SR.open = false; SR.prompt = null; SR.entry = null; document.body.classList.remove('search-open'); tick(420, .06);
   watchAnims($('#search .sr-results'), false);  // hidden, not gone: its animated covers would keep playing
-  animPlan(strip);
   if (entry) renderPanel();  // back on the field's row
 }
 // A text field in Settings or the setup guide, chosen with a controller or the mouse: Done writes the text into it, B leaves it as it was
@@ -1626,8 +1612,7 @@ function searchFocus() {
   document.querySelectorAll('#search .sr-key').forEach(e => e.classList.toggle('sel', SR.zone === 'kb' && +e.dataset.r === SR.row && +e.dataset.c === SR.col));
   document.querySelectorAll('#search .sr-hit').forEach(e => e.classList.toggle('sel', SR.zone === 'res' && +e.dataset.i === SR.r));
   $('#search .sr-hit.sel')?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
-  watchAnims($('#search .sr-results'), SR.open, '.sr-hit.sel');
-  animPlan(strip);
+  watchAnims($('#search .sr-results'), SR.open);
 }
 function searchType(k) {
   const q = $('#srq');
@@ -1713,7 +1698,6 @@ function openLibraryPage(mode) {
 function closeLibraryPage() {
   LP.open = false; document.body.classList.remove('lib-open'); tick(420, .06);
   watchAnims($('#libpage .lp-grid'), false);  // hidden, not gone: its animated covers would keep playing
-  animPlan(strip);
 }
 function lpCat(dir) {
   const n = clamp(LP.cat + dir, 0, LP.cats.length - 1);
@@ -1745,8 +1729,7 @@ function lpFocus() {
   $('#libpage .lp-cats').classList.toggle('focus', LP.zone === 'cats');
   document.querySelectorAll('#libpage .lp-hit').forEach(e => e.classList.toggle('sel', LP.zone === 'grid' && +e.dataset.i === LP.i));
   $('#libpage .lp-hit.sel')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  watchAnims($('#libpage .lp-grid'), LP.open, '.lp-hit.sel');
-  animPlan(strip);
+  watchAnims($('#libpage .lp-grid'), LP.open);
 }
 function lpMove(dx, dy) {
   const hits = [...document.querySelectorAll('#libpage .lp-hit')];
