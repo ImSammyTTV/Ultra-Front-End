@@ -72,8 +72,12 @@ def replace_old_helper():
         return False  # a newer version than this one: an old download opened by mistake uses it
     pid = ping.get("pid") or port_owner(server.PORT)
     image = server.process_image(pid) if pid else ""
-    if not image or os.path.normcase(os.path.dirname(image)) != os.path.normcase(server.ROOT):
-        return False  # a copy somewhere else (dist\, another download) keeps its own helper: this one uses it
+    older = server.version_key(ping.get("version") or "0") < server.version_key(server.VERSION)
+    if not image or (os.path.normcase(os.path.dirname(image)) != os.path.normcase(server.ROOT) and not older):
+        # a copy somewhere else of the same version (dist\, another download) keeps its own helper: this one uses it. An
+        # older version's helper is replaced wherever it is: the installed app (Setup) next to an old download started
+        # with Windows otherwise showed the old download's page under the new version's name
+        return False
     running, menu = helper_get("/api/running"), helper_get("/api/overlay")
     if running is None or menu is None or running.get("games") or menu.get("open") or menu.get("recording"):
         if "--background" in sys.argv:
