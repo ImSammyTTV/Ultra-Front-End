@@ -145,6 +145,10 @@ and a UI scale setting.
    the consoles you play, and whether it should start with Windows.
 3. **Play.** Your installed Steam games are already there. Connect your store accounts in **Settings → Accounts** to add the rest.
 
+> [!NOTE]
+> **Windows is the main platform for now.** It's early days: versions for Mac, Android and Linux (including Steam Deck)
+> are in development and will come later.
+
 > [!TIP]
 > **Windows says it "protected your PC"?** The app isn't signed yet, so SmartScreen warns about it. Click **More info → Run anyway**.
 
