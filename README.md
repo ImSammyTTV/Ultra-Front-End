@@ -138,22 +138,12 @@ and a UI scale setting.
 
 ## 🚀 Quick start
 
-**Windows**
-
 1. **Download** `UltraFrontEnd-Setup.exe` from the [latest release](https://github.com/ImSammyTTV/Ultra-Front-End/releases/latest) and run it.
    It installs for your own Windows account (no administrator prompt) and adds Start menu and desktop shortcuts.
    Prefer a portable copy? Download `UltraFrontEnd.exe` instead and put it in a folder of its own: its settings live in a `data` folder beside it.
 2. **Follow the setup guide.** It asks for your name and time zone, your ROMs folder (`C:\ROMs` unless you choose another),
    the consoles you play, and whether it should start with Windows.
 3. **Play.** Your installed Steam games are already there. Connect your store accounts in **Settings → Accounts** to add the rest.
-
-**Mac** (Apple Silicon and Intel)
-
-1. **Download** `UltraFrontEnd.dmg` from the [latest release](https://github.com/ImSammyTTV/Ultra-Front-End/releases/latest), open it and drag **Ultra Front End** into **Applications**.
-2. **First open:** the app isn't signed with an Apple certificate, so macOS stops it once. Open **System Settings → Privacy & Security**, scroll down and choose **Open Anyway**
-   (on older macOS: right-click the app and choose **Open**). It opens normally from then on and updates itself.
-3. **Follow the setup guide** as above. Emulators install into your Applications folder from their own projects. The in-game menu, screenshots and recording are Windows-only for now.
-   **Steam isn't included:** to play Steam games, install the [Steam app for Mac](https://store.steampowered.com/about/) separately. Ultra Front End lists your games and starts them through it.
 
 > [!TIP]
 > **Windows says it "protected your PC"?** The app isn't signed yet, so SmartScreen warns about it. Click **More info → Run anyway**.
