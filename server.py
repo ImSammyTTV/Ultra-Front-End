@@ -999,6 +999,11 @@ def install_download(name, url, filename, program_name, digest="", size=0, targe
     return os.path.join(target, program_name)
 
 
+# Eglantine publishes a build of every branch (branch-fix-..., branch-exp-...) beside its daily builds: installs and
+# updates take the daily line, never someone's experiment
+GITHUB_TAGS = {"Eglantine": r"^daily-\d{8}$"}
+
+
 def github_latest(name):
     """The newest Windows download of a GitHub emulator: (asset, published) or (None, "")."""
     repo, pattern, program_name = GITHUB_EMUS[name]
@@ -1008,7 +1013,8 @@ def github_latest(name):
     except (urllib.error.URLError, ValueError):  # none yet: Eglantine only makes pre-releases
         pass
     avx2 = cpu_avx2()
-    found = sorted(((r.get("published_at") or "", a) for r in releases if not r.get("draft")
+    line = GITHUB_TAGS.get(name)  # a project whose releases include test builds of single fixes: only its regular line
+    found = sorted(((r.get("published_at") or "", a) for r in releases if not r.get("draft") and (not line or re.search(line, r.get("tag_name") or ""))
                     for a in r.get("assets", []) if re.search(pattern, a["name"]) and (avx2 or "AVX2" not in a["name"])),
                    key=lambda x: (x[0], "AVX2" in x[1]["name"]), reverse=True)
     return (found[0][1], found[0][0]) if found else (None, "")
