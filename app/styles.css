@@ -469,6 +469,9 @@ body.news-open #newspage { opacity: 1; pointer-events: auto; }
 /* news page: cards keep their natural height (clipped cards were collapsing to thin strips in the scrolling grid) */
 .np-grid { grid-auto-rows: max-content; }
 .np-card { min-height: max-content; }
+/* no blur of their own: the page already blurs what's behind it, and a blur inside a blur let the home screen's sharp
+   edges (a cover tile) show through the cards as a faint box */
+.np-card { backdrop-filter: none; background: var(--glass), rgba(12, 22, 44, .62); }
 .np-card .ni { aspect-ratio: auto; height: 21vh; flex: none; }
 
 /* leading logo / icon on Settings rows */
