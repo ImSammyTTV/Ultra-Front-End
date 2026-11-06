@@ -589,7 +589,7 @@ SYSTEMS = [  # (folder-name pattern, name, libretro thumbnail set, extensions, R
     (r"wii ?u", "Wii U", "Nintendo - Wii U", ".wud .wux .wua .rpx", []),
     (r"\bwii\b", "Wii", "Nintendo - Wii", ".iso .wbfs .rvz .gcz .ciso", ["dolphin"]),
     (r"gamecube|\bgc\b|\bngc\b", "GameCube", "Nintendo - GameCube", ".iso .rvz .gcm .gcz .ciso", ["dolphin"]),
-    (r"switch ?2", "Switch 2", "Nintendo - Switch", ".nsp .xci", []),
+    (r"switch ?2", "Switch 2", "Nintendo - Switch", ".nsp .xci .nup", []),  # .nup: Eglantine's own NUP container
     (r"switch", "Switch", "Nintendo - Switch", ".nsp .xci", []),
     (r"3ds", "3DS", "Nintendo - Nintendo 3DS", ".3ds .cci .cia .cxi", ["citra"]),
     (r"\bn?ds\b|nintendo ds", "DS", "Nintendo - Nintendo DS", ".nds", ["melonds", "desmume"]),
@@ -1973,7 +1973,8 @@ def scan_library(lib, cfg):
             games += shortcut_games(path, lib["name"], cfg)
         return games
     # ROM folder
-    order = [e for e in (lib.get("exts") or []) if e not in ARCHIVES]   # the console's own file types, best first
+    known = (system_info(lib.get("system") or lib["name"]) or {}).get("exts") or []  # types added since the library was saved
+    order = [e for e in dict.fromkeys((lib.get("exts") or []) + known) if e not in ARCHIVES]  # the console's own types, best first
     exts = set(order) | set(ARCHIVES) if lib.get("exts") else set()     # (arcade games are only archives)
     by_name = {e for e in exts if not e.startswith(".")}   # whole file names, e.g. eboot.bin for folder games
     max_depth = 4 if by_name else 2                          # PS3 keeps EBOOT.BIN in Game/PS3_GAME/USRDIR/
