@@ -7901,6 +7901,7 @@ def winget_upgrades(ids):
 
 def check_emulator_updates():
     """Which of the app's own emulators have something newer (GitHub downloads by release date, installers by winget)."""
+    refind_moved(list(config().get("emulators") or {}))  # any whose program has moved since (an update, or by hand)
     cfg, versions = config(), load("emu-versions.json", {})
     github = {}
     for name, (folder, systems) in own_github_emus(cfg).items():
@@ -7947,6 +7948,26 @@ def emulator_running(folder):
         return True  # can't tell: try another time
 
 
+def refind_moved(systems):
+    """Systems whose emulator program isn't where it was any more (an update moved it): found again and set, keeping
+    their arguments. Returns the systems fixed."""
+    cfg = config()
+    emus = cfg.get("emulators") or {}
+    gone = [s for s in systems if emus.get(s, {}).get("path") and not os.path.exists(emus[s]["path"])]
+    if not gone:
+        return []
+    found = find_emulators()
+    fixed = []
+    for s in gone:
+        if found.get(s):
+            emus[s]["path"] = found[s]
+            fixed.append(s)
+    if fixed:
+        store("config.json", cfg)
+        EMU_VERSIONS.clear()
+    return fixed
+
+
 def update_emulator(name):
     """Bring one of the app's emulators up to date: a newer download unpacked over it, or its installer through winget."""
     info = EMU_UPDATES["github"].get(name)
@@ -7960,6 +7981,7 @@ def update_emulator(name):
     if info:
         winget_install(info["package"], name)  # installing a package that's there brings it up to date
         EMU_UPDATES["winget"].pop(name, None)
+        refind_moved(info["systems"])  # an update can move it (into C:\\Ultra-Front-End\\Emulators): follow it there
         return
     raise ValueError(f"{name} is up to date")
 
