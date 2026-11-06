@@ -1471,7 +1471,7 @@ function renderNewsPage() {
       <div class="nb"><div class="ng">${esc(n.game)}</div><div class="nt">${esc(n.title)}</div><div class="ns">${esc(n.summary)}</div><div class="nd">${esc(fmtDate(n.date))}${n.source ? ' · ' + esc(n.source) : ''}</div></div></div>`).join('')
     : `<div class="d-empty">No news yet. Connect Steam or add Steam games to see their news here.${LIB.some(g => g.appid) ? '' : '<br>Press A to connect Steam.'}</div>`;
   else grid.innerHTML = list.length ? list.map((n, i) => `<div class="np-card np-rel" data-i="${i}" style="animation-delay:${Math.min(i, 16) * 40}ms">
-      <div class="ni"><span class="np-ver">${esc(n.version)}</span>${n.state ? `<span class="np-state ${n.state}">${RELEASE_STATE[n.state]}</span>` : ''}</div>
+      <div class="ni"${n.image ? ` style="background-image:linear-gradient(180deg, rgba(4, 8, 20, 0) 40%, rgba(4, 8, 20, .7)), url(&quot;${esc(n.image)}&quot;)"` : ''}><span class="np-ver">${esc(n.version)}</span>${n.state ? `<span class="np-state ${n.state}">${RELEASE_STATE[n.state]}</span>` : ''}</div>
       <div class="nb"><div class="ng">Ultra Front End</div><div class="nt">${esc(n.title)}</div><div class="ns">${esc(n.summary)}</div><div class="nd">${esc(fmtDate(n.date))}</div></div></div>`).join('')
     : `<div class="d-empty">${esc(NP.upErr || 'Nothing here yet.')}</div>`;
   newsFocus();
@@ -1502,7 +1502,7 @@ function newsMove(dx, dy) {
 }
 function newsOpen() {
   const n = NP.items[NP.i];
-  if (n && NP.tab === 'new') return openReader({ ...n, source: 'Ultra Front End' }, 'assets/intro-wave.jpg');
+  if (n && NP.tab === 'new') return openReader({ ...n, source: 'Ultra Front End' }, n.image || 'assets/intro-wave.jpg');  // its own picture, else the wave
   if (n) openReader(n, n.image || n.cover); else if (NP.tab === 'games' && NP.games && !NP.items.length && !LIB.some(g => g.appid) && API) connectSteam();
 }
 $('#newspage').addEventListener('click', e => {

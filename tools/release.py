@@ -3,7 +3,9 @@
     1. Raise VERSION in server.py, commit, push.
     2. python tools/release.py [notes.md] [--venv DIR] [--dry-run [--skip-build]]
 
-Without a notes file, GitHub writes the notes from the commits. It builds Game Frontend.exe with PyInstaller and uploads it
+Every release has a picture of its own, shown on its card in the app's What's new: assets/whatsnew/<VERSION>.jpg, committed
+and pushed with the release's commit (16:9, about 1280x720). It goes at the top of the notes. Without a notes file, GitHub
+writes the notes from the commits. It builds Game Frontend.exe with PyInstaller and uploads it
 as UltraFrontEnd.exe under the tag v<VERSION>, with THIRD_PARTY_NOTICES.md and licenses.zip beside it (the updater only ever
 takes UltraFrontEnd.exe). Needs the GitHub CLI (gh), signed in to an account that can publish to the project.
 
@@ -141,6 +143,20 @@ def mac_assets(folder, version, out):
     return [zip_out, dmg_out]
 
 
+def picture_notes(notes, version, repo, head, out):
+    """The notes with the release's own picture at the top (What's new shows it on the release's card). The picture must be
+    in the release's commit, so its address (by tag) never changes."""
+    path = f"assets/whatsnew/{version}.jpg"
+    if subprocess.run(["git", "-C", ROOT, "cat-file", "-e", f"{head}:{path}"], capture_output=True).returncode:
+        sys.exit(f"No picture for this release: add {path} (16:9, about 1280x720), commit and push it. Every release has its own.")
+    text = open(notes, encoding="utf-8").read() if notes else ""
+    line = f"![Ultra Front End {version}](https://raw.githubusercontent.com/{repo}/v{version}/{path})"
+    with_picture = os.path.join(out, "notes.md")
+    with open(with_picture, "w", encoding="utf-8") as f:
+        f.write(text if line in text else line + "\n\n" + text)
+    return with_picture
+
+
 def main():
     ap = argparse.ArgumentParser(description="Publish a GitHub release of Ultra Front End.")
     ap.add_argument("notes", nargs="?", help="release notes file (default: GitHub writes them from the commits)")
@@ -184,8 +200,11 @@ def main():
     shutil.copyfile(exe, setup)
 
     mac_files = mac_assets(args.mac, version, out) if args.mac else []
+    if not args.notes:
+        sys.exit("Write the release notes (a .md file) and pass it: the release's picture goes at their top.")
+    notes = picture_notes(args.notes, version, repo, head, out)
     cmd = ["gh", "release", "create", tag, setup, exe, *mac_files, notices, licenses, "--repo", repo, "--target", head,
-           "--title", f"Ultra Front End {version}", *(["--notes-file", args.notes] if args.notes else ["--generate-notes"])]
+           "--title", f"Ultra Front End {version}", "--notes-file", notes]
     print(f"{tag} for {repo}: {os.path.getsize(exe) / 1e6:.1f} MB, SHA-256 {digest}, Setup {os.path.getsize(setup) / 1e6:.1f} MB, with {NOTICES} and licenses.zip.")
     if args.dry_run:
         print("Dry run: would run\n  " + subprocess.list2cmdline(cmd))
