@@ -27,6 +27,7 @@ Ultra Front End is MIT (see [LICENSE](LICENSE)), but the Windows exe also contai
 | typing_extensions | 4.16.0 | [PSF-2.0](licenses/typing_extensions-LICENSE.txt) | https://github.com/python/typing_extensions |
 | pystray | 0.19.5 | [LGPL-3.0-or-later](licenses/pystray-LGPL-3.0.txt) (see below) | https://github.com/moses-palmer/pystray |
 | six | 1.17.0 | [MIT](licenses/six-LICENSE.txt) | https://github.com/benjaminp/six |
+| windows-capture (windows_capture.pyd only: the in-game menu's live backdrop) | 2.0.1 | [MIT](licenses/windows-capture-LICENSE.txt) | https://github.com/NiiightmareXD/windows-capture |
 | Pillow | 12.3.0 | [MIT-CMU](licenses/Pillow-LICENSE.txt) | https://github.com/python-pillow/Pillow |
 | Libraries inside Pillow: brotli 1.2.0, FreeType 2.14.3, HarfBuzz 14.2.1, lcms2 2.19.1, libavif 1.4.2, libjpeg-turbo 3.1.4.1, libpng 1.6.58, libwebp 1.6.0, OpenJPEG 2.5.4, libtiff 4.7.1, xz 5.8.3, zlib-ng 2.3.3 | as listed | [their own licences, all in Pillow's LICENSE](licenses/Pillow-LICENSE.txt) | https://github.com/python-pillow/Pillow |
 

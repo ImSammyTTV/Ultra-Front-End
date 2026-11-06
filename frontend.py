@@ -532,7 +532,7 @@ def overlay():
             window.native.Invoke(Func[Type](lambda: window.native.browser.webview.Focus()))
         except Exception:
             pass
-        threading.Thread(target=live_frost, args=[window, game, x, y, ow, h], daemon=True).start()
+        threading.Thread(target=live_backdrop, args=[window, game, x, y, ow, h], daemon=True).start()
     webview.start(edge_to_edge, private_mode=True, storage_path=os.path.join(server.DATA, "webview-overlay"))
     os._exit(0)
 
@@ -540,17 +540,21 @@ def overlay():
 FROST_SCALE = 6  # the frost is worked on at a sixth of the size: blurred anyway, and quick
 
 
-def frost_url(img):
+FROST_BLUR = 24  # the blur's reach in screen pixels, whatever size the frost is worked on at
+
+
+def frost_url(img, scale=None):
     """A frosted version of the game behind the overlay, as a small data URL the page stretches over its background:
-    blurred, and darkened only a little, so the game shows through while white text stays readable."""
+    blurred, and darkened only a little, so the game shows through while white text stays readable. Shrunk by averaging
+    (no blocks), blurred to the same reach at any size, and saved well enough that the blur shows no JPEG banding."""
     import base64
     import io
     from PIL import ImageFilter
-    w, h = img.size
-    small = img.convert("RGB").resize((max(1, w // FROST_SCALE), max(1, h // FROST_SCALE)))
-    small = small.filter(ImageFilter.GaussianBlur(4)).point(lambda v: int(v * .72 + 6))
+    scale = scale or FROST_SCALE
+    small = img.convert("RGB").reduce(scale)
+    small = small.filter(ImageFilter.GaussianBlur(FROST_BLUR / scale)).point(lambda v: int(v * .72 + 6))
     buf = io.BytesIO()
-    small.save(buf, "JPEG", quality=80)
+    small.save(buf, "JPEG", quality=90)
     return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
@@ -594,6 +598,90 @@ def game_frame(hwnd, x, y, w, h):
         gdi32.DeleteObject(bmp)
         gdi32.DeleteDC(dc)
         user32.ReleaseDC(None, screen)
+
+
+def wgc_module():
+    """Windows Graphics Capture (the windows-capture project's native module, loaded on its own: its Python wrapper would
+    pull in OpenCV). None if it isn't there or won't load."""
+    import importlib.machinery
+    import importlib.util
+    try:
+        if getattr(sys, "frozen", False):
+            pyd = os.path.join(sys._MEIPASS, "windows_capture.pyd")
+        else:
+            spec = importlib.util.find_spec("windows_capture")
+            pyd = os.path.join(list(spec.submodule_search_locations)[0], "windows_capture.pyd") if spec else ""
+        if not os.path.isfile(pyd):
+            return None
+        loader = importlib.machinery.ExtensionFileLoader("windows_capture", pyd)
+        module = importlib.util.module_from_spec(importlib.util.spec_from_loader("windows_capture", loader))
+        loader.exec_module(module)
+        return module
+    except Exception:
+        return None
+
+
+LIVE_FPS = 30  # backdrop frames a second: smooth behind a blur, and light (about 5 ms of work each)
+
+
+def live_backdrop(window, game, x, y, w, h):
+    """The overlay's backdrop, live: the game's own frames from Windows Graphics Capture (as OBS and the Xbox Game Bar get
+    them, from the graphics card, without touching the game), cut to the panel, blurred small and sent to the page about
+    30 times a second. Games it can't capture (exclusive fullscreen) keep the older way: a frame drawn a few times a second."""
+    import ctypes
+    import ctypes.wintypes as W
+    from PIL import Image
+    wc = wgc_module() if game else None
+    if not wc:
+        return live_frost(window, game, x, y, w, h)
+    r = W.RECT()
+    ctypes.windll.user32.GetWindowRect(ctypes.c_void_p(game), ctypes.byref(r))
+    latest, ready, frames = [None], threading.Event(), [0]
+
+    def on_frame(frame, buf_len, width, height, stop_list, _timespan):
+        if OVL.get("gone"):
+            stop_list.append(True)
+            return
+        try:
+            k = width / max(1, r.right - r.left)  # the frame's pixels per screen pixel (DPI, a window bigger than its frame)
+            fx, fy = max(0, int((x - r.left) * k)), max(0, int((y - r.top) * k))
+            fw, fh = min(width - fx, int(w * k)), min(height - fy, int(h * k))
+            if fw < 8 or fh < 8:
+                return
+            pitch = int(frame.bytes_per_row)
+            view = memoryview(frame.buffer_view())[fy * pitch + fx * 4:]  # only the panel's strip is read
+            strip = Image.frombuffer("RGB", (fw, fh), view, "raw", "BGRX", pitch, 1)
+            latest[0] = frost_url(strip, scale=3)
+            frames[0] += 1
+            ready.set()
+        except Exception:
+            pass
+
+    try:
+        cap = wc.NativeWindowsCapture(on_frame, lambda: None, False, False, None, 1000 // LIVE_FPS, None, None, None, int(game))
+        control = cap.start_free_threaded()
+    except Exception:
+        return live_frost(window, game, x, y, w, h)
+    if not ready.wait(1.5):  # nothing comes from a game in exclusive fullscreen
+        try:
+            control.stop()
+        except Exception:
+            pass
+        window_log("overlay: live capture gave no frames, using drawn frames")
+        return live_frost(window, game, x, y, w, h)
+    window_log("overlay: live capture")
+    try:
+        while not OVL.get("gone"):  # the newest frame only: a slow page skips frames rather than falling behind
+            if ready.wait(1):
+                ready.clear()
+                window.evaluate_js(f"frost('{latest[0]}')")
+    except Exception:
+        pass
+    finally:
+        try:
+            control.stop()
+        except Exception:
+            pass
 
 
 def live_frost(window, game, x, y, w, h):

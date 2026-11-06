@@ -31,7 +31,7 @@ SETUP = "UltraFrontEnd-Setup.exe"  # what people download first; ASSET is what c
 NOTICES = "THIRD_PARTY_NOTICES.md"  # shipped beside the exe on every release, with licenses/ zipped as licenses.zip
 BUILT = os.path.join(ROOT, "dist", "Game Frontend.exe")
 PKG_TOC = os.path.join(ROOT, "build", "Game Frontend", "PKG-00.toc")
-BUILD_PACKAGES = ["pywebview", "pystray", "pillow", "pyinstaller"]
+BUILD_PACKAGES = ["pywebview", "pystray", "pillow", "pyinstaller", "windows-capture"]
 MIN_SIZE = 5 * 1024 * 1024
 
 # Run by the build's own Python (same version and PyInstaller as the build): prints the VERSION the exe's server module sets.
