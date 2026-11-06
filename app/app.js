@@ -2261,8 +2261,9 @@ function panelItems() {
       { kind: 'head', label: 'Your systems' },
       ...(mine.length ? mine.map(p => ({ kind: 'row', key: 'sys-' + p.name, ...sysLogo(p.name), label: p.name,
         sub: [p.emulator || (p.recommended ? `${p.recommended} not installed` : 'No emulator yet'), `${p.count} game${p.count === 1 ? '' : 's'}`, p.bios?.label, jobText(p)].filter(Boolean).join(' · '),
-        value: p.emulator ? 'Ready' : p.job?.state === 'installing' ? jobValue(p.job) : p.job?.state === 'waiting' ? 'Waiting' : 'Set up', ...jobBar(p), act: () => { P.system = p.name; setView('system'); } }))
+        value: p.job?.state === 'installing' ? jobValue(p.job) : p.emulator ? 'Ready' : p.job?.state === 'waiting' ? 'Waiting' : 'Set up', ...jobBar(p), act: () => { P.system = p.name; setView('system'); } }))
         : [{ kind: 'note', label: 'No systems yet. Add the ones you play.' }]),
+      ...emuUpdateRows(d),
       // a ROMs subfolder named after no system: its games can't start until it's renamed
       ...odd.map(p => ({ kind: 'info', label: `ROMs › ${p.name}`, sub: 'Folder not recognised: rename it to a system’s name, for example SNES or Genesis', value: `${p.count} game${p.count === 1 ? '' : 's'}` })),
       { kind: 'row', key: 'sys-add', label: '+ Add a system', sub: ON_ANDROID ? 'Makes its folders in your ROMs folder' : 'Installs its emulator and makes its folders', act: () => setView('add-system') },
@@ -2861,6 +2862,22 @@ async function unhideFromList(g) {
   renderPanel();
 }
 async function setOpt(k) { await work(api('/api/options', { [k]: !P.data.options[k] })); }
+// Settings › Systems: newer versions of the emulators the app installed. Downloaded ones update by themselves when nothing
+// is running; ones with an installer wait here, since their installers may ask Windows for permission.
+function emuUpdateRows(d) {
+  if (ON_MAC || ON_ANDROID || !d.emuUpdates) return [];
+  const list = d.emuUpdates.list || [], run = name => api('/api/emulators/update', name ? { name } : {})
+    .then(r => { P.data = r; renderPanel(); watchQueue(); toast(name ? `Updating ${name}…` : 'Updating your emulators…', 3000); }, e => toast(e.message));
+  return [
+    { kind: 'head', label: 'Emulator updates' },
+    ...list.map(u => ({ kind: 'row', key: 'emu-up-' + u.name, ic: icon('download'), label: `Update ${u.name}`, value: 'Update',
+      sub: [u.to && `New: ${u.to}`, u.systems.join(', '), u.installer && 'Its installer may ask Windows for permission'].filter(Boolean).join(' · '), act: () => run(u.name) })),
+    ...(list.length > 1 ? [{ kind: 'row', key: 'emu-up-all', label: 'Update all', value: `${list.length}`, sub: 'One after another, with one Windows prompt for the installers', act: () => run() }] : []),
+    { kind: 'row', key: 'emu-up-check', label: list.length ? 'Check again' : 'Check for emulator updates',
+      sub: d.emuUpdates.checked ? `Checked ${fmtDate(d.emuUpdates.checked)}${list.length ? '' : ': all up to date'}. Checked every day; downloaded emulators update by themselves` : 'Checked every day; downloaded emulators update by themselves',
+      act: () => work(api('/api/emulators/update', { check: true })).then(r => r && toast(r.emuUpdates?.list?.length ? `${r.emuUpdates.list.length} update${r.emuUpdates.list.length === 1 ? '' : 's'} found` : 'Your emulators are up to date', 3000)) },
+  ];
+}
 async function addLib(kind) {
   toast('Choose in the window that just opened…', 4000);
   const r = await work(api('/api/libraries/add', { kind }));
