@@ -677,7 +677,10 @@ function move(dx, dy) {
   save(); update();
 }
 // ---------- startup intro: once each time the frontend opens, never on a page refresh ----------
+// The intro (opening) and the outro (closing), each on or off in Settings › General. The outro follows the old shared
+// switch until it's set on its own.
 function introOn() { try { return localStorage.getItem('fe-intro') !== 'off'; } catch { return true; } }
+function outroEnabled() { try { return (localStorage.getItem('fe-outro') ?? localStorage.getItem('fe-intro')) !== 'off'; } catch { return true; } }
 function runIntro() {
   const el = $('#intro');
   let seen = false;
@@ -803,11 +806,11 @@ function quitFrontend() {
   });
 }
 // The closing animation: the screen goes dark and the intro's wave plays backwards, folding into a line of light that
-// closes to the middle, with the closing sound; then the window goes. Off with the intro (Settings › General).
+// closes to the middle, with the closing sound; then the window goes. Off in Settings › General › Outro.
 let outroOn = false;
 function playOutro(done = () => {}) {
   if (outroOn) return;
-  if (!API || !introOn()) return done();
+  if (!API || !outroEnabled()) return done();
   outroOn = true;
   const el = document.createElement('div');
   el.id = 'outro'; el.innerHTML = '<canvas></canvas>';
@@ -2495,7 +2498,9 @@ function panelItems() {
     { kind: 'row', label: '+ Add a folder', sub: `A tile that opens a folder in ${ON_MAC ? 'Finder' : 'File Explorer'}, for apps, movies or anything you open often`, act: () => addLib('folder') }]),
   ];
   if (P.view === 'artwork') return [
-    { kind: 'row', ic: icon('bolt'), label: 'Intro and outro', value: onOff(introOn()), sub: 'The short animation and sound when the frontend opens and closes', act: () => { try { localStorage.setItem('fe-intro', introOn() ? 'off' : 'on'); } catch {} renderPanel(); } },
+    { kind: 'row', ic: icon('bolt'), label: 'Intro', value: onOff(introOn()), sub: 'The short animation and sound when the frontend opens',
+      act: () => { try { if (localStorage.getItem('fe-outro') === null) localStorage.setItem('fe-outro', outroEnabled() ? 'on' : 'off'); localStorage.setItem('fe-intro', introOn() ? 'off' : 'on'); } catch {} renderPanel(); } },
+    { kind: 'row', ic: icon('bolt'), label: 'Outro', value: onOff(outroEnabled()), sub: 'The short animation and sound when the frontend closes', act: () => { try { localStorage.setItem('fe-outro', outroEnabled() ? 'off' : 'on'); } catch {} renderPanel(); } },
     { kind: 'row', ic: icon('wide'), label: 'Full-screen game art', value: onOff(d.options.artBackground), sub: 'The selected game’s art fills the home screen behind the row, instead of the night scenery', act: () => setOpt('artBackground').then(() => { S.artBg = P.data.options.artBackground; applyBackgroundMode(); }) },
     { kind: 'row', label: 'Find artwork & info online', value: onOff(d.options.onlineCovers), sub: 'Covers, logos, backgrounds and descriptions for games that don’t have them', act: () => setOpt('onlineCovers') },
     ...(ON_ANDROID ? [] : [{ kind: 'row', img: SGDB_LOGO, label: 'SteamGridDB', value: acc.sgdb ? 'Connected' : 'Optional', sub: 'More artwork to choose from, animated covers and backgrounds', act: () => acc.sgdb ? toast('SteamGridDB is connected') : setView('sgdb') }]),
