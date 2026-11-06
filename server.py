@@ -4146,6 +4146,51 @@ def sync_keep_on_screen():
         keep_on_screen(config().get("keepOnScreen", True))
 
 
+# ---------- emulators in borderless fullscreen ----------
+# A game in exclusive fullscreen minimizes as the in-game menu takes the focus (the game pauses while the menu opens).
+# Just before an emulator starts (its settings file closed), a setting that allows exclusive fullscreen is switched to
+# borderless: only a line already in the file changes, nothing is added, and the file is copied to <name>.bak-borderless
+# the first time. Part of Settings › General › Keep games on screen.
+BORDERLESS = [  # (emulator program pattern, settings files near the program or in the user's folders, line pattern, replacement)
+    (r"^rpcs3", ["{dir}/config/config.yml", "{dir}/config.yml"], r"^(\s*Exclusive Fullscreen Mode:\s*)(Automatic|Enable)\s*$", r"\g<1>Disable"),
+    (r"eden|eglantine|yuzu|suyu|sudachi|citron", ["{appdata}/eden/config/qt-config.ini", "{appdata}/yuzu/config/qt-config.ini", "{dir}/user/config/qt-config.ini"],
+     r"^(fullscreen_mode=)1\s*$", r"\g<1>0"),  # 0 borderless windowed, 1 exclusive
+    (r"^dolphin", ["{appdata}/Dolphin Emulator/Config/GFX.ini", "{dir}/User/Config/GFX.ini"], r"^(BorderlessFullscreen\s*=\s*)False\s*$", r"\g<1>True"),
+    (r"^duckstation", ["{documents}/DuckStation/settings.ini", "{dir}/settings.ini"], r"^(ExclusiveFullscreenControl\s*=\s*)(Automatic|Allowed)\s*$", r"\g<1>Disallowed"),
+    (r"^pcsx2", ["{documents}/PCSX2/inis/PCSX2.ini", "{dir}/inis/PCSX2.ini"], r"^(ExclusiveFullscreenControl\s*=\s*)(-1|1)\s*$", r"\g<1>0"),
+    (r"^retroarch", ["{dir}/retroarch.cfg"], r'^(video_windowed_fullscreen\s*=\s*)"false"\s*$', r'\g<1>"true"'),
+]
+
+
+def make_borderless(program):
+    """Switch this emulator's own settings to borderless fullscreen where they'd allow exclusive. Returns the files changed."""
+    name = os.path.basename(program or "").lower()
+    places = {"dir": os.path.dirname(program or ""), "appdata": os.environ.get("APPDATA", ""), "documents": os.path.join(os.path.expanduser("~"), "Documents")}
+    changed = []
+    for pattern, files, line, repl in BORDERLESS:
+        if not re.search(pattern, name):
+            continue
+        for f in files:
+            path = os.path.normpath(f.format(**places))
+            try:
+                with open(path, encoding="utf-8", newline="") as fh:
+                    text = fh.read()
+            except (OSError, UnicodeDecodeError):
+                continue
+            new = re.sub(line, repl, text, flags=re.M)
+            if new == text:
+                continue
+            try:
+                if not os.path.exists(path + ".bak-borderless"):
+                    shutil.copy2(path, path + ".bak-borderless")
+                with open(path, "w", encoding="utf-8", newline="") as fh:
+                    fh.write(new)
+                changed.append(path)
+            except OSError:
+                pass
+    return changed
+
+
 def sync_autostart():
     """Keep the sign-in entry pointing at this exe, wherever it has been moved since, once setup has been through it."""
     if not autostart_copy() or not profile().get("setupDone"):
@@ -4957,12 +5002,26 @@ def now_playing():
     return out
 
 
-def overlay_state():
+def overlay_tip(title):
+    """Once per game: a game seen to minimize when the menu opens (the overlay learns it, overlay-games.json) still pauses
+    for a moment then, so the menu says how to stop that. Empty when there's nothing to say, or it was said before."""
+    learned, said = load("overlay-games.json", {}), load("overlay-tips.json", [])
+    exes = {os.path.basename(process_image(p) or "").lower() for p in OVERLAY["pids"]} - {""}
+    exe = next((e for e in sorted(exes) if learned.get(e)), None)
+    if not exe or exe in said:
+        return ""
+    store("overlay-tips.json", said + [exe])
+    return (f"{title} pauses for a moment when this menu opens, because it runs in true fullscreen. "
+            "Set it to borderless window in its own display settings to keep it running.")
+
+
+def overlay_state(tip=False):
     g = STATE["byId"].get(OVERLAY["game"]) or {}
     session = open_session() or {}
     return {"open": overlay_open(), "title": g.get("title", "Game"), "cover": g.get("cover", ""), "minutes": g.get("minutes", 0),
             "session": int((time.time() - session.get("start", time.time())) / 60), "recording": bool(RECORD["proc"]), "hud": hud_mode() if hud_installed() else None, "savestate": bool(state_keys(OVERLAY["game"])),
-            "battery": PAD_BATTERY[0] if time.time() - PAD_RAW[1] < 60 else None}
+            "battery": PAD_BATTERY[0] if time.time() - PAD_RAW[1] < 60 else None,
+            **({"tip": overlay_tip(g.get("title", "This game"))} if tip and WIN else {})}
 
 
 MEDIA_KEYS = {"media-prev": 0xB1, "media-play": 0xB3, "media-next": 0xB0}  # VK_MEDIA_PREV_TRACK, _PLAY_PAUSE, _NEXT_TRACK
@@ -6094,6 +6153,11 @@ def launch(game):
         raise ValueError("The selected program is missing. Change app location from the game menu.")
     if L["type"] == "emu" and not os.path.exists(L.get("emu") or ""):
         raise ValueError(f"The emulator for {game.get('system') or 'this console'} is missing. Choose it again in Settings › Systems.")
+    if L["type"] == "emu" and WIN and config().get("keepOnScreen", True):
+        try:
+            make_borderless(L["emu"])  # exclusive fullscreen would pause the game whenever the in-game menu opens
+        except Exception:
+            log_error()
     if L["type"] != "uri":
         LAUNCHING.add(game["id"])
     session_start(game["id"])  # Still captures from now until it ends belong to this game
@@ -8575,8 +8639,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             return self.wfile.write(data)
-        if path == "/api/overlay":
-            return self.reply(overlay_state())
+        if path == "/api/overlay":  # ?tip: the menu page itself, which shows a game's once-only tip
+            return self.reply(overlay_state(tip="tip" in urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query, keep_blank_values=True)))
         if path == "/api/overlay/wake":  # the overlay program, waiting to be shown or hidden
             want = (urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("want") or ["open"])[0]
             return self.reply(overlay_wake("hide" if want == "hide" else "open"))
