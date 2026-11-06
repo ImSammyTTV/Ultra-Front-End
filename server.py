@@ -3653,10 +3653,15 @@ def in_use(path):
     return False
 
 
+MOVING = [False]  # a move into C:/Ultra-Front-End is under way: the folders aren't looked through meanwhile
+
+
 def watch_folders():
     last, pending = folder_snapshot(), None
     while True:
         time.sleep(4)
+        if MOVING[0]:
+            continue
         snap = folder_snapshot()
         if snap == last:
             pending = None
@@ -6731,15 +6736,23 @@ def move_to_home():
         before = {g["id"]: game_id_sources(g) for g in STATE["games"]}
     os.makedirs(EMU_HOME, exist_ok=True)
     done, failed = [], []
-    for src, dst in moves:
-        try:
+    MOVING[0] = True  # (our own look through the folders could be the moment that holds one)
+    try:
+        for src, dst in moves:
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             if os.path.isdir(dst) and not os.listdir(dst):
                 os.rmdir(dst)  # (the empty one a fresh setup may have made)
-            os.rename(src, dst)  # same drive: instant, nothing copied
-            done.append((src, dst))
-        except OSError:
-            failed.append(held_inside(src) or os.path.basename(src))
+            for _ in range(40):  # Windows' indexer or antivirus can hold a folder for a moment: up to 20 seconds of tries
+                try:
+                    os.rename(src, dst)  # same drive: instant, nothing copied
+                    done.append((src, dst))
+                    break
+                except OSError:
+                    time.sleep(0.5)
+            else:
+                failed.append(held_inside(src) or os.path.basename(src))
+    finally:
+        MOVING[0] = False
     for src, dst in done:
         if under(dst, EMU_HOME):
             fix_emulator_settings(dst, src, dst)
