@@ -4613,8 +4613,8 @@ def take_foreground(hwnd):
     user32.GetWindowThreadProcessId.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
     user32.SetForegroundWindow.argtypes = user32.BringWindowToTop.argtypes = [ctypes.c_void_p]
     theirs, ours = user32.GetWindowThreadProcessId(user32.GetForegroundWindow(), None), k32.GetCurrentThreadId()
-    user32.keybd_event(0x12, 0, 0, 0)  # a tap of Alt also counts as this program's input
-    user32.keybd_event(0x12, 0, 2, 0)
+    user32.keybd_event(0x12, 0, 0, OWN_KEYS)  # a tap of Alt also counts as this program's input
+    user32.keybd_event(0x12, 0, 2, OWN_KEYS)
     attached = theirs and theirs != ours and user32.AttachThreadInput(ours, theirs, True)
     user32.BringWindowToTop(hwnd)
     user32.SetForegroundWindow(hwnd)
@@ -4857,10 +4857,10 @@ def press_keys(keys):
     user32 = ctypes.windll.user32
     # The modifier goes down well before the key: Dolphin takes F1 alone as Load, and one press with both at once does Save and Load.
     for vk in keys:
-        user32.keybd_event(vk, user32.MapVirtualKeyW(vk, 0), 0, 0)
+        user32.keybd_event(vk, user32.MapVirtualKeyW(vk, 0), 0, OWN_KEYS)
         time.sleep(0.12)
     for vk in reversed(keys):
-        user32.keybd_event(vk, user32.MapVirtualKeyW(vk, 0), 2, 0)
+        user32.keybd_event(vk, user32.MapVirtualKeyW(vk, 0), 2, OWN_KEYS)
         time.sleep(0.12)
 
 
@@ -5658,7 +5658,7 @@ def pad_motion(path, on):
 def wii_key(scan, down):
     """Keys Dolphin takes as Wii Remote motion (see dolphin_shake_key): F13 shake, F14 tilt left, F15 tilt right. Scan codes, so DirectInput sees them."""
     import ctypes
-    ctypes.windll.user32.keybd_event(0, scan, 8 if down else 10, 0)  # KEYEVENTF_SCANCODE, and KEYUP
+    ctypes.windll.user32.keybd_event(0, scan, 8 if down else 10, OWN_KEYS)  # KEYEVENTF_SCANCODE, and KEYUP
 
 
 def dolphin_shake_key():
@@ -5687,6 +5687,122 @@ def dolphin_shake_key():
                 f.write(new + mark + rest)
     except OSError:
         pass
+
+
+# ---------- Steam's desktop keys kept out of games Steam didn't start ----------
+# Steam turns a controller into keyboard and mouse for any program it didn't launch itself (its Desktop Layout: B is
+# Escape, A is Enter, the d-pad arrow keys...). An emulator started from here reads the controller itself and got those
+# keys too: B took Eden out of fullscreen, and quits RetroArch. While such a game is in front, a key that was faked
+# (not typed) and arrives while a controller button or stick is in use is dropped. A real keyboard always gets through,
+# and so do this program's own keys (marked OWN_KEYS).
+OWN_KEYS = 0x55464531  # "UFE1", in the extra info of every key this program presses
+KEY_GUARD = {"on": False, "hook": None, "thread": 0, "dropped": set(), "count": 0}
+
+
+def pad_in_use():
+    """A controller button is down, or a stick or trigger pushed, right now: an Xbox pad through XInput, or a Steam
+    Controller through its own reports."""
+    import ctypes
+    r, at = PAD_RAW[0], PAD_RAW[1]
+    if r and time.time() - at < 0.5:
+        sticks = [int.from_bytes(r[i:i + 2], "little", signed=True) for i in (10, 12)]
+        if r[2] or r[3] or r[4] & 0xFE or any(abs(v) > 9000 for v in sticks):
+            return True
+    try:
+        xinput = KEY_GUARD.get("xinput") or ctypes.WinDLL("xinput1_4")
+        KEY_GUARD["xinput"] = xinput
+    except OSError:
+        return False
+    st = (ctypes.c_ubyte * 16)()
+    for i in range(4):
+        if xinput.XInputGetState(i, st) == 0:
+            buttons = st[4] | st[5] << 8
+            lx, ly = int.from_bytes(bytes(st[8:10]), "little", signed=True), int.from_bytes(bytes(st[10:12]), "little", signed=True)
+            if buttons or st[6] > 30 or st[7] > 30 or abs(lx) > 9000 or abs(ly) > 9000:
+                return True
+    return False
+
+
+def key_guard_hook():
+    """The low-level keyboard hook's own thread (Windows calls it there): installed while a guarded game is in front."""
+    import ctypes
+    import ctypes.wintypes as W
+    user32, k32 = ctypes.windll.user32, ctypes.windll.kernel32
+
+    class KB(ctypes.Structure):
+        _fields_ = [("vk", W.DWORD), ("scan", W.DWORD), ("flags", W.DWORD), ("time", W.DWORD), ("extra", ctypes.c_size_t)]
+    proto = ctypes.WINFUNCTYPE(ctypes.c_ssize_t, ctypes.c_int, W.WPARAM, W.LPARAM)
+    user32.CallNextHookEx.argtypes = [ctypes.c_void_p, ctypes.c_int, W.WPARAM, W.LPARAM]
+    user32.CallNextHookEx.restype = ctypes.c_ssize_t
+    user32.SetWindowsHookExW.argtypes = [ctypes.c_int, proto, ctypes.c_void_p, W.DWORD]
+    user32.SetWindowsHookExW.restype = ctypes.c_void_p
+    user32.UnhookWindowsHookEx.argtypes = [ctypes.c_void_p]
+    k32.GetModuleHandleW.restype = ctypes.c_void_p  # a 64-bit handle: cut to 32 bits, the hook isn't set
+
+    def on_key(code, wparam, lparam):
+        try:
+            if code == 0 and KEY_GUARD["on"]:
+                k = ctypes.cast(lparam, ctypes.POINTER(KB)).contents
+                up = wparam in (0x101, 0x105)  # WM_KEYUP, WM_SYSKEYUP
+                if k.flags & 0x10 and k.extra != OWN_KEYS:  # LLKHF_INJECTED, and not ours
+                    if up and k.vk in KEY_GUARD["dropped"]:
+                        KEY_GUARD["dropped"].discard(k.vk)
+                        return 1
+                    if not up and (pad_in_use() or (time.sleep(0.012) or pad_in_use())):  # (Steam can be a moment ahead of our read)
+                        KEY_GUARD["dropped"].add(k.vk)
+                        KEY_GUARD["count"] += 1
+                        return 1
+        except Exception:
+            pass
+        return user32.CallNextHookEx(None, code, wparam, lparam)
+    callback = proto(on_key)
+    KEY_GUARD["thread"] = k32.GetCurrentThreadId()
+    hook = user32.SetWindowsHookExW(13, callback, k32.GetModuleHandleW(None), 0)  # WH_KEYBOARD_LL
+    KEY_GUARD["hook"] = hook
+    if not hook:
+        KEY_GUARD["thread"] = 0
+        return
+    msg = W.MSG()
+    while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:  # until WM_QUIT from watch_key_guard
+        pass
+    if hook:
+        user32.UnhookWindowsHookEx(hook)
+    KEY_GUARD.update(hook=None, thread=0)
+
+
+def guarded_game_in_front():
+    """A game started from here that Steam didn't start (so Steam types its desktop keys into it) has the screen."""
+    session = open_session()
+    g = STATE["byId"].get(session["game"]) if session else None
+    if not g or g.get("appid") or (g.get("launch") or {}).get("uri", "").startswith("steam:"):
+        return False  # Steam's own games get the controller as a gamepad: nothing to keep out
+    running = RUNNING.get(session["game"])
+    tree = game_tree(running.pid) if running else set()
+    if not tree:
+        return False
+    import ctypes
+    user32 = ctypes.windll.user32
+    user32.GetForegroundWindow.restype = ctypes.c_void_p
+    pid = ctypes.c_ulong()
+    user32.GetWindowThreadProcessId(ctypes.c_void_p(user32.GetForegroundWindow()), ctypes.byref(pid))
+    return pid.value in tree
+
+
+def watch_key_guard():
+    """The keyboard hook exists only while a guarded game is in front, so nothing else on the PC ever goes through it."""
+    import ctypes
+    while True:
+        try:
+            on = bool(open_session()) and guarded_game_in_front()
+        except Exception:
+            on = False
+        KEY_GUARD["on"] = on
+        if on and not KEY_GUARD["thread"]:
+            threading.Thread(target=key_guard_hook, daemon=True).start()
+        elif not on and KEY_GUARD["thread"]:
+            ctypes.windll.user32.PostThreadMessageW(KEY_GUARD["thread"], 0x0012, 0, 0)  # WM_QUIT: the hook goes
+            KEY_GUARD["thread"] = 0
+        time.sleep(0.25 if on else 0.5)
 
 
 def steam_button_reader(path, active):
@@ -9718,6 +9834,7 @@ def main():
             threading.Thread(target=watch_steam_button, daemon=True).start()
             threading.Thread(target=watch_running, daemon=True).start()
             threading.Thread(target=watch_emulator_updates, daemon=True).start()  # the app's own emulators, kept up to date
+            threading.Thread(target=watch_key_guard, daemon=True).start()  # Steam's desktop keys kept out of games it didn't start
             import hud
             hud.start(DATA, hud_visible, load("hud.json", {}).get("mode") if hud.presentmon(DATA) else "off")  # an extra: off until installed
             sync_autostart()
