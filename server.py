@@ -2263,7 +2263,7 @@ def sgdb_fill_missing(key, games):
     """Give games without any cover the top SteamGridDB grid (cached by title; a few new lookups per scan)."""
     cache, changed, lookups = load("sgdb-cache.json", {}), False, 0
     for g in games:
-        if g["cover"]:
+        if g["cover"] or g.get("isFolder"):  # (a folder tile named "Movies" isn't a game called Movies)
             continue
         k = norm(g["title"])
         if k not in cache:
@@ -2474,7 +2474,7 @@ def hero_for(g):
     if not url:
         url = (g.get("epic") or {}).get("hero", "")
     accounts = load("accounts.json", {})
-    if not url and "sgdb" in accounts:
+    if not url and "sgdb" in accounts and not g.get("isFolder"):  # a folder tile has only the background you give it
         try:
             m = sgdb_game_for(accounts["sgdb"]["key"], g)
             heroes = sgdb(f"/heroes/game/{m['id']}", accounts["sgdb"]["key"], types="static", nsfw="false") if m else []
@@ -2765,12 +2765,20 @@ def trailer_stills(trailers):
 WIKI_PAUSE = [0.0]  # Wikipedia said "too many requests": leave it alone until then instead of making it worse
 
 
-def wiki_game_info(title):
-    """Matched game biography plus structured genre, studio and release data."""
+def platform_words(system):
+    """How a console's articles name it ("Switch 2", "Super Nintendo Entertainment System"), to tell same-named games apart."""
+    info = system_info(system) or {}
+    words = [system] + ([info["thumbs"].split(" - ", 1)[-1]] if info.get("thumbs") else [])
+    return [w for w in dict.fromkeys(words) if w and len(w) > 2]
+
+
+def wiki_game_info(title, system=None):
+    """Matched game biography plus structured genre, studio and release data. Two games of one name ("Star Fox" on the
+    SNES and on Switch 2) each have a dated page: the one naming the game's console is used, and kept under the console."""
     title = metadata_title(title)
     key = norm(title)
     cache = load("wiki-info-cache.json", {})
-    hit = cache.get(key)
+    hit = (system and cache.get(f"{key}|{system}")) or cache.get(key)
     if hit and time.time() - hit["t"] < 30 * 86400 and (hit["d"].get("developer") or hit.get("v") == 2):
         return hit["d"]
     if time.time() < WIKI_PAUSE[0]:
@@ -2786,6 +2794,7 @@ def wiki_game_info(title):
             if any(wiki_match_rank(h["title"], title) is not None for h in hits):
                 break
         ranked = sorted(((wiki_match_rank(h["title"], title), i, h) for i, h in enumerate(hits)), key=lambda x: (x[0] is None, x[0] or 0, x[1]))
+        plat, other_console, chosen = platform_words(system) if system else [], None, None
         for rank, _, hit in ranked:
             if rank is None:
                 break
@@ -2796,13 +2805,21 @@ def wiki_game_info(title):
             first = re.split(r"(?<=[.!?])\s", text)[0]
             if (rank == 3 and re.search(r"\b(series|franchise)\b", first, re.I)) or re.search(r"\bis an? (\w+ )*(series|franchise)\b", first, re.I):
                 continue  # a page about the whole series ("Star Fox is a series of..."), not this game
+            if rank == 2 and plat and not any(w.lower() in text.lower() for w in plat):
+                other_console = other_console or (rank, summary, hit)  # a same-named game on another console: only if nothing better
+                continue
+            chosen = (rank, summary, hit)
+            break
+        for rank, summary, hit in [chosen or other_console] if (chosen or other_console) else []:
+            text = summary.get("extract", "")
+            dated = rank == 2
             sentences = re.split(r"(?<=[.!?])\s+", text)
             bio = ""
             for sentence in sentences:
                 if bio and len(bio) + len(sentence) > 650:
                     break
                 bio = (bio + " " + sentence).strip()
-            out = {"description": bio, "descSource": "Wikipedia", "sourceTitle": summary.get("title") or hit["title"]}
+            out = {"description": bio, "descSource": "Wikipedia", "sourceTitle": summary.get("title") or hit["title"], "_dated": dated}
             entity_id = summary.get("wikibase_item", "")
             if re.fullmatch(r"Q\d+", entity_id):
                 entity = http_json(f"https://www.wikidata.org/wiki/Special:EntityData/{entity_id}.json", headers=WIKI_UA, timeout=8)["entities"][entity_id]
@@ -2827,12 +2844,15 @@ def wiki_game_info(title):
         if e.code == 429:
             wait = e.headers.get("Retry-After", "")
             WIKI_PAUSE[0] = time.time() + (int(wait) if wait.isdigit() else 900)
+        out.pop("_dated", None)
         return out
     except (urllib.error.URLError, ValueError, KeyError, TimeoutError):
+        out.pop("_dated", None)
         return out  # retain a biography if structured metadata is temporarily unavailable; retry later
+    dated = out.pop("_dated", False)
     if out:
         cache = load("wiki-info-cache.json", {})
-        cache[key] = {"t": time.time(), "d": out, "v": 2}
+        cache[f"{key}|{system}" if system and dated else key] = {"t": time.time(), "d": out, "v": 2}
         store("wiki-info-cache.json", cache)
     return out
 
@@ -2933,7 +2953,7 @@ def remote_info(g, appid, local):
         if known.get("logo"):
             d["logo"] = known["logo"]
     if not d["description"] and cfg["onlineCovers"]:
-        bio = wiki_game_info(g["title"])
+        bio = wiki_game_info(g["title"], g.get("system"))
         for field in ("description", "descSource", "sourceTitle", "genres", "developer", "released"):
             if not d.get(field) and bio.get(field):
                 d[field] = bio[field]
@@ -3189,7 +3209,7 @@ def game_details(g):
     """Everything the details screen shows except news (fetched separately so the screen fills in at once)."""
     cfg = config()
     look = g
-    appid = steam_appid_for(look) if g.get("appid") or cfg["onlineCovers"] else None
+    appid = steam_appid_for(look) if g.get("appid") or (cfg["onlineCovers"] and not g.get("isFolder")) else None
     local = local_steam_art(g, appid)
     ach_f = POOL.submit(achievements, g)
     d = dict(remote_info(look, appid, local))
