@@ -248,12 +248,15 @@ def find_image(folders, stems):
     return None
 
 
-# Local art files the UI may fetch, by game id. Rebuilt on every scan so /api/art only serves known files.
-ART = {}
+# Local art files the UI may fetch, by game id. Rebuilt on every scan so /api/art only serves known files: the old
+# entries stay until the scan is done (emptied at the start, a cover asked for mid-scan was "not found" and stayed a
+# name card), then the ones the scan didn't see again go.
+ART, ART_SEEN = {}, set()
 
 
 def local_art(game_id, path):
     ART[game_id] = path
+    ART_SEEN.add(game_id)
     return f"/api/art/{game_id}?v={int(os.path.getmtime(path))}"
 
 
@@ -3322,7 +3325,7 @@ SCAN_LOCK = threading.Lock()
 def scan():
     with SCAN_LOCK:
         cfg, accounts = config(), load("accounts.json", {})
-        ART.clear()
+        ART_SEEN.clear()
         games, errors, counts = {}, [], {}
 
         def add(label, fn, key=None):
@@ -3450,6 +3453,8 @@ def scan():
         for g in games.values():
             if g.get("renameTo"):
                 g["title"], g["renamed"] = g.pop("renameTo"), True
+        for k in [k for k in ART if k not in ART_SEEN]:
+            ART.pop(k, None)
         STATE.update(games=list(games.values()), byId=games, errors=errors, counts=counts, scanned=time.time())
         sync_systems(counts)
 
