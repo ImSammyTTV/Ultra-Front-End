@@ -426,7 +426,7 @@ function tileHTML(g, i, animate) {
   // The title card underneath shows whenever a cover is missing or fails to load.
   return `<div class="tile${animate ? ' in' : ''}${g.installed === false ? ' cloud' : ''}" data-i="${i}" style="animation-delay:${Math.min(Math.abs(i - idx()), 12) * 45}ms;--c:${colorOf(g)}">
     <div class="art"><div class="ph"><span>${esc(g.title)}</span></div>
-    ${g.cover ? `<img src="${esc(g.cover)}" alt="" draggable="false" loading="lazy" onerror="this.remove()">` : ''}</div>
+    ${g.cover ? `<img src="${esc(g.cover)}" alt="" draggable="false" loading="lazy" onerror="coverRetry(this)">` : ''}</div>
     ${g.coverAnim ? `<img class="anim-cover" data-anim="${esc(g.coverAnim)}" alt="" draggable="false" onerror="this.remove()">` : ''}
     ${g.favorite ? `<i class="fav">${icon('star')}</i>` : ''}${RUN.has(g.id) ? '<i class="runtag">Running</i>' : ''}<div class="frame"></div></div>`;
 }
@@ -1697,7 +1697,16 @@ function renderLibraryPage() {
 const coverHTML = g => `<span>${esc(g.title)}</span>${g.cover ? `<img src="${esc(g.cover)}"${g.coverAnim ? ` data-anim="${esc(g.coverAnim)}" data-still="${esc(g.cover)}"` : ''} alt="" loading="lazy" onerror="${g.coverAnim ? 'coverFailed(this)' : 'this.remove()'}">` : ''}`;
 // An animated cover that won't load: back to its still for good (only a still that fails takes the image away)
 function coverFailed(im) {
-  if (im.dataset.anim && im.getAttribute('src') === im.dataset.anim) { delete im.dataset.anim; im.src = im.dataset.still; } else im.remove();
+  if (im.dataset.anim && im.getAttribute('src') === im.dataset.anim) { delete im.dataset.anim; im.src = im.dataset.still; }
+  else coverRetry(im);
+}
+// A cover that didn't load (the helper busy or restarting) tries again twice before its tile shows the name card
+function coverRetry(im) {
+  const n = +(im.dataset.retry || 0);
+  if (n >= 2) return im.remove();
+  im.dataset.retry = n + 1;
+  const src = im.getAttribute('src') || '';
+  setTimeout(() => { if (im.isConnected) im.src = src.replace(/([?&])r=\d+&?/, '$1').replace(/[?&]$/, '') + (src.includes('?') ? '&' : '?') + 'r=' + (n + 1); }, 1500 * (n + 1));
 }
 function lpFocus() {
   document.querySelectorAll('#libpage .lp-btn').forEach((e, j) => e.classList.toggle('sel', LP.zone === 'head' && j === LP.h));
