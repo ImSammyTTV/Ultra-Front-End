@@ -403,15 +403,24 @@ async function closeRunning(g) {
   try { await api('/api/running/close', { id: g.id }); RUN.delete(g.id); showRunning(); toast(`${g.title} closed`); watchRunning(); if (LIB.length) buildRow(false); if (D.open) renderActions(); }
   catch (e) { toast(e.message); }
 }
-// Animated covers (SteamGridDB) play all the time, selected or not. g.cover stays the still first frame, for
-// the places that only take a still image. On the home row the animation is a layer above the cover, outside .art, so the
+// Animated covers (SteamGridDB) play on the selected game only (playSelectedAnim): every cover animating at once made the
+// row and the library lag. g.cover stays the still first frame, shown on the others and where only a still will do. On the home row the animation is a layer above the cover, outside .art, so the
 // reflection mirrors the still: a mirrored animation had to be redrawn every frame, lagged behind and glitched.
+// Animated covers in root: the one inside the selected item (sel, a selector) plays, the others show their still frame
+// (data-still) or nothing (the still cover underneath shows). Only changed when it needs to, so a playing one isn't restarted.
+function playSelectedAnim(root, sel) {
+  root?.querySelectorAll('img[data-anim]').forEach(im => {
+    const want = im.closest(sel) ? im.dataset.anim : im.dataset.still || '';
+    if ((im.getAttribute('src') || '') === want) return;
+    if (want) im.src = want; else im.removeAttribute('src');
+  });
+}
 function tileHTML(g, i, animate) {
   // The title card underneath shows whenever a cover is missing or fails to load.
   return `<div class="tile${animate ? ' in' : ''}${g.installed === false ? ' cloud' : ''}" data-i="${i}" style="animation-delay:${Math.min(Math.abs(i - idx()), 12) * 45}ms;--c:${colorOf(g)}">
     <div class="art"><div class="ph"><span>${esc(g.title)}</span></div>
     ${g.cover ? `<img src="${esc(g.cover)}" alt="" draggable="false" loading="lazy" onerror="this.remove()">` : ''}</div>
-    ${g.coverAnim ? `<img class="anim-cover" src="${esc(g.coverAnim)}" alt="" draggable="false" loading="lazy" onerror="this.remove()">` : ''}
+    ${g.coverAnim ? `<img class="anim-cover" data-anim="${esc(g.coverAnim)}" alt="" draggable="false" onerror="this.remove()">` : ''}
     ${g.favorite ? `<i class="fav">${icon('star')}</i>` : ''}${RUN.has(g.id) ? '<i class="runtag">Running</i>' : ''}<div class="frame"></div></div>`;
 }
 let rowKey = '';
@@ -467,6 +476,7 @@ function update() {
     if (image && image.fetchPriority !== pri) image.fetchPriority = pri;
   });
   placeStrip();
+  playSelectedAnim(strip, '.tile.sel');
   [...$('#buttons').children].forEach((e, i) => e.classList.toggle('sel', S.zone === 1 && i === S.btn));
   [...$('#tabs').children].forEach((e, i) => e.classList.toggle('sel', i === S.tab));
   const g = game();
@@ -1539,6 +1549,7 @@ function kbDraw() {
 function closeSearch() {
   const entry = SR.entry;
   SR.open = false; SR.prompt = null; SR.entry = null; document.body.classList.remove('search-open'); tick(420, .06);
+  playSelectedAnim($('#search .sr-results'), ':not(*)');  // hidden, not gone: its animated cover would keep playing
   if (entry) renderPanel();  // back on the field's row
 }
 // A text field in Settings or the setup guide, chosen with a controller or the mouse: Done writes the text into it, B leaves it as it was
@@ -1592,6 +1603,7 @@ function searchFocus() {
   document.querySelectorAll('#search .sr-key').forEach(e => e.classList.toggle('sel', SR.zone === 'kb' && +e.dataset.r === SR.row && +e.dataset.c === SR.col));
   document.querySelectorAll('#search .sr-hit').forEach(e => e.classList.toggle('sel', SR.zone === 'res' && +e.dataset.i === SR.r));
   $('#search .sr-hit.sel')?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
+  playSelectedAnim($('#search .sr-results'), '.sr-hit.sel');
 }
 function searchType(k) {
   const q = $('#srq');
@@ -1674,7 +1686,10 @@ function openLibraryPage(mode) {
   if (mode === 'emu' && LP.cats.length < 2 && !lpBase().length) { LP.open = false; return toast('Add a ROM folder in Settings › Libraries first'); }
   document.body.classList.add('lib-open'); tick(600, .07); renderLibraryPage();
 }
-function closeLibraryPage() { LP.open = false; document.body.classList.remove('lib-open'); tick(420, .06); }
+function closeLibraryPage() {
+  LP.open = false; document.body.classList.remove('lib-open'); tick(420, .06);
+  playSelectedAnim($('#libpage .lp-grid'), ':not(*)');  // hidden, not gone: its animated cover would keep playing
+}
 function lpCat(dir) {
   const n = clamp(LP.cat + dir, 0, LP.cats.length - 1);
   if (n !== LP.cat) { LP.cat = n; LP.i = 0; tick(760, .04); renderLibraryPage(); $('#libpage .lp-grid').scrollTop = 0; }
@@ -1695,12 +1710,17 @@ function renderLibraryPage() {
   lpFocus();
 }
 // A cover over the game's name, which shows when there's no art or it fails to load (as on the home row)
-const coverHTML = g => `<span>${esc(g.title)}</span>${g.cover ? `<img src="${esc(g.coverAnim || g.cover)}" alt="" loading="lazy" onerror="this.remove()">` : ''}`;
+const coverHTML = g => `<span>${esc(g.title)}</span>${g.cover ? `<img src="${esc(g.cover)}"${g.coverAnim ? ` data-anim="${esc(g.coverAnim)}" data-still="${esc(g.cover)}"` : ''} alt="" loading="lazy" onerror="${g.coverAnim ? 'coverFailed(this)' : 'this.remove()'}">` : ''}`;
+// An animated cover that won't load: back to its still for good (only a still that fails takes the image away)
+function coverFailed(im) {
+  if (im.dataset.anim && im.getAttribute('src') === im.dataset.anim) { delete im.dataset.anim; im.src = im.dataset.still; } else im.remove();
+}
 function lpFocus() {
   document.querySelectorAll('#libpage .lp-btn').forEach((e, j) => e.classList.toggle('sel', LP.zone === 'head' && j === LP.h));
   $('#libpage .lp-cats').classList.toggle('focus', LP.zone === 'cats');
   document.querySelectorAll('#libpage .lp-hit').forEach(e => e.classList.toggle('sel', LP.zone === 'grid' && +e.dataset.i === LP.i));
   $('#libpage .lp-hit.sel')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  playSelectedAnim($('#libpage .lp-grid'), '.lp-hit.sel');
 }
 function lpMove(dx, dy) {
   const hits = [...document.querySelectorAll('#libpage .lp-hit')];
