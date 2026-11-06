@@ -4166,7 +4166,8 @@ def sync_keep_on_screen():
 # the first time. Part of Settings › General › Keep games on screen.
 BORDERLESS = [  # (emulator program pattern, settings files near the program or in the user's folders, line pattern, replacement)
     (r"^rpcs3", ["{dir}/config/config.yml", "{dir}/config.yml"], r"^(\s*Exclusive Fullscreen Mode:\s*)(Automatic|Enable)\s*$", r"\g<1>Disable"),
-    (r"eden|eglantine|yuzu|suyu|sudachi|citron", ["{appdata}/eden/config/qt-config.ini", "{appdata}/yuzu/config/qt-config.ini", "{dir}/user/config/qt-config.ini"],
+    (r"eden|eglantine|yuzu|suyu|sudachi|citron", ["{appdata}/eglantine/config/qt-config.ini", "{appdata}/eden/config/qt-config.ini",  # (newer Eglantine has its own folder)
+                                                 "{appdata}/yuzu/config/qt-config.ini", "{dir}/user/config/qt-config.ini"],
      r"^(fullscreen_mode=)1\s*$", r"\g<1>0"),  # 0 borderless windowed, 1 exclusive
     (r"^dolphin", ["{appdata}/Dolphin Emulator/Config/GFX.ini", "{dir}/User/Config/GFX.ini"], r"^(BorderlessFullscreen\s*=\s*)False\s*$", r"\g<1>True"),
     (r"^duckstation", ["{documents}/DuckStation/settings.ini", "{dir}/settings.ini"], r"^(ExclusiveFullscreenControl\s*=\s*)(Automatic|Allowed)\s*$", r"\g<1>Disallowed"),
