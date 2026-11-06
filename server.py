@@ -825,6 +825,9 @@ EMU_INSTALL = {
     "Flash": ("Ruffle", "github"),
 }
 WINGET_ARGS = {"MAMEdev.MAME": ["--location", os.path.join(os.path.expanduser("~"), "Emulators", "MAME")]}  # its package needs a folder
+# Packages that need to be told their folder, a fixed one in Program Files: given both ways of installing, the elevated
+# helper's included (so it isn't a folder the page or the user's own files could change)
+FIXED_ARGS = {"Blizzard.BattleNet": ["--location", os.path.join(os.environ.get("ProgramFiles(x86)") or r"C:\Program Files (x86)", "Battle.net")]}
 # Downloaded from the project's own GitHub releases: repo, the Windows download's name, the program inside it. Newest
 # release first, pre-releases included (Eglantine only makes those, and some KytyPS5 builds have no Windows download).
 GITHUB_EMUS = {
@@ -1159,7 +1162,7 @@ def winget_install(package_id, name):
         if code != BROKER_NO_WINGET:  # (it couldn't find winget where only administrators can change it: the usual way)
             return winget_result(package_id, name, code, [text])
     proc = subprocess.Popen(
-        [winget, "install", "--id", package_id, "--exact", "--source", "winget", *WINGET_ARGS.get(package_id, []),
+        [winget, "install", "--id", package_id, "--exact", "--source", "winget", *WINGET_ARGS.get(package_id, []), *FIXED_ARGS.get(package_id, []),
          "--accept-source-agreements", "--accept-package-agreements", "--disable-interactivity", "--silent"],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     out, job, last_output = [], getattr(JOB_LOCAL, "job", None), [time.time()]
@@ -1350,7 +1353,7 @@ def broker_loop(port, token):
         if not winget:
             post("/done", {"job": job.get("id"), "exit": BROKER_NO_WINGET})
             continue
-        proc = subprocess.Popen([winget, "install", "--id", job["package"], "--exact", "--source", "winget", "--accept-source-agreements",
+        proc = subprocess.Popen([winget, "install", "--id", job["package"], "--exact", "--source", "winget", *FIXED_ARGS.get(job["package"], []), "--accept-source-agreements",
                                  "--accept-package-agreements", "--disable-interactivity", "--silent"], cwd=system32,
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         decoder, last_output = codecs.getincrementaldecoder("utf-8")("replace"), [time.time()]
