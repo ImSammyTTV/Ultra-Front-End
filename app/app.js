@@ -2484,7 +2484,7 @@ function panelItems() {
           if (P.confirm !== 'home-move') { P.confirm = 'home-move'; return renderPanel(); }
           P.confirm = null;
           const r = await work(api('/api/home/move', {}));
-          if (r) { toast(r.failed?.length ? `Moved ${r.moved.join(', ') || 'nothing'}. Not moved (in use?): ${r.failed.join(', ')}` : `Moved into ${m.home}`, 6000); await afterLibraryChange(); }
+          if (r) { toast(r.failed?.length ? `${r.moved.length ? `Moved ${r.moved.join(', ')}. ` : ''}${r.failed.join(', ')} ${r.failed.length === 1 && !r.failed[0].includes(',') ? 'is' : 'are'} in use by another program, so ${r.moved.length ? 'that stayed' : 'nothing moved'}. Restart Windows, then press Move again` : `Moved into ${m.home}`, 9000); await afterLibraryChange(); }
         } };
     })()] : []),
     ...(d.romRoot ? [{ kind: 'row', label: 'Open ROMs folder', sub: `Opens it in ${ON_ANDROID ? 'Files' : 'File Explorer'} so you can add games`, act: () => api('/api/romroot/open', {}).then(() => toast(ON_ANDROID ? 'Opened in Files' : 'Opened in File Explorer')) }] : []),

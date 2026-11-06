@@ -6697,6 +6697,27 @@ def fix_emulator_settings(folder, old, new):
                     fh.write(changed)
 
 
+def held_inside(folder):
+    """Which folders in this one Windows won't let go of (a program has a file in them open), as "PS5" or "PS5, PS3": each
+    is renamed and straight back. "" if none is (the folder itself is what's held)."""
+    held = []
+    try:
+        names = sorted(os.listdir(folder))
+    except OSError:
+        return ""
+    for name in names:
+        a = os.path.join(folder, name)
+        if not os.path.isdir(a):
+            continue
+        b = a + ".ufe-check"
+        try:
+            os.rename(a, b)
+            os.rename(b, a)
+        except OSError:
+            held.append(name)
+    return ", ".join(held)
+
+
 def move_to_home():
     """Settings › Libraries: the ROMs folder and Ultra Front End's own emulator downloads into C:\\Ultra-Front-End."""
     if update_busy():
@@ -6718,7 +6739,7 @@ def move_to_home():
             os.rename(src, dst)  # same drive: instant, nothing copied
             done.append((src, dst))
         except OSError:
-            failed.append(os.path.basename(src))
+            failed.append(held_inside(src) or os.path.basename(src))
     for src, dst in done:
         if under(dst, EMU_HOME):
             fix_emulator_settings(dst, src, dst)
@@ -6959,9 +6980,55 @@ def file_matches(alt, f):
         return False
 
 
+BIOS_UNPACKED = {}  # zip path -> (size, modified) once unpacked this run; a note beside it keeps that across runs
+
+
+def unpack_bios_zips(folder):
+    """A BIOS often comes zipped (ps2-bios.zip): each zip in the BIOS folder is unpacked into it, once, so its files count
+    and get set up. Flattened (only file names, so nothing lands outside the folder), nothing already there replaced, at
+    most 2 GB, the zip kept. Returns how many files came out."""
+    import zipfile
+    out = 0
+    try:
+        zips = [os.path.join(folder, f) for f in os.listdir(folder) if f.lower().endswith(".zip")]
+    except OSError:
+        return 0
+    for z in zips:
+        try:
+            st = os.stat(z)
+        except OSError:
+            continue
+        mark, stamp = z + ".unpacked", (st.st_size, int(st.st_mtime))
+        if BIOS_UNPACKED.get(z) == stamp or os.path.exists(mark):
+            continue
+        try:
+            with zipfile.ZipFile(z) as zf:
+                total = 0
+                for info in zf.infolist():
+                    name = os.path.basename(info.filename.replace("\\", "/"))
+                    if info.is_dir() or not name or name.startswith(".") or name.lower().endswith(".zip"):
+                        continue
+                    total += info.file_size
+                    dest = os.path.join(folder, name)
+                    if total > 2 << 30 or os.path.exists(dest):
+                        continue
+                    with zf.open(info) as src, open(dest + ".part", "wb") as dst:
+                        shutil.copyfileobj(src, dst)
+                    os.replace(dest + ".part", dest)
+                    out += 1
+            with open(mark, "w", encoding="utf-8") as f:
+                f.write(f"Ultra Front End unpacked {os.path.basename(z)} into this folder. Delete this note to unpack it again.\n")
+            BIOS_UNPACKED[z] = stamp
+        except (OSError, zipfile.BadZipFile, RuntimeError):  # (a password-protected zip is a RuntimeError)
+            BIOS_UNPACKED[z] = stamp
+    return out
+
+
 def bios_found(system, folder):
     """For each of the system's needs, the files in its BIOS folder that are it."""
     needs = BIOS_NEEDS.get(system, [])
+    if needs and folder and os.path.isdir(folder):
+        unpack_bios_zips(folder)
     try:
         files = bios_files(folder) if folder and os.path.isdir(folder) else []
     except OSError:
