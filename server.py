@@ -5778,14 +5778,19 @@ def guarded_game_in_front():
         return False  # Steam's own games get the controller as a gamepad: nothing to keep out
     running = RUNNING.get(session["game"])
     tree = game_tree(running.pid) if running else set()
-    if not tree:
-        return False
     import ctypes
     user32 = ctypes.windll.user32
     user32.GetForegroundWindow.restype = ctypes.c_void_p
     pid = ctypes.c_ulong()
     user32.GetWindowThreadProcessId(ctypes.c_void_p(user32.GetForegroundWindow()), ctypes.byref(pid))
-    return pid.value in tree
+    if pid.value in tree:
+        return True
+    # still running from before the helper restarted (an update mid-game), so not followed: the program in front is the
+    # game's emulator, or the game's own program, windowed or not
+    L = g.get("launch") or {}
+    program = L.get("emu") or L.get("exe") or ""
+    image = process_image(pid.value) if pid.value else ""
+    return bool(program and image) and os.path.normcase(os.path.abspath(image)) == os.path.normcase(os.path.abspath(program))
 
 
 def watch_key_guard():
