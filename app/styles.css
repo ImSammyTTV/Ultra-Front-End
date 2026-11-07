@@ -1239,3 +1239,8 @@ body.zone-2 #tabs, body.tabs-peek #tabs { pointer-events: auto; }
 .sp-row.sp-mix.fresh { animation: spMixIn .35s var(--ease) backwards; }  /* only as it opens, not on every volume step */
 @keyframes spMixIn { from { opacity: 0; transform: translateY(-1.2vh); } }
 .sp-chev { font-style: normal; font-size: 1.3vh; opacity: .6; margin-left: .8vh; }
+/* the UI Volume switch */
+.sp-toggle { display: inline-block; vertical-align: middle; position: relative; width: 3.6vh; height: 2vh; margin-left: 1.2vh; border-radius: 99px; background: rgba(255, 255, 255, .25); transition: background .2s; }
+.sp-toggle i { position: absolute; top: .25vh; left: .25vh; width: 1.5vh; height: 1.5vh; border-radius: 50%; background: #fff; transition: transform .2s var(--ease); }
+.sp-toggle.on { background: var(--accent); }
+.sp-toggle.on i { transform: translateX(1.6vh); }

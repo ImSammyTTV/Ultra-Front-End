@@ -2140,8 +2140,10 @@ function sysRows() {
     ...(SP.song ? [{ id: 'music', run: sysMedia }] : []),  // the song that's playing, then its volume
     ...(SP.volume === null ? [] : [{ id: 'volume', run: () => { SP.mixOpen = !SP.mixOpen; SP.mixFresh = SP.mixOpen; tick(700, .04); renderSys(); SP.mixFresh = false; } }]),  // A opens the game, music and app volumes under it
     // each kind of sound on its own, like a console's mixer: only the ones playing right now
-    ...[['game', 'Game'], ['media', 'Music and video'], ['ui', 'User Interface sounds']].filter(([k]) => SP.mixOpen && SP.qa?.mixer?.[k] != null)
-      .map(([k, label]) => ({ id: 'mix-' + k, mix: k, label, run: () => {} })),
+    ...(!SP.mixOpen ? [] : [
+      ...[['media', 'Music Volume'], ['game', 'Game Volume']].filter(([k]) => SP.qa?.mixer?.[k] != null).map(([k, label]) => ({ id: 'mix-' + k, mix: k, label, run: () => {} })),
+      // the app's own sounds: their level, and A turns them off and on
+      { id: 'mix-ui', mix: 'ui', label: 'UI Volume', run: () => { S.sound = !S.sound; save(); if (S.sound) tick(760, .08); renderSys(); } }]),
     // where the sound plays: A opens the list of speakers, headsets and TVs (left and right still step through them)
     ...(SP.qa?.outputs?.length ? [{ id: 'output', ic: /head|ear|airpod|buds|bose|qc/i.test(SP.qa.outputs.find(o => o.on)?.name || '') ? 'headset' : 'speaker', label: 'Sound output',
       sub: shortDev(SP.qa.outputs.find(o => o.on)?.name || 'Choose one'), value: '›', run: () => sysView('output') }] : []),
@@ -2193,9 +2195,10 @@ function renderSys() {
   $('#syspanel .sp-time').innerHTML = `<b>${esc(timeIn(z))}</b><span>${esc(dateIn(z))}</span>`;
   SP.p = clamp(SP.p || 0, 0, powerChoices().length - 1);
   $('#syspanel .sp-list').innerHTML = SP.rows.map((r, i) => r.head ? `<div class="sp-head">${esc(r.head)}</div>` : r.mix
-    ? `<div class="sp-row sp-vol sp-mix${SP.mixFresh ? ' fresh' : ''}" data-i="${i}" data-mix="${r.mix}">${icon(r.mix === 'game' ? 'pad' : r.mix === 'media' ? 'music' : 'volume')}<div class="sp-text"><div>${esc(r.label)}<b>${SP.qa.mixer[r.mix]}</b></div><div class="hub-bar"><i style="width:${SP.qa.mixer[r.mix]}%"></i></div></div></div>`
+    ? (() => { const ui = r.mix === 'ui', v = ui ? (S.uiVolume ?? 60) : SP.qa.mixer[r.mix];
+        return `<div class="sp-row sp-vol sp-mix${SP.mixFresh ? ' fresh' : ''}${ui && !S.sound ? ' off' : ''}" data-i="${i}" data-mix="${r.mix}">${icon(r.mix === 'game' ? 'pad' : r.mix === 'media' ? 'music' : 'volume')}<div class="sp-text"><div>${esc(r.label)}<b>${ui ? `${v}<em class="sp-toggle${S.sound ? ' on' : ''}"><i></i></em>` : v}</b></div><div class="hub-bar"><i style="width:${ui && !S.sound ? 0 : v}%"></i></div></div></div>`; })()
     : r.id === 'volume'
-    ? `<div class="sp-row sp-vol${SP.mixOpen ? ' open' : ''}" data-i="${i}">${icon(SP.muted ? 'mute' : 'volume')}<div class="sp-text"><div>Volume<b>${SP.muted ? 'Muted' : SP.volume}${SP.qa?.mixer && Object.values(SP.qa.mixer).some(v => v != null) ? `<em class="sp-chev">${SP.mixOpen ? '▴' : '▾'}</em>` : ''}</b></div><div class="hub-bar"><i style="width:${SP.muted ? 0 : SP.volume}%"></i></div></div></div>`
+    ? `<div class="sp-row sp-vol${SP.mixOpen ? ' open' : ''}" data-i="${i}">${icon(SP.muted ? 'mute' : 'volume')}<div class="sp-text"><div>Volume<b>${SP.muted ? 'Muted' : SP.volume}<em class="sp-chev">${SP.mixOpen ? '▴' : '▾'}</em></b></div><div class="hub-bar"><i style="width:${SP.muted ? 0 : SP.volume}%"></i></div></div></div>`
     : r.id === 'music'
     ? `<div class="sp-row sp-music" data-i="${i}">${SP.song.art ? `<img class="sp-art" src="${esc(SP.song.art)}" alt="" onerror="this.replaceWith(document.createRange().createContextualFragment(ICON_MUSIC))">` : icon('music')}<div class="sp-text"><div>${esc(SP.song.title)}</div><small>${esc([SP.song.playing === false ? 'Paused' : 'Now playing', SP.song.artist].filter(Boolean).join(' · '))}</small></div>`
       + `<div class="sp-mbtns">${[MEDIA_ICONS[0], MEDIA_ICONS[1][SP.song.playing === false ? 0 : 1], MEDIA_ICONS[2]].map((svg, j) => `<span class="sp-mb${j === SP.m ? ' on' : ''}" data-j="${j}">${svg}</span>`).join('')}</div></div>`
@@ -2245,6 +2248,7 @@ function volStep(dir, row) {
 }
 function sysSide(dir) {
   const row = SP.rows[SP.i]?.id;
+  if (row === 'mix-ui') { S.uiVolume = clamp((S.uiVolume ?? 60) + dir * volStep(dir, row), 0, 100); save(); tick(760, .05); return renderSys(); }
   if (row?.startsWith('mix-')) return mixDo(row.slice(4), dir * volStep(dir, row));
   if (row === 'volume') {  // 1 at a time; held, it speeds up (2, then 4 a step)
     return setSound({ delta: dir * volStep(dir, row) });
@@ -2306,6 +2310,7 @@ $('#syspanel').addEventListener('wheel', e => {
   const t = performance.now();
   if (Math.abs(e.deltaY) <= 4) return;
   const mix = e.target.closest('.sp-mix')?.dataset.mix;
+  if (mix === 'ui') { S.uiVolume = clamp((S.uiVolume ?? 60) + (e.deltaY < 0 ? 1 : -1), 0, 100); save(); return renderSys(); }
   if (mix) return mixDo(mix, e.deltaY < 0 ? 1 : -1);
   if (e.target.closest('.sp-vol')) return setSound({ delta: e.deltaY < 0 ? 1 : -1 });  // over the volume: the wheel turns it up and down
   if (t - (SP.wheelAt || 0) > 90) { SP.wheelAt = t; sysMove(Math.sign(e.deltaY)); }  // elsewhere it moves like up and down
