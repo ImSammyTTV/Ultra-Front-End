@@ -187,8 +187,8 @@ C:\Ultra-Front-End\ROMs
 │   └── My Game.iso
 ├── GameCube
 │   └── …
-└── Switch
-    ├── BIOS          ← prod.keys and firmware
+└── PS1
+    ├── BIOS          ← scph5501.bin and the other PS1 BIOS files
     └── …
 ```
 
@@ -224,7 +224,7 @@ installed, and for Epic, connect the account in **Settings → Accounts**. For a
 <summary><b>An emulated game won't start</b></summary>
 
 Open **Emulators**, choose the console, and check that its emulator is installed and its BIOS files are in place: the console's
-page says what's missing. Some consoles (PS1, PS2, Saturn, Switch and others) can't start any game without them.
+page says what's missing. Some consoles (PS1, PS2, Saturn and others) can't start any game without them.
 </details>
 
 <details>
