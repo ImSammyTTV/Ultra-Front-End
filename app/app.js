@@ -1431,18 +1431,21 @@ $('#reader .r-zoom').addEventListener('click', () => readerZoom(0));
 function readerUpdate() { closeReader(); updateNow('install'); }
 $('#reader').addEventListener('click', e => { if (e.target.closest('.r-update')) readerUpdate(); });
 function closeReader() { R.open = false; document.body.classList.remove('reader-open'); tick(420, .06); }
-// Scrolling glides: each press (and the steady repeats while a direction is held) moves a target, and the page eases
-// towards it every frame, so holding down reads as one smooth scroll rather than a jump per repeat
+// Scrolling with a controller glides at a steady speed for as long as the direction is held (the presses repeat while
+// it's held: each one keeps the glide going), then eases to a stop. A single press moves a short way.
 function readerScroll(steps) {
-  const el = $('#reader .r-scroll'), max = el.scrollHeight - el.clientHeight;
-  if (!R.glide) R.target = el.scrollTop;
-  R.target = clamp(R.target + steps * innerHeight * .14, 0, max);
+  const el = $('#reader .r-scroll');
+  R.dir = Math.sign(steps); R.held = performance.now(); R.speed = Math.max(R.speed || 0, Math.abs(steps) > 1 ? 3 : 1);
   if (R.glide) return;
-  const step = () => {
-    const d = R.target - el.scrollTop;
+  let v = 0, last = performance.now();
+  const step = now => {
+    const dt = Math.min(50, now - last); last = now;
+    const holding = now - R.held < 420;  // the first repeat comes about 0.4 s after the press
+    const want = holding ? R.dir * innerHeight * 1.1 * R.speed : 0;  // screen heights per second
+    v += (want - v) * Math.min(1, dt / (holding ? 120 : 110));
     const before = el.scrollTop;
-    el.scrollTop += Math.sign(d) * Math.max(1, Math.abs(d) * .16);
-    if (!R.open || Math.abs(d) < 1 || el.scrollTop === before) { R.glide = 0; return; }
+    el.scrollTop += v * dt / 1000;
+    if (!R.open || (!holding && Math.abs(v) < 20) || (el.scrollTop === before && Math.abs(v) > 20 && now - R.held > 60)) { R.glide = 0; R.speed = 0; return; }
     R.glide = requestAnimationFrame(step);
   };
   R.glide = requestAnimationFrame(step);
