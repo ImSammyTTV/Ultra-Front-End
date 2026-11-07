@@ -68,6 +68,8 @@ function addonApi(id) {
     quickAccess(rows) { ADDONS.qa[id] = rows; return () => delete ADDONS.qa[id]; },
     refresh: () => { if (typeof SP !== 'undefined' && SP.open) renderSys(); },
     icon: name => icon(name),
+    // the app's own server, for an add-on that has a part there (like Bambu Lab's printer connection)
+    request: (path, body) => api(path, body),
   };
   ctx._cleanup = () => {
     own.off.forEach(f => f()); own.timers.forEach(t => { clearInterval(t); clearTimeout(t); });

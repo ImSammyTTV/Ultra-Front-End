@@ -4103,6 +4103,134 @@ def album_thumb(capture_id):
     return out
 
 
+# ---------------------------------------------------------------- Bambu Lab printers, on the local network
+# For the Bambu Lab add-on. The printer reports its state over MQTT (TLS, port 8883) on the home network: user
+# "bblp", the printer's access code as the password, reports on device/<serial>/report. It's only read here: the
+# printer is asked for its full state once ("pushall"), then sends changes as they happen. Its certificate is its own
+# (not from a public authority), so it isn't checked; the access code stays on this PC (bambu.json in the data folder).
+BAMBU = {"print": {}, "connected": False, "error": "", "seen": 0, "thread": None, "stop": False}
+
+
+def bambu_config():
+    return load("bambu.json", {})
+
+
+def _mqtt_str(text):
+    b = text.encode("utf-8")
+    return len(b).to_bytes(2, "big") + b
+
+
+def _mqtt_packet(kind, body):
+    n, size = len(body), b""
+    while True:
+        byte, n = n % 128, n // 128
+        size += bytes([byte | (0x80 if n else 0)])
+        if not n:
+            return bytes([kind]) + size + body
+
+
+def _merge(into, new):
+    for k, v in new.items():
+        if isinstance(v, dict) and isinstance(into.get(k), dict):
+            _merge(into[k], v)
+        else:
+            into[k] = v
+
+
+def bambu_loop():
+    import socket, ssl
+    while not BAMBU["stop"]:
+        cfg = bambu_config()
+        if not (cfg.get("ip") and cfg.get("serial") and cfg.get("code")):
+            BAMBU["connected"] = False
+            time.sleep(5)
+            continue
+        sock = None
+        try:
+            ctx = ssl.create_default_context()
+            ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE
+            sock = ctx.wrap_socket(socket.create_connection((cfg["ip"], 8883), timeout=10))
+            sock.sendall(_mqtt_packet(0x10, _mqtt_str("MQTT") + bytes([4, 0xC2]) + (60).to_bytes(2, "big")
+                                      + _mqtt_str(f"ufe-{os.getpid()}") + _mqtt_str("bblp") + _mqtt_str(cfg["code"])))
+            def read(n):
+                out = b""
+                while len(out) < n:
+                    chunk = sock.recv(n - len(out))
+                    if not chunk:
+                        raise ConnectionError("The printer closed the connection")
+                    out += chunk
+                return out
+            def packet():
+                head, mult, size = read(1)[0], 1, 0
+                while True:
+                    b = read(1)[0]
+                    size += (b & 127) * mult
+                    mult *= 128
+                    if not b & 128:
+                        return head, read(size)
+            head, body = packet()
+            if head >> 4 != 2 or len(body) < 2 or body[1]:
+                raise ConnectionError("The printer turned the access code down" if len(body) > 1 and body[1] in (4, 5) else "The printer didn't answer")
+            serial = cfg["serial"].strip()
+            sock.sendall(_mqtt_packet(0x82, (1).to_bytes(2, "big") + _mqtt_str(f"device/{serial}/report") + b"\x00"))
+            ask = json.dumps({"pushing": {"sequence_id": "0", "command": "pushall"}}).encode()
+            sock.sendall(_mqtt_packet(0x30, _mqtt_str(f"device/{serial}/request") + ask))
+            BAMBU.update(connected=True, error="")
+            sock.settimeout(30)
+            last_ping = time.time()
+            while not BAMBU["stop"] and bambu_config() == cfg:
+                if time.time() - last_ping > 25:
+                    sock.sendall(b"\xc0\x00"); last_ping = time.time()
+                try:
+                    head, body = packet()
+                except socket.timeout:
+                    continue
+                if head >> 4 == 3:
+                    n = int.from_bytes(body[:2], "big")
+                    try:
+                        msg = json.loads(body[2 + n + (2 if head & 6 else 0):])
+                    except ValueError:
+                        continue
+                    if isinstance(msg.get("print"), dict):
+                        _merge(BAMBU["print"], msg["print"])
+                        BAMBU["seen"] = time.time()
+        except Exception as e:
+            BAMBU.update(connected=False, error=str(e) or type(e).__name__)
+            time.sleep(10)
+        finally:
+            try:
+                sock and sock.close()
+            except Exception:
+                pass
+
+
+def bambu_view():
+    """What the add-on shows: the print's state, how far along it is and how long is left."""
+    if not BAMBU["thread"]:
+        BAMBU["thread"] = threading.Thread(target=bambu_loop, daemon=True)
+        BAMBU["thread"].start()
+    cfg, p = bambu_config(), BAMBU["print"]
+    num = lambda k: p.get(k) if isinstance(p.get(k), (int, float)) else None
+    return {"setup": bool(cfg.get("ip") and cfg.get("serial") and cfg.get("code")), "ip": cfg.get("ip", ""), "serial": cfg.get("serial", ""),
+            "connected": BAMBU["connected"], "error": BAMBU["error"], "fresh": time.time() - BAMBU["seen"] < 120,
+            "state": p.get("gcode_state") or "", "percent": num("mc_percent"), "remaining": num("mc_remaining_time"),
+            "layer": num("layer_num"), "layers": num("total_layer_num"), "name": p.get("subtask_name") or "",
+            "nozzle": num("nozzle_temper"), "nozzleTarget": num("nozzle_target_temper"), "bed": num("bed_temper"), "bedTarget": num("bed_target_temper")}
+
+
+def bambu_setup(body):
+    cfg = bambu_config()
+    for k in ("ip", "serial", "code"):
+        if k in body:
+            v = str(body[k] or "").strip()
+            if k == "ip" and v and not re.fullmatch(r"[\w.\-]+", v):
+                raise ValueError("That doesn't look like the printer's address")
+            cfg[k] = v
+    store("bambu.json", cfg)
+    BAMBU["print"] = {}
+    return bambu_view()
+
+
 # ---------------------------------------------------------------- exporting captures: trimmed, resized, for sharing
 # Exports go to the person's own Pictures and Videos folders (in "Ultra Front End"), so they're easy to find and post.
 # Screenshot sizes fill the frame (cropped from the middle), as the sites show them. Videos are made with ffmpeg in
@@ -9763,6 +9891,8 @@ class Handler(SimpleHTTPRequestHandler):
             if not g:
                 return self.reply({"error": "Game not found"}, 404)
             return self.reply(game_details(g))
+        if path == "/api/bambu":
+            return self.reply(bambu_view())
         if path == "/api/album/presets":
             return self.reply({"screenshot": [{"id": k, "label": v[0]} for k, v in SHOT_PRESETS.items()],
                                "video": [{"id": k, "label": v[0]} for k, v in VIDEO_PRESETS.items()]})
@@ -9981,6 +10111,8 @@ class Handler(SimpleHTTPRequestHandler):
             if path == "/api/album/delete":
                 delete_capture(body.get("id"))
                 return self.reply({"ok": True})
+            if path == "/api/bambu":  # {ip?, serial?, code?}: the printer the Bambu Lab add-on shows
+                return self.reply(bambu_setup(body))
             if path == "/api/album/export":  # {id, preset, start?, end?}: a trimmed or resized copy for sharing
                 return self.reply(export_view(export_capture(body.get("id"), str(body.get("preset") or "original"), body.get("start"), body.get("end"))))
             if path == "/api/album/reveal":  # shows an export in its folder

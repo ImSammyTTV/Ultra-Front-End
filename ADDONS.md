@@ -105,6 +105,7 @@ api.on('game:start', ({ game }) => { ... });
 | `api.toast(text, ms)` | a short message at the bottom of the screen |
 | `api.ask(label, done)` | the on-screen keyboard, for typing something in |
 | `api.openSettings()` | opens Settings |
+| `await api.request(path, body)` | the app's own server (GET without a body, POST with one), for an add-on with a part on the server, like Bambu Lab's `/api/bambu` |
 
 ### Saving things
 
