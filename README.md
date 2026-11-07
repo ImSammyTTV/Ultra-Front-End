@@ -178,11 +178,10 @@ failed. Updating never removes them.
 </details>
 
 <details>
-<summary><b>How copies are counted</b></summary>
+<summary><b>Usage stats</b></summary>
 
-To see how many people use Ultra Front End, each copy downloads a tiny file from this project's GitHub page once a day.
-That's all it does: no names, games or other details are sent. You can turn it off in
-**Settings › About › Count this copy**.
+Ultra Front End checks in once a day so I can see roughly how many people are playing with it. It only counts copies:
+nothing about you or your games is included. To opt out, turn off **Settings › About › Count this copy**.
 </details>
 
 **Found a bug or have an idea?** [Open an issue](https://github.com/ImSammyTTV/Ultra-Front-End/issues/new). Say what
