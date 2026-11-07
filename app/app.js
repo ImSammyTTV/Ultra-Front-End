@@ -2108,30 +2108,43 @@ async function sysMedia() {
 }
 function sysRows() {
   const now = LIB.find(g => RUN.has(g.id));
+  // grouped like a console's quick menu: a heading over each set, skipped when moving
+  const group = (head, rows) => rows.length ? [{ head }, ...rows] : [];
   return [
+    ...group('Games', [
     ...(now ? [{ ic: 'pad', label: now.title, sub: 'Running · A resumes', run: () => { closeSys(); resumeGame(now); } }] : []),
+    // the last games played, to jump straight into one
+    ...LIB.filter(g => !g.hidden && g.lastPlayed && !RUN.has(g.id)).sort((a, b) => b.lastPlayed - a.lastPlayed).slice(0, 3)
+      .map((g, n) => ({ cover: g.cover, ic: 'pad', label: g.title, sub: platformOf(g), run: () => { closeSys(); closePages(); launchGame(g); } })),
+    ]),
+    ...group('Sound', [
     ...(SP.volume === null ? [] : [{ id: 'volume', run: () => setSound({ mute: !SP.muted }) }]),
+    ...(SP.song ? [{ id: 'music', run: sysMedia }] : []),  // the song that's playing
     // where the sound plays: A (or left / right) moves to the next speaker, headset or TV
     ...(SP.qa?.outputs?.length > 1 ? [{ id: 'output', ic: /head|ear|airpod|buds/i.test(SP.qa.outputs.find(o => o.on)?.name || '') ? 'headset' : 'speaker', label: 'Sound output',
       sub: (SP.qa.outputs.find(o => o.on)?.name || 'Choose one').replace(/\s*\([^)]*\)\s*$/, ''), value: `${SP.qa.outputs.findIndex(o => o.on) + 1} of ${SP.qa.outputs.length}`, run: () => sysOutput(1) }] : []),
     // Bluetooth headphones and speakers show up above once they're connected; this connects one that's paired but off
     { ic: 'headset', label: 'Bluetooth audio', sub: 'Connect Bluetooth headphones or a speaker, then choose it in Sound output', run: () => qaDo({ action: 'bluetooth' }).then(() => toast('Opened Windows’ Bluetooth settings')) },
-    ...(SP.qa?.brightness != null ? [{ id: 'bright', ic: 'sun', label: 'Brightness', value: `${SP.qa.brightness}%`, sub: 'Left and right change it', run: () => {} }] : []),
-    ...(SP.qa?.wifi ? [{ ic: 'wifi', label: 'Wi-Fi', sub: SP.qa.wifi.connected ? `${SP.qa.wifi.name}${SP.qa.wifi.signal != null ? ` · ${SP.qa.wifi.signal}% signal` : ''}` : 'Not connected · A to choose a network',
-      run: () => qaDo({ action: 'wifi' }).then(() => toast('Opened Windows’ Wi-Fi list')) }] : []),
-    { ic: SP.qa?.dnd ? 'bellOff' : 'bell', label: 'Do not disturb', value: SP.qa?.dnd ? 'On' : 'Off', sub: 'Hides Windows’ notification pop-ups while you play', run: () => qaDo({ action: 'dnd', on: !SP.qa?.dnd }) },
+    ]),
+    ...group('Controllers', [
     // each controller's battery; a wireless Xbox-style one can be turned off from here
     ...(SP.qa?.pads || []).map((p, n) => ({ ic: 'pad', label: (SP.qa.pads.length > 1 ? `Controller ${n + 1}` : 'Controller'), value: p.battery ? p.battery[0].toUpperCase() + p.battery.slice(1) : '',
       sub: p.wireless ? (SP.confirm === 'pad' + p.slot ? 'Press A again to turn it off' : 'A turns it off') : p.battery === 'wired' ? 'Plugged in' : '',
       run: p.wireless ? () => SP.confirm === 'pad' + p.slot ? qaDo({ action: 'padoff', slot: p.slot }).then(() => toast('Controller turned off')) : (SP.confirm = 'pad' + p.slot, renderSys()) : null })),
     ...(SP.qa?.steamBattery != null ? [{ ic: 'pad', label: 'Steam Controller', value: `${SP.qa.steamBattery}%`, sub: 'Battery' }] : []),
-    // the last games played, to jump straight into one
-    ...LIB.filter(g => !g.hidden && g.lastPlayed && !RUN.has(g.id)).sort((a, b) => b.lastPlayed - a.lastPlayed).slice(0, 3)
-      .map((g, n) => ({ cover: g.cover, ic: 'pad', over: n === 0 ? 'Recent' : '', label: g.title, sub: platformOf(g), run: () => { closeSys(); closePages(); launchGame(g); } })),
+    ]),
+    ...group('Network and display', [
+    ...(SP.qa?.wifi ? [{ ic: 'wifi', label: 'Wi-Fi', sub: SP.qa.wifi.connected ? `${SP.qa.wifi.name}${SP.qa.wifi.signal != null ? ` · ${SP.qa.wifi.signal}% signal` : ''}` : 'Not connected · A to choose a network',
+      run: () => qaDo({ action: 'wifi' }).then(() => toast('Opened Windows’ Wi-Fi list')) }] : []),
+    { ic: SP.qa?.dnd ? 'bellOff' : 'bell', label: 'Do not disturb', value: SP.qa?.dnd ? 'On' : 'Off', sub: 'Hides Windows’ notification pop-ups while you play', run: () => qaDo({ action: 'dnd', on: !SP.qa?.dnd }) },
+    ...(SP.qa?.brightness != null ? [{ id: 'bright', ic: 'sun', label: 'Brightness', value: `${SP.qa.brightness}%`, sub: 'Left and right change it', run: () => {} }] : []),
+    ]),
+    ...group('More', [
     { ic: 'friends', label: 'Friends', sub: SP.friends || '', run: () => { closeSys(); closePages(); openHub('friends'); } },
     { ic: 'settings', label: 'Settings', run: () => { closeSys(); closePages(); openPanel(); } },
-    ...(SP.song ? [{ id: 'music', run: sysMedia }] : []),  // the song, just above the power buttons
-    { id: 'power', run: () => powerPick(powerChoices()[SP.p]) },
+
+    ]),
+    { id: 'power', run: () => powerPick(powerChoices()[SP.p]) },  // the power buttons, always last
   ];
 }
 // Quick Access can open over a full page (News, Library, Search, Album...). What it opens takes that page's place: left
@@ -2147,10 +2160,11 @@ function closePages() {
 function renderSys() {
   SP.rows = sysRows();
   SP.i = clamp(SP.i, 0, SP.rows.length - 1);
+  while (SP.rows[SP.i]?.head && SP.i < SP.rows.length - 1) SP.i++;
   const z = PROFILE.timezone;
   $('#syspanel .sp-time').innerHTML = `<b>${esc(timeIn(z))}</b><span>${esc(dateIn(z))}${SP.battery != null ? ` · Controller ${SP.battery}%` : ''}</span>`;
   SP.p = clamp(SP.p || 0, 0, powerChoices().length - 1);
-  $('#syspanel .sp-list').innerHTML = SP.rows.map((r, i) => r.id === 'volume'
+  $('#syspanel .sp-list').innerHTML = SP.rows.map((r, i) => r.head ? `<div class="sp-head">${esc(r.head)}</div>` : r.id === 'volume'
     ? `<div class="sp-row sp-vol" data-i="${i}">${icon(SP.muted ? 'mute' : 'volume')}<div class="sp-text"><div>Volume<b>${SP.muted ? 'Muted' : SP.volume}</b></div><div class="hub-bar"><i style="width:${SP.muted ? 0 : SP.volume}%"></i></div></div></div>`
     : r.id === 'music'
     ? `<div class="sp-row sp-music" data-i="${i}">${SP.song.art ? `<img class="sp-art" src="${esc(SP.song.art)}" alt="" onerror="this.replaceWith(document.createRange().createContextualFragment(ICON_MUSIC))">` : icon('music')}<div class="sp-text"><div>${esc(SP.song.title)}</div><small>${esc([SP.song.playing === false ? 'Paused' : 'Now playing', SP.song.artist].filter(Boolean).join(' · '))}</small></div>`
@@ -2180,7 +2194,9 @@ async function openSys() {
 }
 function closeSys() { SP.open = false; document.body.classList.remove('sys-open'); tick(420, .06); }
 function sysMove(dir) {
-  const n = clamp(SP.i + dir, 0, SP.rows.length - 1);
+  let n = clamp(SP.i + dir, 0, SP.rows.length - 1);
+  while (SP.rows[n]?.head && n > 0 && n < SP.rows.length - 1) n += dir;  // headings aren't stops
+  if (SP.rows[n]?.head) n = SP.i;
   if (n !== SP.i) { SP.i = n; tick(700, .03); if (SP.confirm) { SP.confirm = null; renderSys(); } else sysFocus(); }
 }
 async function setSound(change) {
