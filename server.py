@@ -4116,7 +4116,7 @@ def user_addons():
     for name in sorted(os.listdir(USER_ADDONS)):
         folder = os.path.join(USER_ADDONS, name)
         try:
-            with open(os.path.join(folder, "addon.json"), encoding="utf-8") as f:
+            with open(os.path.join(folder, "addon.json"), encoding="utf-8-sig") as f:  # Notepad may add a BOM
                 e = json.load(f)
         except (OSError, ValueError):
             continue
