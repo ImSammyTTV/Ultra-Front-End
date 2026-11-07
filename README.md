@@ -15,30 +15,30 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ImSammyTTV/Ultra-Front-End/releases/latest"><b>⬇️ Download</b></a> ·
-  <a href="#-quick-start"><b>🚀 Quick start</b></a> ·
-  <a href="#-controls"><b>🎮 Controls</b></a> ·
-  <a href="#%EF%B8%8F-roms-and-bios"><b>🗂️ ROMs and BIOS</b></a> ·
-  <a href="#-help"><b>❓ Help</b></a> ·
-  <a href="https://github.com/ImSammyTTV/Ultra-Front-End/issues/new"><b>🐛 Report a bug</b></a>
+  <a href="https://github.com/ImSammyTTV/Ultra-Front-End/releases/latest"><b>Download</b></a> ·
+  <a href="#quick-start"><b>Quick start</b></a> ·
+  <a href="#controls"><b>Controls</b></a> ·
+  <a href="#roms-and-bios"><b>ROMs and BIOS</b></a> ·
+  <a href="#help"><b>Help</b></a> ·
+  <a href="https://github.com/ImSammyTTV/Ultra-Front-End/issues/new"><b>Report a bug</b></a>
 </p>
 
 ---
 
-## ✨ Features
+## Features
 
 <table>
 <tr>
 <td width="50%" valign="top">
 
-### 🕹️ Every game in one place
+### Every game in one place
 **Steam, Epic Games, EA app, Ubisoft Connect, GOG, Rockstar Games and Battle.net**, plus your own games folders and
 ROMs. Store games start through their own launcher, so sign-in, updates and cloud saves still work.
 
 </td>
 <td width="50%" valign="top">
 
-### 🧰 Emulators set up for you
+### Emulators set up for you
 Pick the consoles you play and their emulators are set up for you. You can add new ones any time in
 **Settings › Systems**.
 
@@ -47,14 +47,14 @@ Pick the consoles you play and their emulators are set up for you. You can add n
 <tr>
 <td valign="top">
 
-### 🎛️ In-game menu
+### In-game menu
 Open it over any game for **volume, music, screenshots, recording** and **Close game**. While it's open, your
 controller works the menu, not the game.
 
 </td>
 <td valign="top">
 
-### 🖼️ Artwork
+### Artwork
 Covers come from Steam and libretro automatically. Connect **SteamGridDB** (free, optional) to pick any game's cover,
 background and logo, **animated ones too**.
 
@@ -63,14 +63,14 @@ background and logo, **animated ones too**.
 <tr>
 <td valign="top">
 
-### 📊 Extras
+### Extras
 A **performance overlay**, a **controller tester**, achievements, game news and an **album** of your screenshots and
 videos.
 
 </td>
 <td valign="top">
 
-### ⬆️ Keeps itself up to date
+### Keeps itself up to date
 Updates install by themselves when you're **not playing**. Choose **Main** or **Nightly** in **Settings › About**.
 It can start with Windows, ready for the Xbox button.
 
@@ -80,7 +80,7 @@ It can start with Windows, ready for the Xbox button.
 
 ---
 
-## 🚀 Quick start
+## Quick start
 
 1. **Download** `UltraFrontEnd-Setup.exe` from the [latest release](https://github.com/ImSammyTTV/Ultra-Front-End/releases/latest)
    and run it. Everything goes in `C:\Ultra-Front-End`: the app in `App`, with your `ROMs` and `Emulators` beside it.
@@ -96,7 +96,7 @@ It can start with Windows, ready for the Xbox button.
 
 ---
 
-## 🎮 Controls
+## Controls
 
 | Button | Home screen | In a game |
 |---|---|---|
@@ -112,7 +112,7 @@ A keyboard (arrow keys, **Enter**, **Esc**), a mouse and touch screens work too.
 
 ---
 
-## 🗂️ ROMs and BIOS
+## ROMs and BIOS
 
 Setup makes a folder for each console. Drop your games into the right one:
 
@@ -138,7 +138,7 @@ Zipped games are unpacked when you play them.
 
 ---
 
-## ❓ Help
+## Help
 
 <details>
 <summary><b>A game is missing</b></summary>
@@ -176,12 +176,12 @@ In `C:\Ultra-Front-End\App\data`. `errors.log` holds any errors and `emulator-in
 failed. Updating never removes them.
 </details>
 
-🐛 **Found a bug or have an idea?** [Open an issue](https://github.com/ImSammyTTV/Ultra-Front-End/issues/new). Say what
+**Found a bug or have an idea?** [Open an issue](https://github.com/ImSammyTTV/Ultra-Front-End/issues/new). Say what
 you expected and what happened, and attach `errors.log` if there is one.
 
 ---
 
-## 📄 License
+## License
 
 [MIT](LICENSE) © ImSammyTTV. Third-party software and artwork: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
