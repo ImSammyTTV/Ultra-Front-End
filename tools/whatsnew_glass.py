@@ -7,13 +7,13 @@ im = Image.open(src).convert("RGB"); a = np.asarray(im).astype(float)
 sat = a.max(2) - a.min(2); m = sat > 80
 col = a[m].mean(0) if m.any() else np.array([120, 120, 255])
 W, H = im.size
-# background: deep near-black with soft colour glows
+# background: faded black (Sam: keep it black)
 y, x = np.mgrid[0:H, 0:W]
 bg = np.zeros((H, W, 3))
-for cx, cy, r, k in ((0.25, 0.3, 0.55, 0.55), (0.8, 0.75, 0.5, 0.4)):
+for cx, cy, r, k in ((0.25, 0.3, 0.55, 0.06), (0.8, 0.75, 0.5, 0.04)):
     d = np.exp(-(((x / W - cx) ** 2 + ((y / H - cy) * H / W) ** 2) / (r * r * 0.35)))
     bg += d[..., None] * col * k
-bg += 8
+bg += 10  # a faded black, only a hint of the colour
 base = Image.fromarray(np.clip(bg, 0, 255).astype("uint8"))
 # glass panel around the content
 ys, xs = np.where(a.max(2) > 40)
