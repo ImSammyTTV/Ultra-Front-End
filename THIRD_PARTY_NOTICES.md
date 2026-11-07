@@ -94,16 +94,15 @@ The logos of the older systems, made plain white and trimmed to the artwork (the
 
 ## Controller drawings
 
-The controller drawings in `app/assets` (`pad-xbox.svg`, `pad-ps5.svg`, `pad-ps4.svg`, `pad-ps3.svg`) are traced from these photos and are shared under the same licences:
+The controller drawings in `app/assets` (`pad-xbox.svg`, `pad-ps4.svg`, `pad-ps3.svg`) are traced from these photos and are shared under the same licences:
 
 | Drawing | Traced from | By | Licence |
 |---|---|---|---|
 | pad-xbox.svg | [Xbox Series Controller](https://commons.wikimedia.org/wiki/File:Xbox_Series_Controller_Remix_Special_Edition.jpg) | DirtLover03 | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) |
-| pad-ps5.svg | [DualSense controller](https://commons.wikimedia.org/wiki/File:Playstation_5_DualSense_controller_in_Midnight_Black,_2026-02-07_(front).jpg) | Crisco 1492 | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) |
 | pad-ps4.svg | [PS4 controller](https://commons.wikimedia.org/wiki/File:PS4-controller.png) | RandompersonSWE | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) |
 | pad-ps3.svg | [DualShock 3](https://commons.wikimedia.org/wiki/File:DualShock_3_(8092015935).jpg) | phrawr | [CC BY 2.0](https://creativecommons.org/licenses/by/2.0/) |
 
-They are simplified outlines with the controls redrawn; no logos are included.
+They are simplified outlines with the controls redrawn; no logos are included. `pad-ps5.png` is an original picture made for this project with an image generator, with no logos.
 
 ## Data the app fetches
 

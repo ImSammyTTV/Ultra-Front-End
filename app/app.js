@@ -3145,7 +3145,7 @@ const INTRO = { open: false, timer: 0 };
 const PT = { open: false, timer: 0, last: null, change: 'Press something', bHeld: 0, live: '', drawn: '', pick: null, padId: '', prev: [] };
 const PT_FOOT = { '': 'Press B or Esc, or click, to leave', steam: 'Hold B for 2 seconds, or press Esc, to leave',
   pad: 'Hold B for 2 seconds, press Esc, or click, to leave · LB / RB switch drawings' };
-const PT_ART = { steam: ['controller-traced.svg', 'Steam Controller'], xbox: ['pad-xbox.svg', 'Xbox controller'], ps5: ['pad-ps5.svg', 'DualSense'],
+const PT_ART = { steam: ['controller-traced.svg', 'Steam Controller'], xbox: ['pad-xbox.svg', 'Xbox controller'], ps5: ['pad-ps5.png', 'DualSense'],
   ps4: ['pad-ps4.svg', 'DualShock 4'], ps3: ['pad-ps3.svg', 'DualShock 3'] };
 const PT_PADS = ['xbox', 'ps5', 'ps4', 'ps3'];
 // The standard Gamepad layout's buttons, as pads.json names them (17 is the touchpad on PlayStation pads, Share on Xbox ones)
