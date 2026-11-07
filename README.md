@@ -178,10 +178,11 @@ failed. Updating never removes them.
 </details>
 
 <details>
-<summary><b>Does it send anything about me?</b></summary>
+<summary><b>How copies are counted</b></summary>
 
-No. Once a day it downloads a tiny file from this project's GitHub page, so the number of downloads shows how many copies
-are in use. Nothing about you or your games is sent. Turn it off in **Settings › About › Count this copy**.
+To see how many people use Ultra Front End, each copy downloads a tiny file from this project's GitHub page once a day.
+That's all it does: no names, games or other details are sent. You can turn it off in
+**Settings › About › Count this copy**.
 </details>
 
 **Found a bug or have an idea?** [Open an issue](https://github.com/ImSammyTTV/Ultra-Front-End/issues/new). Say what
