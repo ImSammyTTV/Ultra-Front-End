@@ -2140,7 +2140,7 @@ function sysRows() {
     ...(SP.song ? [{ id: 'music', run: sysMedia }] : []),  // the song that's playing, then its volume
     ...(SP.volume === null ? [] : [{ id: 'volume', run: () => { SP.mixOpen = !SP.mixOpen; SP.mixFresh = SP.mixOpen; tick(700, .04); renderSys(); SP.mixFresh = false; } }]),  // A opens the game, music and app volumes under it
     // each kind of sound on its own, like a console's mixer: only the ones playing right now
-    ...[['game', 'Game'], ['media', 'Music and video'], ['ui', 'Ultra Front End sounds']].filter(([k]) => SP.mixOpen && SP.qa?.mixer?.[k] != null)
+    ...[['game', 'Game'], ['media', 'Music and video'], ['ui', 'UI volume']].filter(([k]) => SP.mixOpen && SP.qa?.mixer?.[k] != null)
       .map(([k, label]) => ({ id: 'mix-' + k, mix: k, label, run: () => {} })),
     // where the sound plays: A opens the list of speakers, headsets and TVs (left and right still step through them)
     ...(SP.qa?.outputs?.length ? [{ id: 'output', ic: /head|ear|airpod|buds|bose|qc/i.test(SP.qa.outputs.find(o => o.on)?.name || '') ? 'headset' : 'speaker', label: 'Sound output',
