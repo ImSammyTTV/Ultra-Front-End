@@ -2737,6 +2737,7 @@ function panelItems() {
     ...(ON_MAC ? [{ kind: 'row', ic: icon('power'), label: 'Open at login', value: onOff(startupMode(d) === 'open'), sub: 'Opens full screen when you sign in to your Mac',
       act: () => setStartup(startupMode(d) === 'open' ? 'off' : 'open') }] : []),
     ...autologonRows(d),
+    ...(/Windows/.test(navigator.userAgent) ? [{ kind: 'row', label: 'Do not disturb while playing', value: onOff(d.options.dndWhilePlaying), sub: 'Windows’ notification pop-ups stay hidden while a game is running, and come back after', act: () => setOpt('dndWhilePlaying') }] : []),
     ...(/Windows/.test(navigator.userAgent) ? [{ kind: 'row', ic: icon('pad'), label: 'Keep games on screen', value: onOff(d.options.keepOnScreen),
       sub: 'Games that minimize when the in-game menu opens are asked to stay on screen, so the menu opens without the game pausing. Steam games pick this up after Steam restarts. Games in true fullscreen may still minimize: set them to borderless window in their own settings',
       act: () => setOpt('keepOnScreen') }] : []),

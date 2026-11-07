@@ -3738,7 +3738,26 @@ def still_exe():
     return p if os.path.isfile(p) else None
 
 
+DND_BEFORE = [None]  # Do not disturb as it was before a game turned it on (Settings › General › Do not disturb while playing)
+
+
+def dnd_for_game(playing):
+    """Notification pop-ups off while a game runs, and back as they were after, when that's switched on."""
+    if not WIN or not config().get("dndWhilePlaying", False):
+        return
+    try:
+        if playing and DND_BEFORE[0] is None:
+            DND_BEFORE[0] = do_not_disturb()
+            do_not_disturb(True)
+        elif not playing and DND_BEFORE[0] is not None:
+            do_not_disturb(DND_BEFORE[0])
+            DND_BEFORE[0] = None
+    except Exception:
+        log_error()
+
+
 def session_start(game_id):
+    dnd_for_game(True)
     with SESSION_LOCK:
         sessions, now = load("sessions.json", []), time.time()
         for s in sessions:
@@ -3760,6 +3779,8 @@ def session_end(game_id=None, min_age=0):
             store("sessions.json", sessions)
     for s in ended:  # play time comes from sessions: they end however the game ends, even after the helper restarted
         record_play(s["game"], s["end"] - s["start"])
+    if ended and not open_session():
+        dnd_for_game(False)
 
 
 def open_session():
@@ -7002,7 +7023,7 @@ LOCAL_PROVIDERS = {"ea": "EA app", "ubisoft": "Ubisoft Connect", "gog": "GOG", "
 # each launcher has installed on this PC from the entries it writes to Windows' installed-programs list, and starts
 # games through the launcher so sign-in, updates and cloud saves still work.
 SERVICE_SCANS = ("ea", "ubisoft", "gog", "battlenet")   # each has an on/off option "<id>Local" (on by default)
-OPTION_KEYS = ("steamLocal", "onlineCovers", "showUninstalled", "artBackground", "guideOpens", "wiiMotion", "keepOnScreen", "usageCheckin") + tuple(p + "Local" for p in SERVICE_SCANS)
+OPTION_KEYS = ("steamLocal", "onlineCovers", "showUninstalled", "artBackground", "guideOpens", "wiiMotion", "keepOnScreen", "usageCheckin", "dndWhilePlaying") + tuple(p + "Local" for p in SERVICE_SCANS)
 SERVICE_APPS = {
     "ea": [r"C:\Program Files\Electronic Arts\EA Desktop\EA Desktop\EADesktop.exe"],
     "ubisoft": [r"C:\Program Files (x86)\Ubisoft\Ubisoft Game Launcher\UbisoftConnect.exe", r"C:\Program Files (x86)\Ubisoft\Ubisoft Game Launcher\upc.exe"],
@@ -7269,7 +7290,7 @@ def settings_view():
     chosen = set(cfg.get("systems") or []) | set(extra)
     platforms = [system_view(p, cfg, chosen) for p in ROM_FOLDERS + extra]
     services = {p: {"detected": bool(service_app(p)), "count": STATE["counts"].get(f"{LOCAL_PROVIDERS[p]} (installed)", 0)} for p in SERVICE_SCANS}
-    return {"options": {**{k: cfg.get(k, True) for k in OPTION_KEYS}, "startup": cfg.get("startup")}, "services": services, "libraries": libs, "accounts": acc,
+    return {"options": {**{k: cfg.get(k, True) for k in OPTION_KEYS}, "dndWhilePlaying": cfg.get("dndWhilePlaying", False), "startup": cfg.get("startup")}, "services": services, "libraries": libs, "accounts": acc,
             "errors": STATE["errors"], "steamDetected": bool(steam_path()), "steamSuggestedId": steam_suggested_id(),
             "localSteamCount": STATE["counts"].get("Steam (installed)", 0), "romRoot": cfg.get("romRoot") or "", "platforms": platforms,
             "emuUpdates": {"checked": EMU_UPDATES["checked"], "list": [{"name": n, "to": i.get("to", ""), "systems": i["systems"], "installer": k == "winget"}

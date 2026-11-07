@@ -36,6 +36,8 @@
   .text small { display: block; font-size: 1.9rem; color: var(--quiet); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .row.sel .text small { color: rgba(14, 16, 20, .62); }
   .value { font-weight: 400; }
+  .row.sub { margin-left: 4rem; min-height: 5.6rem; font-size: 2.6rem; }  /* Volume's own rows, folded out under it */
+  .chev { font-style: normal; font-size: 1.6rem; opacity: .6; margin-left: 1rem; }
   .bar { height: .4rem; margin-top: .8rem; border-radius: .2rem; background: rgba(255, 255, 255, .22); }
   .bar i { display: block; height: 100%; border-radius: inherit; background: #fff; }
   .sel .bar { background: rgba(14, 16, 20, .2); }
@@ -83,6 +85,7 @@ const ICON = {
   record: line('<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/>'),
   hud: line('<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>'),
   close: line('<path d="M6 6l12 12M18 6L6 18"/>'),
+  pad: line('<rect x="2.5" y="7" width="19" height="10" rx="5"/><path d="M7 10.5v3M5.5 12h3"/><circle cx="16" cy="11" r=".8"/><circle cx="18" cy="13" r=".8"/>'),
   music: line('<path d="M9 18V6l11-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>'),
 };
 const MEDIA = {
@@ -93,9 +96,29 @@ const MEDIA = {
 };
 // music: the song Windows shows ({title, artist, playing}) or null; mediaSel: previous, play/pause, next
 let music = null, mediaSel = 1, volume = null, muted = false;
+// Volume opens up (A) into the game's and the music's own volume and where the sound plays, as Quick Access does
+let qa = null, mixOpen = false;
+const qaPost = body => fetch('/api/qa', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Frontend': '1' }, body: JSON.stringify(body) }).then(r => r.json());
+const devName = n => (n || '').replace(/\s*-\s*Find My\s*$/i, '').replace(/^[^’'\s]+[’']s\s+/, '').trim() || n;
+const shortDev = n => { const m = (n || '').replace(/^\d+\s*-\s*/, '').match(/^(.*?)\s*\(([^)]*)\)\s*$/);
+  return devName(!m ? n : /^(speakers?|headphones?|headset( earphone)?|digital audio.*|realtek.*)$/i.test(m[1]) ? m[2].replace(/^\d+\s*-\s*/, '') : m[1]); };
+function mixItems() {
+  if (!mixOpen || !qa) return [];
+  return [...[['game', 'Game Volume'], ['media', 'Music Volume']].filter(([k]) => qa.mixer?.[k] != null).map(([k, label]) => ({ mix: k, label })),
+    ...(qa.outputs?.length > 1 ? [{ output: true }] : [])];
+}
+function rebuild() {  // Volume's own rows follow it
+  const cur = items[sel];
+  items = items.filter(x => !x.mix && !x.output);
+  const at = items.findIndex(x => x.volume);
+  if (at >= 0) items.splice(at + 1, 0, ...mixItems());
+  sel = Math.max(0, items.indexOf(cur));
+}
 function rowHTML(it, i) {
   const on = i === sel ? ' sel' : '';
-  if (it.volume) return `<div class="row${on}" data-i="${i}">${muted ? ICON.mute : ICON.volume}<div class="text"><div>Volume<span class="value">${muted ? 'Muted' : volume}</span></div><div class="bar"><i style="width:${muted ? 0 : volume}%"></i></div></div></div>`;
+  if (it.volume) return `<div class="row${on}" data-i="${i}">${muted ? ICON.mute : ICON.volume}<div class="text"><div>Volume<span class="value">${muted ? 'Muted' : volume}<em class="chev">${mixOpen ? '▴' : '▾'}</em></span></div><div class="bar"><i style="width:${muted ? 0 : volume}%"></i></div></div></div>`;
+  if (it.mix) { const v = qa.mixer[it.mix]; return `<div class="row sub${on}" data-i="${i}">${it.mix === 'game' ? ICON.pad : ICON.music}<div class="text"><div>${esc(it.label)}<span class="value">${v}</span></div><div class="bar"><i style="width:${v}%"></i></div></div></div>`; }
+  if (it.output) { const o = qa.outputs.find(x => x.on); return `<div class="row sub${on}" data-i="${i}">${ICON.volume}<div class="text"><div>Sound output<span class="value">${esc(shortDev(o?.name || ''))} ›</span></div></div></div>`; }
   if (it.media) return `<div class="row music${on}" data-i="${i}">${music.art ? `<img class="art" src="${esc(music.art)}" alt="">` : ICON.music}<div class="text"><div>${esc(music.title)}</div><small>${esc([music.playing ? 'Now playing' : 'Paused', music.artist].filter(Boolean).join(' · '))}</small></div>`
     + `<div class="mbtns">${[MEDIA.prev, music.playing ? MEDIA.pause : MEDIA.play, MEDIA.next].map((svg, j) => `<span class="mb${j === mediaSel ? ' on' : ''}">${svg}</span>`).join('')}</div></div>`;
   return `<div class="row${it.warn ? ' warn' : ''}${on}" data-i="${i}">${ICON[it.icon] || ''}<div class="text"><div>${esc(it.label)}${it.value ? `<span class="value">${esc(it.value)}</span>` : ''}</div></div></div>`;
@@ -112,11 +135,19 @@ function act(name) {
   if (name === 'up') sel = (sel + items.length - 1) % items.length;
   else if (name === 'down') sel = (sel + 1) % items.length;
   else if (name === 'left' || name === 'right') {
+    const d = name === 'left' ? -1 : 1;
+    if (items[sel]?.mix) { const g = items[sel].mix; qaPost({ action: 'mix', group: g, delta: d * volumeStep() }).then(r => { qa.mixer = r.mixer; draw(); }).catch(() => {}); return; }
+    if (items[sel]?.output) return nextOutput(d);
     if (items[sel]?.volume) setVolume((name === 'left' ? -1 : 1) * volumeStep());
     else if (items[sel]?.media) { mediaSel = Math.max(0, Math.min(2, mediaSel + (name === 'left' ? -1 : 1))); draw(); }
     return;
   }
-  else if (name === 'ok') return items[sel]?.volume ? undefined : items[sel]?.media ? media() : go(items[sel]);
+  else if (name === 'ok') {
+    if (items[sel]?.volume) { mixOpen = !mixOpen; rebuild(); return draw(); }
+    if (items[sel]?.output) return nextOutput(1);
+    if (items[sel]?.mix) return;
+    return items[sel]?.media ? media() : go(items[sel]);
+  }
   else if (name === 'back' || name === 'dismiss') return go(items[0]);  // dismiss: View + Start again, from the helper
   draw();
 }
@@ -127,6 +158,16 @@ const volumeStep = () => {
   volumeStep.at = t;
   return volumeStep.run < 8 ? 1 : volumeStep.run < 20 ? 2 : 4;
 };
+function nextOutput(d) {
+  const o = qa?.outputs || [], at = o.findIndex(x => x.on), next = o[(at + d + o.length) % o.length];
+  if (!next) return;
+  o.forEach(x => x.on = x === next); draw();
+  qaPost({ action: 'output', id: next.id }).then(r => { qa = { ...qa, ...r }; draw(); }).catch(() => {});
+}
+async function loadQa() {
+  try { qa = await (await fetch('/api/qa', { cache: 'no-store' })).json(); rebuild(); draw(); clock(); } catch {}
+  clearTimeout(loadQa.t); loadQa.t = setTimeout(() => document.body.classList.contains('on') && loadQa(), 8000);  // batteries read in the background arrive a little later
+}
 async function setVolume(delta) {
   try {
     const r = await (await fetch('/api/volume', delta === undefined ? { cache: 'no-store' } : { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Frontend': '1' }, body: JSON.stringify({ delta }) })).json();
@@ -192,7 +233,11 @@ async function song() {  // one at a time: each asks Windows through a PowerShel
 let zone = {}, battery = null;  // the profile's time zone, as the frontend's clock uses
 const clock = () => {
   const d = new Date();
-  $('#time').innerHTML = `<b>${esc(d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...zone }))}</b>${esc(d.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', ...zone }))}${battery != null ? ` · Controller ${battery}%` : ''}`;
+  // batteries at a glance: the controller, AirPods (left and right) and other Bluetooth headphones
+  const pods = qa?.pods, batts = [battery != null ? `Controller ${battery}%` : '',
+    pods ? `${pods.model} ${[['L', 'left'], ['R', 'right']].filter(([, k]) => pods[k] != null).map(([n, k]) => n + pods[k]).join(' ')}` : '',
+    ...(qa?.batteries || []).filter(b => !/controller/i.test(b.name) || battery == null).map(b => `${devName(b.name)} ${b.level}%`)].filter(Boolean);
+  $('#time').innerHTML = `<b>${esc(d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...zone }))}</b>${esc(d.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', ...zone }))}${batts.length ? ` · ${esc(batts.join(' · '))}` : ''}`;
 };
 fetch('/api/profile', { cache: 'no-store' }).then(r => r.json()).then(p => {
   const z = p.timezone;
@@ -217,7 +262,8 @@ async function wake() {
     { label: 'Take screenshot', action: 'screenshot', icon: 'shot' },
     { label: s.recording ? 'Stop recording' : 'Record video', action: 'record', icon: 'record' },
     { label: 'Close game', action: 'close', warn: true, icon: 'close' }];
-  draw(); clock(); setVolume();
+  mixOpen = false;
+  draw(); clock(); setVolume(); loadQa();
   document.body.classList.add('on');
   if (!started) { started = true; setInterval(clock, 5000); padLoop(); song(); }
 }
