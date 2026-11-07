@@ -5,3 +5,9 @@ pystray==0.19.5
 pillow==12.3.0
 pyinstaller==6.22.3
 windows-capture==2.0.1
+winrt-runtime==4.1.0
+winrt-Windows.Devices.Bluetooth.Advertisement==4!10.0.28000.2957
+winrt-Windows.Devices.Bluetooth==4!10.0.28000.2957
+winrt-Windows.Foundation==4!10.0.28000.2957
+winrt-Windows.Foundation.Collections==4!10.0.28000.2957
+winrt-Windows.Storage.Streams==4!10.0.28000.2957

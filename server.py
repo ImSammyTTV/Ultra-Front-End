@@ -6144,11 +6144,77 @@ def bt_batteries():
         threading.Thread(target=read, daemon=True).start()
     return BT_BATTERY["items"]
 
+# ---------------------------------------------------------------- AirPods battery, from what they broadcast nearby
+# AirPods (and Beats) keep sending a short Bluetooth Low Energy message for Apple devices near them: Apple's
+# manufacturer data (company 0x004C), message type 0x07. It holds each earbud's and the case's battery in tens of
+# percent and what's charging. Any PC can hear it without pairing or a driver; it's sent while the case is open or
+# they're in use. Written from the message's published layout (as Android's OpenPods reads it).
+PODS = {"seen": {}, "started": False}
+POD_MODELS = {0x2002: "AirPods", 0x200F: "AirPods", 0x2013: "AirPods", 0x2019: "AirPods 4", 0x201B: "AirPods 4",
+              0x200E: "AirPods Pro", 0x2014: "AirPods Pro", 0x2024: "AirPods Pro", 0x2027: "AirPods Pro 3", 0x200A: "AirPods Max",
+              0x201F: "AirPods Max"}
+
+
+def pods_decode(data):
+    """{"model", "left", "right", "case", "charging": {...}} from one message (levels 0-100, None when not reported)."""
+    if len(data) < 8 or data[0] != 0x07:
+        return None
+    model = data[3] | data[4] << 8
+    hexs = data.hex()
+    flip = (int(hexs[10], 16) & 0x02) == 0  # which nibble is the left earbud
+    level = lambda n: None if n > 10 else n * 10  # 15: not reported (out of the case, or the case is closed)
+    left, right = int(hexs[12 if flip else 13], 16), int(hexs[13 if flip else 12], 16)
+    charge = int(hexs[14], 16)
+    return {"model": POD_MODELS.get(model, "Beats" if model >> 8 == 0x20 else "AirPods"), "left": level(left), "right": level(right),
+            "case": level(int(hexs[15], 16)), "charging": {"left": bool(charge & (0b10 if flip else 0b01)), "right": bool(charge & (0b01 if flip else 0b10)),
+                                                         "case": bool(charge & 0b100)}}
+
+
+def pods_watch():
+    """Listens for AirPods' broadcasts in the background, from the first time Quick Access asks."""
+    if PODS["started"] or not WIN:
+        return
+    PODS["started"] = True
+    try:
+        from winrt.windows.devices.bluetooth.advertisement import BluetoothLEAdvertisementWatcher, BluetoothLEScanningMode
+    except Exception:
+        return
+
+    def got(_, e):
+        try:
+            for m in e.advertisement.manufacturer_data:
+                if m.company_id == 0x004C:
+                    d = pods_decode(bytes(m.data))
+                    if d:
+                        PODS["seen"][str(e.bluetooth_address)] = {**d, "rssi": e.raw_signal_strength_in_dbm, "t": time.time()}
+        except Exception:
+            pass
+    try:
+        w = BluetoothLEAdvertisementWatcher()
+        w.scanning_mode = BluetoothLEScanningMode.PASSIVE
+        w.add_received(got)
+        w.start()
+        PODS["watcher"] = w  # kept, so it keeps listening
+    except Exception:
+        log_error()
+
+
+def pods_battery():
+    """The nearest AirPods' battery, if any were heard in the last two minutes (the strongest signal: yours, not a neighbour's)."""
+    pods_watch()
+    now = time.time()
+    near = [p for p in PODS["seen"].values() if now - p["t"] < 120 and p["rssi"] > -80 and (p["left"] is not None or p["right"] is not None)]
+    if not near:
+        return None
+    p = max(near, key=lambda p: p["rssi"])
+    return {k: p[k] for k in ("model", "left", "right", "case", "charging")}
+
+
 def qa_view():
     """Everything Quick Access shows beyond volume and music, read fresh each time it opens."""
     view = {"outputs": [], "pads": [], "wifi": None, "dnd": False, "brightness": None, "bt": None}
     for k, fn in (("outputs", sound_outputs), ("pads", xinput_pads), ("wifi", wifi_status), ("dnd", do_not_disturb), ("brightness", screen_brightness),
-                  ("bt", bt_audio_devices), ("batteries", bt_batteries)):
+                  ("bt", bt_audio_devices), ("batteries", bt_batteries), ("pods", pods_battery)):
         try:
             view[k] = fn()
         except Exception:

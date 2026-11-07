@@ -2151,6 +2151,9 @@ function sysRows() {
       sub: p.wireless ? (SP.confirm === 'pad' + p.slot ? 'Press A again to turn it off' : 'A turns it off') : p.battery === 'wired' ? 'Plugged in' : '',
       run: p.wireless ? () => SP.confirm === 'pad' + p.slot ? qaDo({ action: 'padoff', slot: p.slot }).then(() => toast('Controller turned off')) : (SP.confirm = 'pad' + p.slot, renderSys()) : null })),
     ...(SP.qa?.steamBattery != null ? [{ ic: 'pad', label: 'Steam Controller', value: `${SP.qa.steamBattery}%`, sub: 'Battery' }] : []),
+    // AirPods: from what they broadcast nearby (while the case is open or they're in use)
+    ...(SP.qa?.pods ? [{ ic: 'headset', label: SP.qa.pods.model, value: [SP.qa.pods.left, SP.qa.pods.right].filter(v => v != null).length ? `${Math.min(...[SP.qa.pods.left, SP.qa.pods.right].filter(v => v != null))}%` : '',
+      sub: [['L', 'left'], ['R', 'right'], ['Case', 'case']].filter(([, k]) => SP.qa.pods[k] != null).map(([n, k]) => `${n} ${SP.qa.pods[k]}%${SP.qa.pods.charging[k] ? ' ⚡' : ''}`).join(' · ') }] : []),
     // Bluetooth headphones and controllers that report their battery to Windows (AirPods don't)
     ...(SP.qa?.batteries || []).map(b => ({ ic: /controller|gamepad|pad/i.test(b.name) ? 'pad' : 'headset', label: devName(b.name), value: `${b.level}%`, sub: 'Battery' })),
     ]),
