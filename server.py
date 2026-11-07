@@ -5877,7 +5877,7 @@ def bt_audio_devices():
     try:
         while True:
             if (info.ulClassofDevice >> 8) & 0x1F == 4:  # major class: audio and video
-                out.append({"addr": f"{info.Address:012x}", "name": info.szName or "Bluetooth audio", "connected": bool(info.fConnected)})
+                out.append({"addr": f"{info.Address:012x}", "name": info.szName or "Bluetooth audio", "connected": bool(info.fConnected), "kind": bt_kind(info.ulClassofDevice)})
             info = DEVINFO(); info.dwSize = ctypes.sizeof(DEVINFO)
             if not bt.BluetoothFindNextDevice(W.HANDLE(h), ctypes.byref(info)):
                 break
@@ -5974,10 +5974,15 @@ def wifi_join_new(ssid, password):
     raise ValueError("Couldn't join: check the password and try again")
 
 
+
+def bt_kind(cod):
+    """What a Bluetooth audio device is, from its class: "headphones" (headsets, earbuds) or "speaker" (speakers, soundbars, TVs)."""
+    return "headphones" if (cod >> 2) & 0x3F in (1, 2, 6) else "speaker"
+
 def bt_scan():
-    """Bluetooth headphones and speakers nearby that aren't paired yet (they must be in pairing mode). Takes about 6 seconds."""
+    """Bluetooth headphones and speakers nearby that aren't paired yet (they must be in pairing mode). Takes about 10 seconds."""
     ctypes, W, bt, DEVINFO, SEARCH = _bt()
-    sp = SEARCH(ctypes.sizeof(SEARCH), 0, 0, 1, 0, 1, 5, None)  # look for new devices for 5 x 1.28 s
+    sp = SEARCH(ctypes.sizeof(SEARCH), 0, 0, 1, 0, 1, 8, None)  # look for new devices for 8 x 1.28 s
     info = DEVINFO(); info.dwSize = ctypes.sizeof(DEVINFO)
     h = bt.BluetoothFindFirstDevice(ctypes.byref(sp), ctypes.byref(info))
     out = []
@@ -5986,7 +5991,7 @@ def bt_scan():
     try:
         while True:
             if (info.ulClassofDevice >> 8) & 0x1F == 4 and not info.fRemembered and not info.fAuthenticated:
-                out.append({"addr": f"{info.Address:012x}", "name": info.szName or "Bluetooth audio device"})
+                out.append({"addr": f"{info.Address:012x}", "name": info.szName or "Bluetooth audio device", "kind": bt_kind(info.ulClassofDevice)})
             info = DEVINFO(); info.dwSize = ctypes.sizeof(DEVINFO)
             if not bt.BluetoothFindNextDevice(W.HANDLE(h), ctypes.byref(info)):
                 break
