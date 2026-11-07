@@ -9976,7 +9976,7 @@ class Handler(SimpleHTTPRequestHandler):
             return self.reply(game_details(g))
         if path == "/api/bambu":
             return self.reply(bambu_view())
-        if path == "/api/hud":
+        if path == "/api/addon-hud":
             return self.reply(hud_view())
         if path == "/api/addons":
             return self.reply({"addons": user_addons(), "folder": USER_ADDONS})
@@ -10202,7 +10202,7 @@ class Handler(SimpleHTTPRequestHandler):
             if path == "/api/album/delete":
                 delete_capture(body.get("id"))
                 return self.reply({"ok": True})
-            if path == "/api/hud":  # {id, item}: an add-on's card over the game (item null takes it away)
+            if path == "/api/addon-hud":  # {id, item}: an add-on's card over the game (item null takes it away)
                 hud_set(body.get("id"), body.get("item"))
                 return self.reply({"ok": True})
             if path == "/api/addons/open":  # the folder, to drop an add-on into

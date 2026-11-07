@@ -25,7 +25,7 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
 let last = '';
 async function tick() {
   try {
-    const r = await (await fetch('/api/hud', { cache: 'no-store' })).json();
+    const r = await (await fetch('/api/addon-hud', { cache: 'no-store' })).json();
     if (r.quit) return window.pywebview?.api?.quit();
     const html = r.hidden ? '' : r.items.map(it => `<div class="card"><svg viewBox="0 0 24 24">${ICON[it.icon] || ICON.bolt}</svg><div class="text"><div>${esc(it.text)}</div>${it.sub ? `<small>${esc(it.sub)}</small>` : ''}${it.progress != null ? `<div class="bar"><i style="width:${it.progress}%"></i></div>` : ''}</div></div>`).join('');
     if (html !== last) {

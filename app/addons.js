@@ -71,14 +71,14 @@ function addonApi(id) {
     icon: name => icon(name),
     // a card of its own over the game, in the corner: { icon, text, sub, progress 0-100 }, or null to take it away.
     // Shown only while a game runs; send it again at least every two minutes, or it's taken away (the add-on stopped).
-    hud: item => { own.hud = !!item; return api('/api/hud', { id, item: item || null }).catch(() => {}); },
+    hud: item => { own.hud = !!item; return api('/api/addon-hud', { id, item: item || null }).catch(() => {}); },
     // the app's own server, for an add-on that has a part there (like Bambu Lab's printer connection)
     request: (path, body) => api(path, body),
   };
   ctx._cleanup = () => {
     own.off.forEach(f => f()); own.timers.forEach(t => { clearInterval(t); clearTimeout(t); });
     own.els.forEach(e => e.remove()); own.styles.forEach(s => s.remove()); delete ADDONS.qa[id];
-    if (own.hud) api('/api/hud', { id, item: null }).catch(() => {});
+    if (own.hud) api('/api/addon-hud', { id, item: null }).catch(() => {});
     own.off = []; own.timers = []; own.els = []; own.styles = [];
   };
   return ctx;
