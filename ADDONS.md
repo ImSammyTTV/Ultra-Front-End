@@ -7,6 +7,17 @@ to games starting and stopping, to the song playing and to the controller, and k
 Everything an add-on adds through its `api` (listeners, timers, styles, elements, rows) is taken away when it's
 removed, so it leaves nothing behind.
 
+## Your own add-ons, loaded live
+
+You don't need to rebuild the app to try one. In **Settings › Add-ons**, choose **Add-ons folder**: it opens
+`dataddons` next to the app. Give each add-on a folder of its own there, with:
+
+- `addon.json`: the same entry as in the catalogue below, with `script` and `icon` as file names in that folder
+- the script, and its icon if it has one
+
+It shows up in Settings › Add-ons within a few seconds. Install it there, and from then on every time you save the
+script it's taken down and loaded again by itself, so you see your changes at once.
+
 ## The catalogue
 
 `app/addons/catalog.json` lists the add-ons people can install:

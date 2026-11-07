@@ -4103,6 +4103,43 @@ def album_thumb(capture_id):
     return out
 
 
+# ---------------------------------------------------------------- your own add-ons, loaded live
+# Besides the ones built in, add-ons can sit in the data folder: data/addons/<id>/addon.json (the same entry as in the
+# catalogue, with "script" and "icon" as file names in that folder) and its script. The app looks at the folder every
+# few seconds, so a new or changed add-on is there without restarting.
+USER_ADDONS = os.path.join(DATA, "addons")
+
+
+def user_addons():
+    os.makedirs(USER_ADDONS, exist_ok=True)
+    out = []
+    for name in sorted(os.listdir(USER_ADDONS)):
+        folder = os.path.join(USER_ADDONS, name)
+        try:
+            with open(os.path.join(folder, "addon.json"), encoding="utf-8") as f:
+                e = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if not isinstance(e, dict) or not re.fullmatch(r"[\w\-]+", str(e.get("id") or name)):
+            continue
+        script = os.path.basename(str(e.get("script") or "addon.js"))
+        if not os.path.isfile(os.path.join(folder, script)):
+            continue
+        stamp = max(os.path.getmtime(os.path.join(folder, f)) for f in os.listdir(folder))
+        icon = os.path.basename(str(e.get("icon") or ""))
+        q = urllib.parse.quote
+        out.append({"id": str(e.get("id") or name), "title": str(e.get("title") or name), "description": str(e.get("description") or ""),
+                    "author": str(e.get("author") or "You"), "version": str(e.get("version") or ""), "own": True,
+                    "script": f"/api/addons/file?dir={q(name)}&f={q(script)}&v={int(stamp)}",
+                    "icon": f"/api/addons/file?dir={q(name)}&f={q(icon)}" if icon else "icon.png", "stamp": int(stamp)})
+    return out
+
+
+def user_addon_file(folder, name):
+    path = os.path.realpath(os.path.join(USER_ADDONS, os.path.basename(folder or ""), os.path.basename(name or "")))
+    return path if path.startswith(os.path.realpath(USER_ADDONS) + os.sep) and os.path.isfile(path) else None
+
+
 # ---------------------------------------------------------------- Bambu Lab printers, on the local network
 # For the Bambu Lab add-on. The printer reports its state over MQTT (TLS, port 8883) on the home network: user
 # "bblp", the printer's access code as the password, reports on device/<serial>/report. It's only read here: the
@@ -9893,6 +9930,12 @@ class Handler(SimpleHTTPRequestHandler):
             return self.reply(game_details(g))
         if path == "/api/bambu":
             return self.reply(bambu_view())
+        if path == "/api/addons":
+            return self.reply({"addons": user_addons(), "folder": USER_ADDONS})
+        if path == "/api/addons/file":
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            f = user_addon_file((q.get("dir") or [""])[0], (q.get("f") or [""])[0])
+            return self.send_path(f) if f else self.send_error(404)
         if path == "/api/album/presets":
             return self.reply({"screenshot": [{"id": k, "label": v[0]} for k, v in SHOT_PRESETS.items()],
                                "video": [{"id": k, "label": v[0]} for k, v in VIDEO_PRESETS.items()]})
@@ -10110,6 +10153,10 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.reply(settings_view())
             if path == "/api/album/delete":
                 delete_capture(body.get("id"))
+                return self.reply({"ok": True})
+            if path == "/api/addons/open":  # the folder, to drop an add-on into
+                os.makedirs(USER_ADDONS, exist_ok=True)
+                subprocess.Popen(["explorer.exe", USER_ADDONS])
                 return self.reply({"ok": True})
             if path == "/api/bambu":  # {ip?, serial?, code?}: the printer the Bambu Lab add-on shows
                 return self.reply(bambu_setup(body))

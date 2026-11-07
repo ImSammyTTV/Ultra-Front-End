@@ -109,7 +109,16 @@ function addonLoad(entry) {
   if (ADDONS.defs[entry.id]) return addonMount(entry.id);
   const s = document.createElement('script');
   s.src = entry.script;
+  s.dataset.addonScript = entry.id;
   document.head.appendChild(s);  // the script registers itself with UFE.addon
+}
+// A changed add-on (its file is newer) is taken down and its script loaded again, so edits show at once
+function addonReload(entry) {
+  const on = ADDONS.loaded[entry.id];
+  addonUnmount(entry.id);
+  delete ADDONS.defs[entry.id];
+  document.querySelectorAll(`script[data-addon-script="${entry.id}"]`).forEach(x => x.remove());
+  if (on || addonState()[entry.id]?.installed) addonLoad(entry);
 }
 function addonSet(entry, installed) {
   const st = addonState();
@@ -128,20 +137,36 @@ function addonQaRows() {
 }
 // Settings › Add-ons
 function addonRows() {
-  if (!ADDONS.catalog.length) return [{ kind: 'note', label: 'No add-ons yet.' }];
   const st = addonState();
-  return ADDONS.catalog.flatMap(a => {
+  const folder = ADDONS.folder ? [{ kind: 'head', label: 'Your own' }, { kind: 'row', ic: icon('folder'), label: 'Add-ons folder',
+    sub: 'Put an add-on in its own folder here (addon.json and its script). It shows up at once, and edits reload by themselves',
+    act: () => api('/api/addons/open', {}).catch(e => toast(e.message)) }] : [];
+  if (!ADDONS.catalog.length) return [{ kind: 'note', label: 'No add-ons yet.' }, ...folder];
+  return [...ADDONS.catalog.flatMap(a => {
     const on = !!st[a.id]?.installed;
     return [
       { kind: 'head', label: a.title },
-      { kind: 'row', ic: `<img class="paddon" src="${esc(a.icon)}" alt="">`, label: a.title, sub: `${a.description} · by ${a.author}`, value: on ? 'Remove' : 'Install', act: () => addonSet(a, !on) },
+      { kind: 'row', ic: `<img class="paddon" src="${esc(a.icon)}" alt="">`, label: a.title, sub: `${a.description} · by ${a.author}${a.own ? ' · from your add-ons folder' : ''}`, value: on ? 'Remove' : 'Install', act: () => addonSet(a, !on) },
       ...(on && ADDONS.defs[a.id]?.options ? ADDONS.defs[a.id].options(ADDONS.ctx[a.id] || UFE) : []),
     ];
-  });
+  }), ...folder];
 }
-// every installed add-on starts with the page
-fetch('addons/catalog.json').then(r => r.json()).then(list => {
-  ADDONS.catalog = list;
+// every installed add-on starts with the page: the built-in catalogue, then your own from the data folder, which is
+// looked at again every few seconds so a new or edited add-on works without restarting
+let BUILTIN = [];
+async function addonScan(first) {
+  let own = [];
+  try { own = (await api('/api/addons')).addons; ADDONS.folder = true; } catch {}
+  const before = new Map(ADDONS.catalog.map(a => [a.id, a]));
+  ADDONS.catalog = [...BUILTIN.filter(b => !own.some(o => o.id === b.id)), ...own];
   const st = addonState();
-  list.filter(a => st[a.id]?.installed).forEach(addonLoad);
-}).catch(() => {});
+  for (const a of ADDONS.catalog) {
+    const old = before.get(a.id);
+    if (first || !old) { if (st[a.id]?.installed) addonLoad(a); }
+    else if (a.stamp && old.stamp !== a.stamp) { addonReload(a); if (st[a.id]?.installed) toast(`${a.title} reloaded`, 1600); }
+  }
+  for (const [id] of before) if (!ADDONS.catalog.some(a => a.id === id)) addonUnmount(id);  // its folder was deleted
+  if (!first && typeof P !== 'undefined' && P.open && ADDONS.catalog.length !== before.size) renderPanel();
+}
+fetch('addons/catalog.json').then(r => r.json()).catch(() => []).then(list => { BUILTIN = list; return addonScan(true); })
+  .then(() => setInterval(() => { if (document.visibilityState !== 'hidden') addonScan(false); }, 3000));
