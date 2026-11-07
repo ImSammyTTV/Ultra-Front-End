@@ -3393,6 +3393,7 @@ addEventListener('mouseup', e => { if (e.button === 3) { e.preventDefault(); saf
 // Touch and mouse: one round back button over every page and menu, doing what B does on the top one. It shows once a
 // pointer is used and goes again with the controller or the keys, so a controller-only screen never has it.
 const pointerUsed = on => document.body.classList.toggle('ptr', on);
+document.body.classList.add('idle');  // no pointer at start: it shows once the mouse moves
 addEventListener('pointerdown', () => pointerUsed(true), { capture: true, passive: true });
 $('#backbtn').addEventListener('click', () => PT.open ? closePadTester() : inputFrom('mouse', 'back'));
 // The corner with the name and the clock opens Quick Access (the controller's View or Steam button), for touch
@@ -3450,7 +3451,7 @@ function inputFrom(src, act) {
   const now = performance.now(), last = LAST_INPUT[act];
   if (last && last.src !== src && now - last.t < 220) return;
   LAST_INPUT[act] = { src, t: now }; lastSrc = src;
-  if (src !== 'mouse') pointerUsed(false);
+  if (src !== 'mouse') { pointerUsed(false); document.body.classList.add('idle'); }  // a controller or the keyboard: the mouse pointer goes until the mouse moves
   safely(() => input(act));
 }
 const PAD_ICON = $('#pad');
