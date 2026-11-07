@@ -2133,13 +2133,12 @@ function sysRows() {
   const chev = v => SP.fold === v ? '▴' : '▾';
   const now = LIB.find(g => RUN.has(g.id));
   // grouped like a console's quick menu: a heading over each set, skipped when moving
-  const group = (head, rows) => rows.length ? [{ head }, ...rows] : [];
+  const group = (head, rows) => rows;  // no headings, like the in-game menu
   return [
     ...group('Games', [
     ...(now ? [{ ic: 'pad', label: now.title, sub: 'Running · A resumes', run: () => { closeSys(); resumeGame(now); } }] : []),
     ]),
     ...group('Sound', [
-    ...(SP.song ? [{ id: 'music', run: sysMedia }] : []),  // the song that's playing, then its volume
     ...(SP.volume === null ? [] : [{ id: 'volume', run: () => { SP.mixOpen = !SP.mixOpen; SP.mixFresh = SP.mixOpen; tick(700, .04); renderSys(); SP.mixFresh = false; } }]),  // A opens the game, music and app volumes under it
     // each kind of sound on its own, like a console's mixer: only the ones playing right now
     ...(!SP.mixOpen ? [] : [
@@ -2176,6 +2175,7 @@ function sysRows() {
     { ic: 'settings', label: 'Settings', run: () => { closeSys(); closePages(); openPanel(); } },
 
     ]),
+    ...(SP.song ? [{ id: 'music', run: sysMedia }] : []),  // the song that's playing, at the bottom like the in-game menu
     { id: 'power', run: () => powerPick(powerChoices()[SP.p]) },  // the power buttons, always last
   ];
 }
