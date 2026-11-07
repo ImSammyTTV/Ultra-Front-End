@@ -1203,4 +1203,4 @@ body.zone-2 #tabs, body.tabs-peek #tabs { pointer-events: auto; }
 /* the post's zoom: Y, or this chip */
 .r-zoom { position: absolute; right: 3vh; bottom: 3vh; display: inline-flex; align-items: center; gap: 1vh; padding: 1vh 1.8vh; border: 0; border-radius: 99px;
   cursor: pointer; font: inherit; font-size: 1.7vh; color: #fff; background: rgba(12, 22, 44, .75); box-shadow: var(--glass-edge); }
-.r-zoom span { display: inline-grid; place-items: center; width: 2.4vh; height: 2.4vh; border-radius: 50%; font-size: 1.3vh; font-weight: 700; background: #f5b400; color: #04121f; }
+.r-zoom span { display: inline-grid; place-items: center; min-width: 2.4vh; height: 2.4vh; padding: 0 .6vh; border-radius: 99px; font-size: 1.3vh; font-weight: 700; background: #f5b400; color: #04121f; }
