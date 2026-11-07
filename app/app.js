@@ -2117,9 +2117,6 @@ function sysRows() {
   return [
     ...group('Games', [
     ...(now ? [{ ic: 'pad', label: now.title, sub: 'Running · A resumes', run: () => { closeSys(); resumeGame(now); } }] : []),
-    // the last games played, to jump straight into one
-    ...LIB.filter(g => !g.hidden && g.lastPlayed && !RUN.has(g.id)).sort((a, b) => b.lastPlayed - a.lastPlayed).slice(0, 3)
-      .map((g, n) => ({ cover: g.cover, ic: 'pad', label: g.title, sub: platformOf(g), run: () => { closeSys(); closePages(); launchGame(g); } })),
     ]),
     ...group('Sound', [
     ...(SP.volume === null ? [] : [{ id: 'volume', run: () => setSound({ mute: !SP.muted }) }]),
