@@ -3179,7 +3179,13 @@ function renderPanel() {
   // Moving the highlight only moves the highlight: rewriting the list restarted every animated preview and redrew every
   // picture, which flickered. The list is written again only when what it shows has changed.
   const selI = inSide ? -1 : focusable[P.focus], list = $('#panel .plist');
+  // rows between headings sit together in one box, like a console's settings list
+  const inBox = it => it && !['head', 'html', 'note', 'thumb'].includes(it.kind);
   const draw = s => P.items.map((it, i) => {
+    const html = drawItem(it, i, s);
+    return !inBox(it) ? html : `${inBox(P.items[i - 1]) ? '' : '<div class="pgroup">'}${html}${inBox(P.items[i + 1]) ? '' : '</div>'}`;
+  }).join('');
+  const drawItem = (it, i, s) => {
     const on = s === i ? ' sel' : '';
     // consecutive thumbs share one grid container
     if (it.kind === 'thumb') return `${P.items[i - 1]?.kind === 'thumb' ? '' : `<div class="pthumbs${P.view === 'avatar' ? ' avatars' : P.artKind === 'logo' ? ' logos' : P.artKind === 'hero' ? ' wide' : ''}">`}<div class="pthumb${on}" data-i="${i}" title="${esc(it.label || '')}">${it.html || (/\.webm(\?|$)/i.test(it.thumb || '')
@@ -3194,7 +3200,7 @@ function renderPanel() {
     const lead = logo ? `<span class="ticon plogo ${logo.split('.')[0]}" style="--logo:url(assets/platforms/${logo.includes('.') ? logo : logo + '.svg'})"></span>`
       : it.ic ? `<span class="pic">${it.ic}</span>` : '';
     return `<div class="prow${on}${it.kind === 'info' ? ' info' : ''}${it.primary ? ' primary' : ''}${it.warn ? ' warn' : ''}" data-i="${i}">${it.bar === 'busy' ? '<div class="pbar busy" style="overflow:hidden"><i style="width:30%"></i></div>' : it.bar != null ? `<div class="pbar"><i style="width:${it.bar}%"></i></div>` : ''}<div class="prow-main">${lead ? `<span class="picon-slot">${lead}</span>` : ''}<div><div class="pl">${esc(it.label)}</div>${it.sub ? `<div class="ps">${esc(it.sub)}</div>` : ''}</div></div>${it.value ? `<div class="pv">${esc(it.value)}</div>` : ''}</div>`;
-  }).join('');
+  };
   const plain = draw(-1);
   if (plain === P.listPlain && list.children.length) list.querySelectorAll('[data-i]').forEach(e => e.classList.toggle('sel', +e.dataset.i === selI));
   else { list.innerHTML = draw(selI); P.listPlain = plain; }
