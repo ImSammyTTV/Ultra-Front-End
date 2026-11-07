@@ -51,6 +51,8 @@
   .mb { width: 5.4rem; height: 4.6rem; border-radius: 2.3rem; display: grid; place-items: center; }
   .mb svg { width: 2.2rem; height: 2.2rem; fill: currentColor; }
   .row.music.sel .mb.on { background: #fff; color: var(--ink); }
+  .song-in { animation: songIn .5s ease backwards; }
+  @keyframes songIn { from { opacity: 0; } }
 </style>
 </head>
 <body>
@@ -123,7 +125,13 @@ function rowHTML(it, i) {
     + `<div class="mbtns">${[MEDIA.prev, music.playing ? MEDIA.pause : MEDIA.play, MEDIA.next].map((svg, j) => `<span class="mb${j === mediaSel ? ' on' : ''}">${svg}</span>`).join('')}</div></div>`;
   return `<div class="row${it.warn ? ' warn' : ''}${on}" data-i="${i}">${ICON[it.icon] || ''}<div class="text"><div>${esc(it.label)}${it.value ? `<span class="value">${esc(it.value)}</span>` : ''}</div></div></div>`;
 }
-function draw() { $('#menu').innerHTML = items.map(rowHTML).join(''); }
+function draw() {
+  $('#menu').innerHTML = items.map(rowHTML).join('');
+  // a new song: its art and name fade in
+  const key = music ? `${music.title}|${music.artist}` : '';
+  if (key && draw.key && key !== draw.key) document.querySelectorAll('.row.music .art, .row.music .text').forEach(e => e.classList.add('song-in'));
+  draw.key = key;
+}
 function media() {
   const action = ['media-prev', 'media-play', 'media-next'][mediaSel];
   post(action);
