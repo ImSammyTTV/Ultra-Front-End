@@ -698,7 +698,7 @@ function runIntro() {
   INTRO.open = true;
   el.addEventListener('pointerdown', () => endIntro(true), { once: true });  // a tap or click skips it, like any button
   api('/api/introsound', { play: true }).catch(() => {});
-  if (!introWave()) el.classList.add('flat');  // no WebGL: a still image of the wave simply fades in
+  // just the logo on black now: the wave is gone from the intro (the outro still has it)
   INTRO.timer = setTimeout(endIntro, 3700);
 }
 // Drawn live, after the look of the Kling test: a flat line of light swells into a wave of hairline contours that
