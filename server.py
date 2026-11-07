@@ -2854,7 +2854,7 @@ def wiki_game_info(title, system=None):
     key = norm(title)
     cache = load("wiki-info-cache.json", {})
     hit = cache.get(f"{key}|{system}") if system else cache.get(key)
-    if hit and time.time() - hit["t"] < 30 * 86400 and hit.get("v") == 3:
+    if hit and time.time() - hit["t"] < 30 * 86400 and hit.get("v") == 4:
         return hit["d"]
     if time.time() < WIKI_PAUSE[0]:
         return {}
@@ -2862,11 +2862,12 @@ def wiki_game_info(title, system=None):
     try:
         hits = []
         # ROM names put the subtitle after " - "; search as written, then for the part before it ("Rust - Staging Branch")
-        for q in dict.fromkeys([title.replace(" - ", ": "), re.split(r"\s+-\s+", title)[0]]):
-            query = urllib.parse.urlencode({"action": "query", "list": "search", "srsearch": f"{q} video game", "srlimit": 6, "format": "json"})
+        # with the console too, so a remake with its own page ("Ocarina of Time (2026 video game)" on Switch 2) is among them
+        for q in dict.fromkeys([title.replace(" - ", ": "), re.split(r"\s+-\s+", title)[0]] + ([f"{title.replace(' - ', ': ')} {system}"] if system else [])):
+            query = urllib.parse.urlencode({"action": "query", "list": "search", "srsearch": q if system and q.endswith(system) else f"{q} video game", "srlimit": 6, "format": "json"})
             hits += [h for h in http_json("https://en.wikipedia.org/w/api.php?" + query, headers=WIKI_UA, timeout=8)["query"]["search"]
                      if h["title"] not in {x["title"] for x in hits}]
-            if any(wiki_match_rank(h["title"], title) is not None for h in hits):
+            if any(wiki_match_rank(h["title"], title) is not None for h in hits) and not system:
                 break
         ranked = sorted(((wiki_match_rank(h["title"], title), i, h) for i, h in enumerate(hits)), key=lambda x: (x[0] is None, x[0] or 0, x[1]))
         plat, other_console, chosen = platform_words(system) if system else [], None, None
@@ -2880,7 +2881,7 @@ def wiki_game_info(title, system=None):
             first = re.split(r"(?<=[.!?])\s", text)[0]
             if (rank == 3 and re.search(r"\b(series|franchise)\b", first, re.I)) or re.search(r"\bis an? (\w+ )*(series|franchise)\b", first, re.I):
                 continue  # a page about the whole series ("Star Fox is a series of..."), not this game
-            if rank == 2 and plat and not any(w.lower() in text.lower() for w in plat):
+            if rank <= 2 and plat and not any(w.lower() in text.lower() for w in plat):  # the original, when a version for this console has its own page
                 other_console = other_console or (rank, summary, hit)  # a same-named game on another console: only if nothing better
                 continue
             chosen = (rank, summary, hit)
@@ -2941,7 +2942,7 @@ def wiki_game_info(title, system=None):
     dated = out.pop("_dated", False)
     if out:
         cache = load("wiki-info-cache.json", {})
-        cache[f"{key}|{system}" if system else key] = {"t": time.time(), "d": out, "v": 3}  # the year depends on the console
+        cache[f"{key}|{system}" if system else key] = {"t": time.time(), "d": out, "v": 4}  # the year depends on the console
         store("wiki-info-cache.json", cache)
     return out
 
@@ -3008,7 +3009,7 @@ def info_fresh(hit, g):
     """A cached details entry still holds: same name (a renamed ROM looks again), saved with a studio or by this version,
     and not expired (entries without a description retry after 5 minutes)."""
     return (bool(hit) and hit.get("title", g["title"]) == g["title"]
-            and (hit.get("version") == 9 or (hit.get("version") in (7, 8) and g.get("source") != "Emulators")
+            and (hit.get("version") == 10 or (hit.get("version") in (7, 8, 9) and g.get("source") != "Emulators")
                  or (hit.get("version") in (5, 6) and g.get("source") != "Emulators" and hit["d"].get("developer") and hit["d"].get("screenshots")))
             and time.time() - hit["t"] < (INFO_TTL if hit.get("d", {}).get("description") else 300))
 
@@ -3058,7 +3059,7 @@ def remote_info(g, appid, local):
     if not d["hero"] and "hero" not in local and d["screenshots"]:  # no background art anywhere: a screenshot, shown softened
         d["hero"], d["heroSoft"] = d["screenshots"][0]["full"], True
     cache = load("info-cache.json", {})
-    cache[g["id"]] = {"t": time.time(), "d": d, "version": 9, "title": g["title"]}
+    cache[g["id"]] = {"t": time.time(), "d": d, "version": 10, "title": g["title"]}
     store("info-cache.json", cache)
     return d
 
