@@ -9407,8 +9407,8 @@ class Handler(SimpleHTTPRequestHandler):
                     do_not_disturb(bool(body.get("on")))
                 elif act == "brightness":
                     screen_brightness(max(5, min(100, int(body.get("level", 50)))))
-                elif act in ("wifi", "nightlight"):
-                    open_target({"wifi": "ms-availablenetworks:", "nightlight": "ms-settings:nightlight"}[act])
+                elif act in ("wifi", "nightlight", "bluetooth"):
+                    open_target({"wifi": "ms-availablenetworks:", "nightlight": "ms-settings:nightlight", "bluetooth": "ms-settings:bluetooth"}[act])
                 else:
                     raise ValueError("Unknown action")
                 return self.reply(qa_view())

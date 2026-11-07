@@ -2114,6 +2114,8 @@ function sysRows() {
     // where the sound plays: A (or left / right) moves to the next speaker, headset or TV
     ...(SP.qa?.outputs?.length > 1 ? [{ id: 'output', ic: /head|ear|airpod|buds/i.test(SP.qa.outputs.find(o => o.on)?.name || '') ? 'headset' : 'speaker', label: 'Sound output',
       sub: (SP.qa.outputs.find(o => o.on)?.name || 'Choose one').replace(/\s*\([^)]*\)\s*$/, ''), value: `${SP.qa.outputs.findIndex(o => o.on) + 1} of ${SP.qa.outputs.length}`, run: () => sysOutput(1) }] : []),
+    // Bluetooth headphones and speakers show up above once they're connected; this connects one that's paired but off
+    { ic: 'headset', label: 'Bluetooth audio', sub: 'Connect Bluetooth headphones or a speaker, then choose it in Sound output', run: () => qaDo({ action: 'bluetooth' }).then(() => toast('Opened Windows’ Bluetooth settings')) },
     ...(SP.qa?.brightness != null ? [{ id: 'bright', ic: 'sun', label: 'Brightness', value: `${SP.qa.brightness}%`, sub: 'Left and right change it', run: () => {} }] : []),
     ...(SP.qa?.wifi ? [{ ic: 'wifi', label: 'Wi-Fi', sub: SP.qa.wifi.connected ? `${SP.qa.wifi.name}${SP.qa.wifi.signal != null ? ` · ${SP.qa.wifi.signal}% signal` : ''}` : 'Not connected · A to choose a network',
       run: () => qaDo({ action: 'wifi' }).then(() => toast('Opened Windows’ Wi-Fi list')) }] : []),
