@@ -1892,7 +1892,7 @@ function captureMenu(c, open, afterDelete) {
   sysMenu(video ? 'Gameplay video' : 'Screenshot', [
     ...(open ? [{ label: video ? 'Play' : 'View', ic: video ? ICON_PLAY : icon('image'), run: open }] : []),
     ...(video ? [{ label: 'Trim and export', ic: icon('sliders'), run: () => setTimeout(() => openTrim(c), 0) }] : []),
-    { label: video ? 'Export for sharing' : 'Export for social media', ic: icon('download'), run: () => setTimeout(() => exportMenu(c), 0) },
+    { label: video ? 'Export for sharing' : 'Export for sharing', ic: icon('download'), run: () => setTimeout(() => exportMenu(c), 0) },
     { label: `Delete this ${what}`, ic: icon('close'), warn: true, run: () => setTimeout(() => albumDelete(c, afterDelete), 0) },
   ]);
 }

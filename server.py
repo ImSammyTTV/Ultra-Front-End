@@ -4110,17 +4110,17 @@ def album_thumb(capture_id):
 SHOT_PRESETS = {
     "original": ("Full size PNG", None, "png"),
     "jpg": ("Full size JPG (smaller)", None, "jpg"),
-    "square": ("Square 1080 × 1080 (Instagram post)", (1080, 1080), "jpg"),
-    "portrait": ("Portrait 1080 × 1350 (Instagram)", (1080, 1350), "jpg"),
-    "story": ("Story 1080 × 1920 (Instagram, TikTok)", (1080, 1920), "jpg"),
-    "wide": ("Wide 1600 × 900 (X, Bluesky)", (1600, 900), "jpg"),
-    "thumb": ("Thumbnail 1280 × 720 (YouTube)", (1280, 720), "jpg"),
+    "square": ("Square 1080 × 1080", (1080, 1080), "jpg"),
+    "portrait": ("Portrait 1080 × 1350", (1080, 1350), "jpg"),
+    "story": ("Story 1080 × 1920", (1080, 1920), "jpg"),
+    "wide": ("Wide 1600 × 900", (1600, 900), "jpg"),
+    "thumb": ("Thumbnail 1280 × 720", (1280, 720), "jpg"),
 }
 VIDEO_PRESETS = {
     "original": ("Full quality", None, 20),
     "web1080": ("For the web, 1080p (smaller)", (1920, 1080), 26),
     "web720": ("For the web, 720p (smallest)", (1280, 720), 30),
-    "vertical": ("Vertical 1080 × 1920 (TikTok, Shorts, Reels)", (1080, 1920), 24),
+    "vertical": ("Vertical 1080 × 1920", (1080, 1920), 24),
     "square": ("Square 1080 × 1080", (1080, 1080), 24),
 }
 
