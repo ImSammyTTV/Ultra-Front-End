@@ -6008,9 +6008,45 @@ def bt_scan():
     return out
 
 
+BT_PAIR_PS1 = r"""param([string]$Address)
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
+function Await($op, $type) { $t = $asTask.MakeGenericMethod($type).Invoke($null, @($op)); $t.Wait(-1) | Out-Null; $t.Result }
+[Windows.Devices.Bluetooth.BluetoothDevice, Windows.Devices.Bluetooth, ContentType = WindowsRuntime] | Out-Null
+[Windows.Devices.Enumeration.DeviceInformation, Windows.Devices.Enumeration, ContentType = WindowsRuntime] | Out-Null
+$dev = Await ([Windows.Devices.Bluetooth.BluetoothDevice]::FromBluetoothAddressAsync([Convert]::ToUInt64($Address, 16))) ([Windows.Devices.Bluetooth.BluetoothDevice])
+if (-not $dev) { 'nodevice'; exit 1 }
+$pairing = $dev.DeviceInformation.Pairing
+if ($pairing.IsPaired) { 'paired-already'; exit 0 }
+$custom = $pairing.Custom
+$null = $custom.add_PairingRequested({ param($s, $e) $e.Accept() })
+$kinds = [Windows.Devices.Enumeration.DevicePairingKinds]'ConfirmOnly, ConfirmPinMatch, DisplayPin, ProvidePin'
+$res = Await ($custom.PairAsync($kinds)) ([Windows.Devices.Enumeration.DevicePairingResult])
+"$($res.Status)"
+"""
+
+
+def bt_pair_windows(addr):
+    """Pairs through Windows' own pairing (the same as Settings), which also sets up the device's sound. The app accepts
+    the pairing request itself, so nothing needs a click. True when it's paired."""
+    import tempfile
+    path = os.path.join(tempfile.gettempdir(), "ufe-btpair.ps1")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(BT_PAIR_PS1)
+    try:
+        r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", path, addr],
+                           capture_output=True, text=True, timeout=60, creationflags=0x08000000)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    out = r.stdout.strip().splitlines()[-1:] or [""]
+    return out[0] in ("Paired", "AlreadyPaired", "paired-already")
+
+
 def bt_pair(addr):
     """Pairs new Bluetooth headphones or a speaker, then connects it, all from here: the app answers Bluetooth's pairing
     question itself (accepting the code headphones offer, or 0000 for old ones), so Windows shows no prompt to click."""
+    if bt_pair_windows(addr):
+        return  # Windows connects it and adds its sound output by itself
     ctypes, W, bt, DEVINFO, SEARCH = _bt()
     info = DEVINFO(); info.dwSize = ctypes.sizeof(DEVINFO); info.Address = int(addr, 16)
     bt.BluetoothGetDeviceInfo(None, ctypes.byref(info))
