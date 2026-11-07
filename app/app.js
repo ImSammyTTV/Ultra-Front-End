@@ -2213,6 +2213,8 @@ async function openSys() {
   document.body.classList.add('sys-open'); tick(600, .07); renderSys();
   api('/api/padraw').then(r => { SP.battery = r.battery; if (SP.open) renderSys(); }).catch(() => {});
   api('/api/qa').then(r => { SP.qa = r; if (SP.open) renderSys(); }).catch(() => {});
+  // battery levels (Bluetooth devices, AirPods) are read in the background and arrive a few seconds later: ask again
+  setTimeout(() => SP.open && api('/api/qa').then(r => { if (SP.open) { SP.qa = { ...r, networks: SP.qa?.networks }; renderSys(); } }).catch(() => {}), 7000);
   api('/api/friends').then(r => {
     const on = (r.items || []).filter(f => f.online), busy = on.find(f => f.game);
     SP.friends = !r.items?.length ? '' : busy ? `${busy.name} is playing ${busy.game}` : on.length ? `${on.length} online` : 'Nobody online';
