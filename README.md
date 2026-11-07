@@ -262,3 +262,7 @@ expected and what happened instead, and attach `errors.log` from the `data` fold
 ## 📄 License
 
 [MIT](LICENSE) © ImSammyTTV. Third-party software and artwork: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+The code is free to use under the MIT license, but the **Ultra Front End name and logo belong to ImSammyTTV**. A copy or
+fork can use the code, but not the name or logo, and shouldn't look like the official app. The official download is
+only on this project's [Releases page](https://github.com/ImSammyTTV/Ultra-Front-End/releases).
