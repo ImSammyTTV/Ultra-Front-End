@@ -2176,7 +2176,8 @@ function sysRows() {
 
     ]),
     ...(SP.song ? [{ id: 'music', run: sysMedia }] : []),  // the song that's playing, at the bottom like the in-game menu
-    { id: 'power', run: () => powerPick(powerChoices()[SP.p]) },  // the power buttons, always last
+    // the power choices as plain rows, like the in-game menu; Restart and Shut down ask for A twice
+    ...powerChoices().map(p => ({ ic: p.ic, label: SP.confirm === p.id ? 'Press A again' : p.label, run: () => powerPick(p) })),
   ];
 }
 // Quick Access can open over a full page (News, Library, Search, Album...). What it opens takes that page's place: left
