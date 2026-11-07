@@ -66,6 +66,8 @@ jobs:
         run: |
           version="${{ steps.build.outputs.version }}"
           last="${{ steps.new.outputs.last }}"
+          # a readable title that still carries the exact version, which copies of the app read from it
+          title="Ultra Front End ${version%%-*} Nightly, $(date -u '+%-d %B %Y') ($version)"
           {
             echo "Nightly build $version, made from the newest changes on main. It can have bugs: Settings › About › Updates goes back to Main."
             echo
@@ -79,7 +81,7 @@ jobs:
           # GitHub sometimes answers a release request with a server error (HTTP 500): a few tries, a minute apart
           for try in 1 2 3 4; do
             gh release delete nightly --cleanup-tag --yes 2>/dev/null || true
-            if gh release create nightly dist/UltraFrontEnd.exe THIRD_PARTY_NOTICES.md --prerelease --title "$version" \
+            if gh release create nightly dist/UltraFrontEnd.exe THIRD_PARTY_NOTICES.md --prerelease --title "$title" \
                  --notes-file notes.md --target "$(git rev-parse HEAD)"; then
               exit 0
             fi
