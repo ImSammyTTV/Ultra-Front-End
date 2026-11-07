@@ -1241,7 +1241,7 @@ body.zone-2 #tabs, body.tabs-peek #tabs { pointer-events: auto; }
 .sp-row.sp-mix, .sp-row.sp-fold { margin-left: 3vh; }
 .sp-row.sp-fold.fresh { animation: spMixIn .35s var(--ease) backwards; }
 .sp-row.sp-music .sp-art { width: 4.6vh; height: 4.6vh; border-radius: .8vh; }  /* a small song row, like the in-game menu */
-.sp-row.sp-music { position: sticky; bottom: 0; z-index: 2; background: linear-gradient(to top, rgba(10, 11, 15, .95) 70%, transparent); }  /* stays at the bottom while the rest scrolls */
+.sp-row.sp-music { position: sticky; bottom: 0; z-index: 2; background: none; }  /* stays at the bottom while the rest scrolls */
 .sp-row.sp-mix.fresh { animation: spMixIn .35s var(--ease) backwards; }  /* only as it opens, not on every volume step */
 @keyframes spMixIn { from { opacity: 0; transform: translateY(-1.2vh); } }
 .sp-chev { font-style: normal; font-size: 1.3vh; opacity: .6; margin-left: .8vh; }
