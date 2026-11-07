@@ -5790,6 +5790,117 @@ def wifi_status():
     return {"connected": connected, "name": info.get("ssid", "") if connected else "", "signal": int(sig) if sig else None}
 
 
+def wifi_networks():
+    """Wi-Fi networks in range, strongest first: [{"ssid", "signal", "secure", "saved", "on"}]. Saved ones connect with one press."""
+    if not WIN:
+        return []
+    run = lambda *a: subprocess.run(["netsh", "wlan", *a], capture_output=True, text=True, timeout=10, creationflags=0x08000000).stdout
+    try:
+        listing, profiles = run("show", "networks", "mode=bssid"), run("show", "profiles")
+    except (OSError, subprocess.SubprocessError):
+        return []
+    saved = {m.strip() for m in re.findall(r":\s*(.+)$", "\n".join(l for l in profiles.splitlines() if "Profile" in l), re.M)}
+    current = (wifi_status() or {}).get("name", "")
+    nets, cur = {}, None
+    for line in listing.splitlines():
+        m = re.match(r"\s*SSID \d+\s*:\s*(.*)$", line)
+        if m:
+            cur = m.group(1).strip()
+            if cur:
+                nets.setdefault(cur, {"ssid": cur, "signal": 0, "secure": True, "saved": cur in saved, "on": cur == current})
+            continue
+        if not cur:
+            continue
+        k, _, v = line.partition(":")
+        k, v = k.strip().lower(), v.strip()
+        if k == "authentication":
+            nets[cur]["secure"] = v.lower() != "open"
+        elif k == "signal":
+            nets[cur]["signal"] = max(nets[cur]["signal"], int(re.sub(r"\D", "", v) or 0))
+    return sorted(nets.values(), key=lambda n: (not n["on"], not n["saved"], -n["signal"]))
+
+
+def wifi_connect(ssid):
+    """Joins a Wi-Fi network this PC has been on before (Windows keeps its password)."""
+    net = next((n for n in wifi_networks() if n["ssid"] == ssid), None)
+    if not net:
+        raise ValueError("That network isn't in range any more")
+    if not net["saved"]:
+        open_target("ms-availablenetworks:")
+        return "windows"  # a new network needs its password typed in: Windows' own list asks for it
+    r = subprocess.run(["netsh", "wlan", "connect", f"name={ssid}", f"ssid={ssid}"], capture_output=True, text=True, timeout=15, creationflags=0x08000000)
+    if r.returncode:
+        raise OSError("Windows couldn't join that network")
+    return "joining"
+
+
+def _bt():
+    import ctypes
+    from ctypes import wintypes as W
+
+    class SYSTEMTIME(ctypes.Structure):
+        _fields_ = [(n, W.WORD) for n in ("y", "mo", "dow", "d", "h", "mi", "s", "ms")]
+
+    class DEVINFO(ctypes.Structure):
+        _fields_ = [("dwSize", W.DWORD), ("Address", ctypes.c_ulonglong), ("ulClassofDevice", W.ULONG), ("fConnected", W.BOOL),
+                    ("fRemembered", W.BOOL), ("fAuthenticated", W.BOOL), ("stLastSeen", SYSTEMTIME), ("stLastUsed", SYSTEMTIME),
+                    ("szName", ctypes.c_wchar * 248)]
+
+    class SEARCH(ctypes.Structure):
+        _fields_ = [("dwSize", W.DWORD), ("fReturnAuthenticated", W.BOOL), ("fReturnRemembered", W.BOOL), ("fReturnUnknown", W.BOOL),
+                    ("fReturnConnected", W.BOOL), ("fIssueInquiry", W.BOOL), ("cTimeoutMultiplier", ctypes.c_ubyte), ("hRadio", W.HANDLE)]
+    bt = ctypes.WinDLL("bthprops.cpl")
+    bt.BluetoothFindFirstDevice.restype = W.HANDLE
+    return ctypes, W, bt, DEVINFO, SEARCH
+
+
+# Bluetooth audio: sending audio to it (A2DP) and headset calls (hands-free)
+BT_AUDIO = ("{0000110b-0000-1000-8000-00805f9b34fb}", "{0000111e-0000-1000-8000-00805f9b34fb}")
+
+
+def bt_audio_devices():
+    """Paired Bluetooth headphones and speakers: [{"addr", "name", "connected"}]. None on a PC without Bluetooth."""
+    if not WIN:
+        return None
+    try:
+        ctypes, W, bt, DEVINFO, SEARCH = _bt()
+    except OSError:
+        return None
+    sp = SEARCH(ctypes.sizeof(SEARCH), 1, 1, 0, 1, 0, 0, None)
+    info = DEVINFO(); info.dwSize = ctypes.sizeof(DEVINFO)
+    h = bt.BluetoothFindFirstDevice(ctypes.byref(sp), ctypes.byref(info))
+    if not h:
+        return [] if ctypes.windll.kernel32.GetLastError() in (259, 0) else None  # no devices, or no Bluetooth radio
+    out = []
+    try:
+        while True:
+            if (info.ulClassofDevice >> 8) & 0x1F == 4:  # major class: audio and video
+                out.append({"addr": f"{info.Address:012x}", "name": info.szName or "Bluetooth audio", "connected": bool(info.fConnected)})
+            info = DEVINFO(); info.dwSize = ctypes.sizeof(DEVINFO)
+            if not bt.BluetoothFindNextDevice(W.HANDLE(h), ctypes.byref(info)):
+                break
+    finally:
+        bt.BluetoothFindDeviceClose(W.HANDLE(h))
+    return sorted(out, key=lambda d: (not d["connected"], d["name"].lower()))
+
+
+def bt_audio_connect(addr, connect=True):
+    """Connects (or disconnects) paired Bluetooth headphones or a speaker by turning its audio services on (or off)."""
+    ctypes, W, bt, DEVINFO, SEARCH = _bt()
+    info = DEVINFO(); info.dwSize = ctypes.sizeof(DEVINFO); info.Address = int(addr, 16)
+    if bt.BluetoothGetDeviceInfo(None, ctypes.byref(info)):
+        raise ValueError("That Bluetooth device isn't paired any more")
+    ok = False
+    for svc in BT_AUDIO:
+        g = ctypes.create_string_buffer(16)
+        ctypes.windll.ole32.CLSIDFromString(svc, g)
+        if connect:  # off then on again makes Windows reconnect it now
+            bt.BluetoothSetServiceState(None, ctypes.byref(info), g, 0)
+        ok = bt.BluetoothSetServiceState(None, ctypes.byref(info), g, 1 if connect else 0) == 0 or ok
+    if not ok:
+        raise OSError("Windows couldn't reach it: check it's switched on and nearby")
+
+
 DND_KEY = r"Software\Microsoft\Windows\CurrentVersion\Notifications\Settings"
 
 
@@ -5824,8 +5935,9 @@ def screen_brightness(level=None):
 
 def qa_view():
     """Everything Quick Access shows beyond volume and music, read fresh each time it opens."""
-    view = {"outputs": [], "pads": [], "wifi": None, "dnd": False, "brightness": None}
-    for k, fn in (("outputs", sound_outputs), ("pads", xinput_pads), ("wifi", wifi_status), ("dnd", do_not_disturb), ("brightness", screen_brightness)):
+    view = {"outputs": [], "pads": [], "wifi": None, "dnd": False, "brightness": None, "bt": None}
+    for k, fn in (("outputs", sound_outputs), ("pads", xinput_pads), ("wifi", wifi_status), ("dnd", do_not_disturb), ("brightness", screen_brightness),
+                  ("bt", bt_audio_devices)):
         try:
             view[k] = fn()
         except Exception:
@@ -9407,6 +9519,12 @@ class Handler(SimpleHTTPRequestHandler):
                     do_not_disturb(bool(body.get("on")))
                 elif act == "brightness":
                     screen_brightness(max(5, min(100, int(body.get("level", 50)))))
+                elif act == "wifijoin":
+                    return self.reply({**qa_view(), "joined": wifi_connect(str(body.get("ssid") or ""))})
+                elif act == "wifiscan":
+                    return self.reply({**qa_view(), "networks": wifi_networks()})
+                elif act == "bt":
+                    bt_audio_connect(str(body.get("addr") or ""), bool(body.get("connect", True)))
                 elif act in ("wifi", "nightlight", "bluetooth"):
                     open_target({"wifi": "ms-availablenetworks:", "nightlight": "ms-settings:nightlight", "bluetooth": "ms-settings:bluetooth"}[act])
                 else:
