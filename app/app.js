@@ -2177,10 +2177,11 @@ function sysRows() {
     ]),
     ...group('More', [
     { ic: SP.qa?.dnd ? 'bellOff' : 'bell', label: 'Do not disturb', value: SP.qa?.dnd ? 'On' : 'Off', sub: 'Silences notifications', run: () => qaDo({ action: 'dnd', on: !SP.qa?.dnd }) },
-    { ic: 'friends', id: 'fold-friends', label: 'Friends', sub: SP.friends || '', value: SP.friendItems?.length ? chev('friends') : '', run: () => SP.friendItems?.length ? sysView('friends') : (closeSys(), closePages(), openHub('friends')) }, ...fold('friends'),
-    { ic: 'settings', label: 'Settings', run: () => { closeSys(); closePages(); openPanel(); } },
 
     ]),
+    // Friends and Settings on their own, outside the categories
+    { ic: 'friends', id: 'fold-friends', label: 'Friends', sub: SP.friends || '', value: SP.friendItems?.length ? chev('friends') : '', run: () => SP.friendItems?.length ? sysView('friends') : (closeSys(), closePages(), openHub('friends')) }, ...fold('friends'),
+    { ic: 'settings', label: 'Settings', run: () => { closeSys(); closePages(); openPanel(); } },
     // the power choices, like the in-game menu; Restart and Shut down ask for A twice
     ...group('Power', powerChoices().map(p => ({ ic: p.ic, label: SP.confirm === p.id ? 'Press A again' : p.label, run: () => powerPick(p) }))),
     ...(SP.song ? [{ id: 'music', run: sysMedia }] : []),  // the song that's playing, always last, pinned to the bottom
