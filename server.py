@@ -2853,8 +2853,8 @@ def wiki_game_info(title, system=None):
     title = metadata_title(title)
     key = norm(title)
     cache = load("wiki-info-cache.json", {})
-    hit = (system and cache.get(f"{key}|{system}")) or cache.get(key)
-    if hit and time.time() - hit["t"] < 30 * 86400 and (hit["d"].get("developer") or hit.get("v") == 2):
+    hit = cache.get(f"{key}|{system}") if system else cache.get(key)
+    if hit and time.time() - hit["t"] < 30 * 86400 and hit.get("v") == 3:
         return hit["d"]
     if time.time() < WIKI_PAUSE[0]:
         return {}
@@ -2903,17 +2903,31 @@ def wiki_game_info(title, system=None):
                     return [c["mainsnak"]["datavalue"]["value"] for c in claims.get(prop, []) if c.get("rank") != "deprecated" and "datavalue" in c.get("mainsnak", {})]
                 genres = [v["id"] for v in values("P136") if isinstance(v, dict) and "id" in v][:3]
                 developers = [v["id"] for v in values("P178") if isinstance(v, dict) and "id" in v][:2]
-                ids = list(dict.fromkeys(genres + developers))
+                # each publication date may name its platform (qualifier P400): "1998 on N64, 2011 on 3DS"
+                dated_claims = []
+                for c in claims.get("P577", []):
+                    v = c.get("mainsnak", {}).get("datavalue", {}).get("value")
+                    if c.get("rank") != "deprecated" and isinstance(v, dict) and v.get("precision", 0) >= 9 and v.get("time", "").startswith("+"):
+                        on = [q["datavalue"]["value"]["id"] for q in c.get("qualifiers", {}).get("P400", []) if "datavalue" in q]
+                        dated_claims.append((v["time"][1:5], on))
+                platforms = list(dict.fromkeys(p for _, on in dated_claims for p in on))[:20]
+                ids = list(dict.fromkeys(genres + developers + platforms))
+                labels = {}
                 if ids:
                     q = urllib.parse.urlencode({"action": "wbgetentities", "ids": "|".join(ids), "props": "labels", "languages": "en", "languagefallback": 1, "format": "json"})
                     entities = http_json("https://www.wikidata.org/w/api.php?" + q, headers=WIKI_UA, timeout=8).get("entities", {})
                     labels = {k: v.get("labels", {}).get("en", {}).get("value", "") for k, v in entities.items()}
                     out["genres"] = [labels[i] for i in genres if labels.get(i)]
                     out["developer"] = ", ".join(labels[i] for i in developers if labels.get(i))
-                dates = [v for v in values("P577") if isinstance(v, dict) and v.get("precision", 0) >= 9 and v.get("time", "").startswith("+")]
-                if dates:
-                    date = min(dates, key=lambda v: v["time"])
-                    out["released"] = date["time"][1:5]  # year avoids implying one platform/region's date applies to all
+                def on_this_console(name):
+                    name = norm(name)
+                    return any(norm(w) == name or norm("Nintendo " + w) == name for w in plat)
+                mine = [y for y, on in dated_claims if any(on_this_console(labels.get(p, "")) for p in on)]
+                if mine:
+                    out["released"] = min(mine)  # the year it came out on this game's console
+                elif dated_claims and (not plat or any(w.lower() in text.lower() for w in plat)):
+                    out["released"] = min(y for y, _ in dated_claims)  # year avoids implying one platform/region's date applies to all
+                # otherwise the page is another console's version (the N64 original for a Switch 2 release): no year beats a wrong one
             break
     except urllib.error.HTTPError as e:
         if e.code == 429:
@@ -2927,7 +2941,7 @@ def wiki_game_info(title, system=None):
     dated = out.pop("_dated", False)
     if out:
         cache = load("wiki-info-cache.json", {})
-        cache[f"{key}|{system}" if system and dated else key] = {"t": time.time(), "d": out, "v": 2}
+        cache[f"{key}|{system}" if system else key] = {"t": time.time(), "d": out, "v": 3}  # the year depends on the console
         store("wiki-info-cache.json", cache)
     return out
 
@@ -2994,7 +3008,7 @@ def info_fresh(hit, g):
     """A cached details entry still holds: same name (a renamed ROM looks again), saved with a studio or by this version,
     and not expired (entries without a description retry after 5 minutes)."""
     return (bool(hit) and hit.get("title", g["title"]) == g["title"]
-            and (hit.get("version") == 8 or (hit.get("version") == 7 and g.get("source") != "Emulators")
+            and (hit.get("version") == 9 or (hit.get("version") in (7, 8) and g.get("source") != "Emulators")
                  or (hit.get("version") in (5, 6) and g.get("source") != "Emulators" and hit["d"].get("developer") and hit["d"].get("screenshots")))
             and time.time() - hit["t"] < (INFO_TTL if hit.get("d", {}).get("description") else 300))
 
@@ -3044,7 +3058,7 @@ def remote_info(g, appid, local):
     if not d["hero"] and "hero" not in local and d["screenshots"]:  # no background art anywhere: a screenshot, shown softened
         d["hero"], d["heroSoft"] = d["screenshots"][0]["full"], True
     cache = load("info-cache.json", {})
-    cache[g["id"]] = {"t": time.time(), "d": d, "version": 8, "title": g["title"]}
+    cache[g["id"]] = {"t": time.time(), "d": d, "version": 9, "title": g["title"]}
     store("info-cache.json", cache)
     return d
 
