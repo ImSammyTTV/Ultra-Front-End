@@ -2133,7 +2133,13 @@ function sysRows() {
   const chev = v => SP.fold === v ? '▴' : '▾';
   const now = LIB.find(g => RUN.has(g.id));
   // grouped like a console's quick menu: a heading over each set, skipped when moving
-  const group = (head, rows) => rows;  // no headings, like the in-game menu
+  // each kind of setting folds under one row (A opens or closes it); Sound starts open
+  SP.cats = SP.cats || { Sound: true };
+  const CAT_IC = { Sound: 'volume', Batteries: 'pad', Network: 'wifi', 'Network and display': 'wifi', More: 'settings', Power: 'power' };
+  const group = (head, rows) => !rows.length ? [] : head === 'Games' ? rows : [
+    { id: 'cat-' + head, ic: CAT_IC[head] || 'settings', label: head, value: SP.cats[head] ? '▴' : '▾',
+      run: () => { SP.cats[head] = !SP.cats[head]; SP.foldFresh = SP.cats[head]; tick(700, .04); renderSys(); SP.foldFresh = false; } },
+    ...(SP.cats[head] ? rows.map(r => ({ ...r, fold: true })) : [])];
   return [
     ...group('Games', [
     ...(now ? [{ ic: 'pad', label: now.title, sub: 'Running · A resumes', run: () => { closeSys(); resumeGame(now); } }] : []),
@@ -2176,8 +2182,8 @@ function sysRows() {
 
     ]),
     ...(SP.song ? [{ id: 'music', run: sysMedia }] : []),  // the song that's playing, at the bottom like the in-game menu
-    // the power choices as plain rows, like the in-game menu; Restart and Shut down ask for A twice
-    ...powerChoices().map(p => ({ ic: p.ic, label: SP.confirm === p.id ? 'Press A again' : p.label, run: () => powerPick(p) })),
+    // the power choices, like the in-game menu; Restart and Shut down ask for A twice
+    ...group('Power', powerChoices().map(p => ({ ic: p.ic, label: SP.confirm === p.id ? 'Press A again' : p.label, run: () => powerPick(p) }))),
   ];
 }
 // Quick Access can open over a full page (News, Library, Search, Album...). What it opens takes that page's place: left
