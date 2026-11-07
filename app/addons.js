@@ -65,7 +65,8 @@ function addonApi(id) {
       remove: key => { try { localStorage.removeItem(`fe-addon-${id}-${key}`); } catch {} },
     },
     // rows of its own in Quick Access: rows() returns [{ icon, label, sub, value, run }], asked each time it's drawn
-    quickAccess(rows) { ADDONS.qa[id] = rows; return () => delete ADDONS.qa[id]; },
+    // opts: { title, icon } for the row they fold under (the add-on's own title if not given)
+    quickAccess(rows, opts = {}) { ADDONS.qa[id] = rows; ADDONS.qaOpts = { ...(ADDONS.qaOpts || {}), [id]: opts }; return () => delete ADDONS.qa[id]; },
     refresh: () => { if (typeof SP !== 'undefined' && SP.open) renderSys(); },
     icon: name => icon(name),
     // the app's own server, for an add-on that has a part there (like Bambu Lab's printer connection)
@@ -128,13 +129,17 @@ function addonSet(entry, installed) {
   toast(installed ? `${entry.title} installed` : `${entry.title} removed`, 2500);
   renderPanel();
 }
-// Quick Access rows from add-ons, each turned into the app's own row shape
-function addonQaRows() {
-  return Object.entries(ADDONS.qa).flatMap(([id, fn]) => {
-    try { return (fn() || []).map(r => ({ ic: r.icon || 'settings', label: String(r.label || ''), sub: r.sub ? String(r.sub) : '', value: r.value != null ? String(r.value) : '', run: r.run ? () => { try { r.run(); } catch (e) { console.error(e); } } : null })); }
-    catch (e) { console.error(e); return []; }
+// Quick Access rows from add-ons, each add-on's under its own title, turned into the app's own row shape
+const addonTitle = id => ADDONS.qaOpts?.[id]?.title || ADDONS.catalog.find(a => a.id === id)?.title || id;
+function addonQaGroups() {
+  return Object.entries(ADDONS.qa).map(([id, fn]) => {
+    let rows = [];
+    try { rows = (fn() || []).map(r => ({ ic: r.icon || 'settings', label: String(r.label || ''), sub: r.sub ? String(r.sub) : '', value: r.value != null ? String(r.value) : '', run: r.run ? () => { try { r.run(); } catch (e) { console.error(e); } } : null })); }
+    catch (e) { console.error(e); }
+    return { title: addonTitle(id), rows };
   });
 }
+function addonQaIcons() { return Object.fromEntries(Object.keys(ADDONS.qa).map(id => [addonTitle(id), ADDONS.qaOpts?.[id]?.icon || 'settings'])); }
 // Settings › Add-ons
 function addonRows() {
   const st = addonState();

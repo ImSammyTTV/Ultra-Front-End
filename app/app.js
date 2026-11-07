@@ -16,6 +16,7 @@ const ICONS = {
   back: '<path d="M15 5l-7 7 7 7"/>',
   exit: '<path d="M14 4h5v16h-5"/><path d="M4 12h10"/><path d="M10 8l4 4-4 4"/>',
   power: '<path d="M12 3v9"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/>',
+  printer: '<path d="M7 9V4h10v5"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v6H7z"/>',
   download: '<path d="M12 4v11"/><path d="M7 10.5l5 5 5-5"/><path d="M5 20h14"/>',
   more: '<circle cx="5.5" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="18.5" cy="12" r="1.3" fill="currentColor"/>',
   friends: '<circle cx="9" cy="8.5" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M15.5 5.3a3.5 3.5 0 0 1 0 6.4"/><path d="M18 14.6a6.5 6.5 0 0 1 3.5 5.4"/>',
@@ -2219,7 +2220,7 @@ function sysRows() {
   // grouped like a console's quick menu: a heading over each set, skipped when moving
   // each kind of setting folds under one row (A opens or closes it); all start closed
   SP.cats = SP.cats || {};
-  const CAT_IC = { Sound: 'volume', Batteries: 'pad', Network: 'wifi', 'Network and display': 'wifi', More: 'settings', Power: 'power' };
+  const CAT_IC = { ...(window.addonQaIcons?.() || {}), Sound: 'volume', Batteries: 'pad', Network: 'wifi', 'Network and display': 'wifi', More: 'settings', Power: 'power' };
   const group = (head, rows) => !rows.length ? [] : head === 'Games' ? rows : [
     { id: 'cat-' + head, ic: CAT_IC[head] || 'settings', label: head, value: SP.cats[head] ? '▴' : '▾',
       run: () => { SP.cats[head] = !SP.cats[head]; SP.catFresh = SP.cats[head] ? head : ''; tick(700, .04); renderSys(); SP.catFresh = ''; } },
@@ -2259,7 +2260,8 @@ function sysRows() {
       run: () => { sysView('wifi'); if (SP.fold === 'wifi') qaDo(SP.qa.wifi.off ? { action: 'wifiradio', on: true } : { action: 'wifiscan' }); } }, ...fold('wifi')] : []),
     ...(SP.qa?.brightness != null ? [{ id: 'bright', ic: 'sun', label: 'Brightness', value: `${SP.qa.brightness}%`, sub: 'Left and right change it', run: () => {} }] : []),
     ]),
-    ...(window.addonQaRows?.() || []),  // rows add-ons add
+    // each add-on's rows fold under a row of their own, like the other categories
+    ...(window.addonQaGroups?.() || []).flatMap(g => group(g.title, g.rows)),
     // Friends and Settings on their own, outside the categories
     { ic: 'friends', id: 'fold-friends', label: 'Friends', sub: SP.friends || '', value: SP.friendItems?.length ? chev('friends') : '', run: () => SP.friendItems?.length ? sysView('friends') : (closeSys(), closePages(), openHub('friends')) }, ...fold('friends'),
     { ic: 'settings', label: 'Settings', run: () => { closeSys(); closePages(); openPanel(); } },

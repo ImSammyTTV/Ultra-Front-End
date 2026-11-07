@@ -16,7 +16,7 @@ UFE.addon({
     const active = s => ['RUNNING', 'PREPARE', 'PAUSE', 'SLICING'].includes(s);
     const draw = () => {
       el.innerHTML = p && active(p.state) && p.percent != null
-        ? `${api.icon('bolt')}<span>${p.state === 'PAUSE' ? 'Paused' : `${p.percent}%`}</span><i><b style="width:${p.percent}%"></b></i>${p.remaining ? `<span>${left(p.remaining)}</span>` : ''}`
+        ? `${api.icon('printer')}<span>${p.state === 'PAUSE' ? 'Paused' : `${p.percent}%`}</span><i><b style="width:${p.percent}%"></b></i>${p.remaining ? `<span>${left(p.remaining)}</span>` : ''}`
         : '';
       api.refresh();
     };
@@ -32,16 +32,16 @@ UFE.addon({
     api.every(10000, check);
     api.quickAccess(() => {
       if (!p) return [];
-      if (!p.setup) return [{ icon: 'bolt', label: '3D printer', sub: 'Set it up in Settings › Add-ons', run: () => api.openSettings() }];
-      if (!p.connected) return [{ icon: 'bolt', label: '3D printer', sub: p.error ? `Can't reach it: ${p.error}` : 'Connecting…' }];
+      if (!p.setup) return [{ icon: 'printer', label: '3D printer', sub: 'Set it up in Settings › Add-ons', run: () => api.openSettings() }];
+      if (!p.connected) return [{ icon: 'printer', label: '3D printer', sub: p.error ? `Can't reach it: ${p.error}` : 'Connecting…' }];
       const name = p.name || 'Print';
       const states = { RUNNING: 'Printing', PREPARE: 'Getting ready', PAUSE: 'Paused', FINISH: 'Finished', FAILED: 'Stopped', IDLE: 'Ready', SLICING: 'Slicing' };
       return [
-        { icon: 'bolt', label: active(p.state) || p.state === 'FINISH' ? name : '3D printer', value: active(p.state) && p.percent != null ? `${p.percent}%` : '',
+        { icon: 'printer', label: active(p.state) || p.state === 'FINISH' ? name : '3D printer', value: active(p.state) && p.percent != null ? `${p.percent}%` : '',
           sub: [states[p.state] || 'Ready', active(p.state) && p.remaining ? `${left(p.remaining)} left` : '', p.layers ? `layer ${p.layer} of ${p.layers}` : ''].filter(Boolean).join(' · ') },
         ...(p.nozzle != null ? [{ icon: 'flame', label: 'Temperatures', sub: `Nozzle ${Math.round(p.nozzle)}°${p.nozzleTarget ? ` of ${Math.round(p.nozzleTarget)}°` : ''} · Bed ${Math.round(p.bed)}°${p.bedTarget ? ` of ${Math.round(p.bedTarget)}°` : ''}` }] : []),
       ];
-    });
+    }, { title: '3D printer', icon: 'printer' });
   },
   options(api) {
     const set = patch => api.request('/api/bambu', patch).then(() => { api.toast('Saved'); renderPanel(); }).catch(e => api.toast(e.message));

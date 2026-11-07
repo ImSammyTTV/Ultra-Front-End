@@ -69,6 +69,8 @@ api.quickAccess(() => [
 api.refresh();  // redraws Quick Access, after something in your rows changed
 ```
 
+Your rows fold under one row of their own, like Sound and Batteries. Give it a title and icon with
+`api.quickAccess(rows, { title: '3D printer', icon: 'printer' })` (your add-on's title if you don't).
 `rows()` is asked for each time Quick Access is drawn. Rows without `run` are just information.
 
 ### Events
