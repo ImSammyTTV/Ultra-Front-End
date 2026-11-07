@@ -1435,7 +1435,15 @@ function openReader(n, image) {
 // a Steam Controller's too), Ctrl + the mouse wheel, or the right stick; 100% to 250%. Each post opens at 100%
 function readerZoom(by = 0) {
   R.zoom = by === 0 ? 1 : clamp(Math.round(((R.zoom || 1) + by) * 100) / 100, 1, 2.5);
-  $('#reader').style.setProperty('--rz', R.zoom);
+  // eases from the size shown now to the new one, keeping the reading spot steady
+  const el = $('#reader'), sc = $('#reader .r-scroll'), from = R.shown || 1, to = R.zoom, t0 = performance.now();
+  cancelAnimationFrame(R.zoomRaf);
+  const step = t => { const k = Math.min(1, (t - t0) / 260), e = 1 - Math.pow(1 - k, 3), z = from + (to - from) * e;
+    const keep = sc && sc.scrollHeight > sc.clientHeight ? sc.scrollTop / (sc.scrollHeight - sc.clientHeight) : 0;
+    R.shown = z; el.style.setProperty('--rz', z);
+    if (sc && sc.scrollHeight > sc.clientHeight) sc.scrollTop = keep * (sc.scrollHeight - sc.clientHeight);
+    if (k < 1) R.zoomRaf = requestAnimationFrame(step); };
+  R.zoomRaf = requestAnimationFrame(step);
   $('#reader .r-zoom').lastChild.textContent = R.zoom === 1 ? ' Zoom' : ` ${Math.round(R.zoom * 100)}%`;
 }
 $('#reader').addEventListener('wheel', e => { if (e.ctrlKey) { e.preventDefault(); readerZoom(e.deltaY < 0 ? .1 : -.1); } }, { passive: false });
