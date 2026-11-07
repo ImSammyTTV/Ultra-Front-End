@@ -50,16 +50,20 @@ UFE.addon({
       if (active(was) || p.state === 'RUNNING') doneAt = 0;
       if (p.state === 'FINISH' || p.state === 'FAILED') doneAt ||= Date.now();
       const name = nice(p.name), image = active(p.state) || p.state === 'FINISH' ? await picture() : '';
-      if (active(p.state)) return api.hud({ icon: 'printer', image, text: name, progress: p.percent,
+      if (active(p.state)) return api.hud({ place: api.settings().place || 'top-left', icon: 'printer', image, text: name, progress: p.percent,
         sub: [p.state === 'PAUSE' ? 'Paused' : p.state === 'PREPARE' ? 'Getting ready' : `${p.percent ?? 0}%`, p.remaining ? `${left(p.remaining)} left` : '', p.layers ? `layer ${p.layer} of ${p.layers}` : ''].filter(Boolean).join(' · ') });
-      if (doneAt && Date.now() - doneAt < 5 * 60000) return api.hud({ icon: 'printer', image, text: name, sub: p.state === 'FINISH' ? 'Print finished' : 'Print stopped', progress: p.state === 'FINISH' ? 100 : null });
+      if (doneAt && Date.now() - doneAt < 5 * 60000) return api.hud({ place: api.settings().place || 'top-left', icon: 'printer', image, text: name, sub: p.state === 'FINISH' ? 'Print finished' : 'Print stopped', progress: p.state === 'FINISH' ? 100 : null });
       api.hud(null);
     };
     api.every(10000, card);
   },
   options(api) {
     const set = patch => api.request('/api/bambu', patch).then(() => { api.toast('Saved'); renderPanel(); }).catch(e => api.toast(e.message));
+    const PLACES = [['top-left', 'Top left'], ['top', 'Top middle'], ['top-right', 'Top right'], ['bottom-left', 'Bottom left'], ['bottom', 'Bottom middle'], ['bottom-right', 'Bottom right']];
+    const at = Math.max(0, PLACES.findIndex(([k]) => k === (api.settings().place || 'top-left')));
     return [
+      { kind: 'row', label: 'Card over the game', value: PLACES[at][1], sub: 'Where it sits on the screen while you play',
+        act: () => { api.saveSettings({ place: PLACES[(at + 1) % PLACES.length][0] }); renderPanel(); } },
       { kind: 'row', label: 'Printer IP address', value: api.store.get('ip', '') || 'Not set', sub: "On the printer: Settings › Network (it's best to give it a fixed address in your router)",
         act: () => api.ask('Printer IP address', ip => { api.store.set('ip', ip); set({ ip }); }, 40) },
       { kind: 'row', label: 'Serial number', value: api.store.get('serial', '') || 'Not set', sub: 'On the printer: Settings › Device, or on the label on the back',

@@ -549,17 +549,24 @@ def hud():
     scale = ctypes.windll.user32.GetDpiForSystem() / 96 or 1
     sx, sy, sw, sh = game_screen()
     width = int(sh * .24)
+    HUD_WIN = {}
     margin = int(sh * .025)
 
     class HudApi:
-        def size(self, h, w=None):
+        def size(self, h, w=None, round_px=None, place="top-left"):
             nonlocal width
             try:
                 if w:
-                    width = max(100, int(float(w) * scale))
+                    width = max(20, int(float(w) * scale))
                 h = max(1, int(float(h) * scale))
                 window.resize(int(width / scale), int(h / scale))
-                window.move(int((sx + margin) / scale), int((sy + margin) / scale))
+                # where the person chose (Settings › Add-ons): a corner, or the middle of the top or bottom edge
+                x = sx + margin if "left" in place else sx + sw - width - margin if "right" in place else sx + (sw - width) // 2
+                y = sy + sh - h - margin * 2 if place.startswith("bottom") else sy + margin
+                window.move(int(x / scale), int(y / scale))
+                if HUD_WIN.get("hwnd") and round_px:  # cut to the card's rounded shape: only the pill shows over the game
+                    d = int(float(round_px) * scale)
+                    ctypes.windll.user32.SetWindowRgn(ctypes.c_void_p(HUD_WIN["hwnd"]), ctypes.windll.gdi32.CreateRoundRectRgn(0, 0, width + 1, h + 1, d, d), True)
             except Exception:
                 pass
 
@@ -577,12 +584,13 @@ def hud():
         except Exception:
             raw = server.frontend_window("Ultra Front End HUD")
         hwnd = ctypes.c_void_p(raw)
+        HUD_WIN["hwnd"] = raw
         user32 = ctypes.windll.user32
         GWL_EXSTYLE = -20
         ex = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
         user32.SetWindowLongW(hwnd, GWL_EXSTYLE, ex | 0x20 | 0x80000 | 0x8000000 | 0x80)  # transparent, layered, no-activate, tool window
         user32.SetLayeredWindowAttributes(hwnd, 0, 222, 2)  # LWA_ALPHA: a little see-through, like glass
-        round = ctypes.c_int(2)  # DWMWCP_ROUND: Windows 11's rounded corners
+        round = ctypes.c_int(1)  # DWMWCP_DONOTROUND: the window is cut to the pill's own shape instead
         ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 33, ctypes.byref(round), ctypes.sizeof(round))
         no_border = ctypes.c_uint(0xFFFFFFFE)
         ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(no_border), ctypes.sizeof(no_border))

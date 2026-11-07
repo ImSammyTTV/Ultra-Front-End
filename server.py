@@ -5175,6 +5175,7 @@ def focus_process(pid, timeout=120):
 # focus or the clicks (the game keeps both), and it's only there while a game is running and an add-on has something
 # to show. A third copy of the program with --hud shows app/hud.html, which asks here every two seconds.
 HUD = {"items": {}, "proc": None}
+HUD_PLACES = ("top-left", "top", "top-right", "bottom-left", "bottom", "bottom-right")  # where on the screen the card goes
 HUD_LOCK = threading.Lock()
 
 
@@ -5192,6 +5193,7 @@ def hud_set(addon_id, item):
         image = str(item.get("image") or "")
         HUD["items"][addon_id] = {"icon": str(item.get("icon") or "")[:20], "text": str(item.get("text") or "")[:80],
                                   "image": image[:300] if image.startswith("/api/") else "",
+                                  "place": item.get("place") if item.get("place") in HUD_PLACES else "top-left",
                                   "sub": str(item.get("sub") or "")[:100], "t": time.time(),
                                   "progress": max(0, min(100, float(prog))) if isinstance(prog, (int, float)) else None}
     hud_start()
@@ -5216,7 +5218,7 @@ def hud_view():
     items = hud_items()
     # size: the card's scale (1 = normal), from data/hud-card.json, so it can be tuned without a restart
     size = load("hud-card.json", {}).get("size", 1)
-    return {"items": items, "quit": not open_session() or not items, "hidden": overlay_open(),
+    return {"items": items, "quit": not open_session() or not items, "hidden": overlay_open(), "place": items[0]["place"] if items else "top-left",
             "size": max(.5, min(2.0, float(size))) if isinstance(size, (int, float)) else 1}
 
 

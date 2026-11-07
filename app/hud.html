@@ -1,34 +1,34 @@
 <!doctype html>
 <html><head><meta charset="utf-8">
 <style>
-  /* glass: a soft frosted panel with a light edge and glow (the window itself is a little see-through too) */
+  /* A slim glass pill: a round picture, one line of words, and a thin glowing bar along the bottom edge. The window is
+     cut to the pill's shape, so only the pill shows over the game. 1rem is set from the screen's height (see below). */
   html, body { margin: 0; color: #f4f5f7; font-family: "Segoe UI Variable Display", "Segoe UI", sans-serif; overflow: hidden; user-select: none; cursor: none; }
-  body { background: radial-gradient(120% 140% at 0% 0%, rgba(120, 160, 255, .22), transparent 55%), radial-gradient(120% 140% at 100% 100%, rgba(80, 255, 190, .14), transparent 60%), linear-gradient(160deg, #2a2d36, #16181d 70%); }
-  body::before { content: ''; position: fixed; inset: 0; border-radius: 1.6rem; pointer-events: none;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), inset 0 0 0 1px rgba(255, 255, 255, .1); }
-  body::after { content: ''; position: fixed; left: 0; right: 0; top: 0; height: 45%; pointer-events: none; background: linear-gradient(rgba(255, 255, 255, .09), transparent); }
-  #cards { position: relative; padding: 1.2rem 0; }
-  .card { display: flex; align-items: center; gap: 1.6rem; padding: 1.2rem 2.2rem; animation: in .45s cubic-bezier(.2, .8, .2, 1) backwards; }
+  body { background: #1b1d23; }
+  #cards { display: inline-flex; flex-direction: column; }
+  .card { position: relative; display: flex; align-items: center; gap: 1.2rem; height: 6.2rem; box-sizing: border-box; padding: 0 2.4rem 0 .9rem; white-space: nowrap;
+    background: radial-gradient(120% 220% at 0% 0%, rgba(120, 160, 255, .24), transparent 55%), radial-gradient(120% 220% at 100% 100%, rgba(80, 255, 190, .16), transparent 60%), linear-gradient(160deg, #2c2f38, #17191e 75%);
+    animation: in .45s cubic-bezier(.2, .8, .2, 1) backwards; }
+  .card::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 48%; background: linear-gradient(rgba(255, 255, 255, .1), transparent); pointer-events: none; }
   .card + .card { border-top: 1px solid rgba(255, 255, 255, .08); }
-  @keyframes in { from { opacity: 0; transform: translateY(-.6rem); } }
-  .card svg { width: 3.2rem; height: 3.2rem; padding: .8rem; flex: none; border-radius: 1.2rem; background: rgba(255, 255, 255, .1); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2);
-    fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-  .pic { width: 6.4rem; height: 6.4rem; flex: none; border-radius: 1.2rem; object-fit: contain; background: radial-gradient(circle at 50% 40%, #f4f6fa, #c9ced8); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6), 0 .4rem 1.2rem rgba(0, 0, 0, .35); }  /* the picture of what's printing, on a light tile so dark filament shows */
-  .text { flex: 1; min-width: 0; }
-  .text div { font-size: 2.3rem; font-weight: 600; letter-spacing: .01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .text small { display: block; margin-top: .2rem; font-size: 1.7rem; color: rgba(255, 255, 255, .66); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
-  /* the progress bar: it grows smoothly, and a light sweeps along it while it's going */
-  .bar { position: relative; height: .7rem; margin-top: 1rem; border-radius: .35rem; background: rgba(255, 255, 255, .14); overflow: hidden; box-shadow: inset 0 1px 1px rgba(0, 0, 0, .3); }
-  .bar i { position: relative; display: block; height: 100%; border-radius: inherit; overflow: hidden; transition: width 1.2s cubic-bezier(.2, .8, .2, 1);
-    background: linear-gradient(90deg, #7fb2ff, #7ff0c8); box-shadow: 0 0 1rem rgba(127, 220, 255, .6); }
-  .bar i::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .7), transparent); transform: translateX(-100%); animation: sweep 2.2s ease-in-out infinite; }
+  @keyframes in { from { opacity: 0; } }
+  .pic, .card svg { width: 4.4rem; height: 4.4rem; flex: none; border-radius: 50%; }
+  .pic { object-fit: contain; background: radial-gradient(circle at 50% 40%, #f4f6fa, #c9ced8); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6); }
+  .card svg { box-sizing: border-box; padding: 1rem; background: rgba(255, 255, 255, .1); fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .t { font-size: 2rem; font-weight: 600; letter-spacing: .01em; }
+  .t span { font-weight: 400; color: rgba(255, 255, 255, .7); font-variant-numeric: tabular-nums; }
+  /* the bar: grows smoothly, and a light sweeps along it while it's going */
+  .bar { position: absolute; left: 0; right: 0; bottom: 0; height: .45rem; background: rgba(255, 255, 255, .12); }
+  .bar i { position: relative; display: block; height: 100%; overflow: hidden; transition: width 1.2s cubic-bezier(.2, .8, .2, 1);
+    background: linear-gradient(90deg, #7fb2ff, #7ff0c8); box-shadow: 0 0 1rem rgba(127, 220, 255, .7); }
+  .bar i::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .75), transparent); transform: translateX(-100%); animation: sweep 2.2s ease-in-out infinite; }
   .bar.full i::after { animation: none; }
   @keyframes sweep { to { transform: translateX(100%); } }
 </style></head>
 <body><div id="cards"></div>
 <script>
-let size = 0;  // the card's scale, from the app (data/hud-card.json), so it can be tuned while it runs
 // The in-game display: add-ons' cards, asked for every two seconds. Hidden while the in-game menu is open.
+let size = 0;  // the card's scale, from the app (data/hud-card.json), so it can be tuned while it runs
 const ICON = {
   printer: '<path d="M7 9V4h10v5"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v6H7z"/>',
   bolt: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>', music: '<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>',
@@ -36,31 +36,31 @@ const ICON = {
   bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>', star: '<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',
 };
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-let last = '';
+const cardHTML = it => `<div class="card">${it.image ? `<img class="pic" src="${esc(it.image)}" alt="">` : `<svg viewBox="0 0 24 24">${ICON[it.icon] || ICON.bolt}</svg>`}`
+  + `<div class="t">${esc(it.text)}${it.sub ? ` <span>· ${esc(it.sub)}</span>` : ''}</div>`
+  + `${it.progress != null ? `<div class="bar${it.progress >= 100 ? ' full' : ''}"><i style="width:${it.progress}%"></i></div>` : ''}</div>`;
+let shape = '', drawn = '', place = 'top-left';
+function fit() {  // the window takes the pill's size, and is cut to its rounded shape
+  const box = document.getElementById('cards'), r = box.getBoundingClientRect();
+  window.pywebview?.api?.size(box.children.length ? Math.ceil(r.height) : 1, box.children.length ? Math.ceil(r.width) : 1, Math.ceil(r.height / box.children.length || 1), place);
+}
 async function tick() {
   try {
     const r = await (await fetch('/api/addon-hud', { cache: 'no-store' })).json();
     if (r.quit) return window.pywebview?.api?.quit();
-    if (r.size !== size) { size = r.size; last = ''; document.documentElement.style.fontSize = `${screen.height / 118 * size}px`; }
-    const html = r.hidden ? '' : r.items.map(it => `<div class="card">${it.image ? `<img class="pic" src="${esc(it.image)}" alt="">` : `<svg viewBox="0 0 24 24">${ICON[it.icon] || ICON.bolt}</svg>`}<div class="text"><div>${esc(it.text)}</div>${it.sub ? `<small>${esc(it.sub)}</small>` : ''}${it.progress != null ? `<div class="bar${it.progress >= 100 ? ' full' : ''}" data-p="${it.progress}"><i></i></div>` : ''}</div></div>`).join('');
-    const shape = html.replace(/data-p="[^"]*"/g, '').replace(/<small>.*?<\/small>/g, '');
-    if (shape !== last) {  // a new card or a new title: drawn again; otherwise only its words and bar change
-      last = shape;
-      document.getElementById('cards').innerHTML = html;
-      document.getElementById('cards').style.display = html ? '' : 'none';
-      // measured once it's laid out, with room to spare, so nothing is cut off at the bottom
-    } else {
-      const now = new DOMParser().parseFromString(`<div>${html}</div>`, 'text/html').body.firstChild.children;
-      [...document.querySelectorAll('.card')].forEach((c, i) => { const n = now[i]; if (!n) return;
-        const sm = c.querySelector('small'), ns = n.querySelector('small'); if (sm && ns) sm.textContent = ns.textContent;
-        const b = c.querySelector('.bar'), nb = n.querySelector('.bar'); if (b && nb) { b.dataset.p = nb.dataset.p; b.className = nb.className; } });
+    if (r.size !== size) { size = r.size; shape = ''; document.documentElement.style.fontSize = `${screen.height / 118 * size}px`; }
+    const items = r.hidden ? [] : r.items, box = document.getElementById('cards');
+    const nextShape = items.map(it => `${it.image}|${it.icon}|${it.progress != null}`).join('\n');
+    if (nextShape !== shape) {  // a new card: drawn again (fades in)
+      shape = nextShape;
+      box.innerHTML = items.map(cardHTML).join('');
+    } else {  // the same card: only its words and bar change, so the bar glides
+      [...box.children].forEach((c, i) => { const it = items[i];
+        c.querySelector('.t').innerHTML = `${esc(it.text)}${it.sub ? ` <span>· ${esc(it.sub)}</span>` : ''}`;
+        const b = c.querySelector('.bar'); if (b) { b.classList.toggle('full', it.progress >= 100); b.querySelector('i').style.width = `${it.progress}%`; } });
     }
-    document.querySelectorAll('.bar').forEach(b => { b.querySelector('i').style.width = `${b.dataset.p}%`; });
-    if (html !== window.lastHtml || size !== window.lastSize) {
-      window.lastSize = size;
-      window.lastHtml = html;
-      requestAnimationFrame(() => window.pywebview?.api?.size(html ? Math.ceil(document.getElementById('cards').getBoundingClientRect().height) + 4 : 1, screen.height * .27 * size));
-    }
+    const now = items.map(it => `${it.text}|${it.sub}`).join('\n') + size;
+    if (now !== drawn) { drawn = now; requestAnimationFrame(fit); }
   } catch {}
 }
 window.addEventListener('pywebviewready', tick);
