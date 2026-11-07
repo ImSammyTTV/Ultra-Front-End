@@ -3577,12 +3577,16 @@ def scan():
             if not g["cover"] and g.get("fallbackCover"):
                 g["cover"] = libretro_cover(g) or g["fallbackCover"]
 
-        log = load("playlog.json", {})
+        log, sessions, fixed = load("playlog.json", {}), load("sessions.json", []), False
         for g in games.values():
             p = log.get(g["id"])
             if p:
+                if "seconds" not in p:  # a log from before 1.2.7: counted again from its sessions, once
+                    p["minutes"], fixed = played_seconds(p, g["id"], sessions) // 60, True
                 g["lastPlayed"] = max(g["lastPlayed"], p.get("lastPlayed", 0))
                 g["minutes"] = max(g["minutes"], p.get("minutes", 0))
+        if fixed:
+            store("playlog.json", log)
         # A game found by a launcher (EA app, Ubisoft, Battle.net) and again in a games folder added by hand is the same
         # game: keep the launcher's entry (it starts through the launcher) with the better playtime of the two.
         folders = {os.path.normcase(os.path.normpath(g["folder"])): g for g in games.values() if g.get("folder")}
@@ -3746,12 +3750,15 @@ def session_start(game_id):
 
 def session_end(game_id=None, min_age=0):
     with SESSION_LOCK:
-        sessions, now, changed = load("sessions.json", []), time.time(), False
+        sessions, now, changed, ended = load("sessions.json", []), time.time(), False, []
         for s in sessions:
             if not s.get("end") and (game_id is None or s["game"] == game_id) and now - s["start"] >= min_age:
                 s["end"], changed = now, True
+                ended.append(s)
         if changed:
             store("sessions.json", sessions)
+    for s in ended:  # play time comes from sessions: they end however the game ends, even after the helper restarted
+        record_play(s["game"], s["end"] - s["start"])
 
 
 def open_session():
@@ -4461,7 +4468,7 @@ def wait_game(game, proc, start):
         elif time.time() - last > 3:
             break
         time.sleep(0.2 if time.time() - start < 30 else 2)
-    record_play(game["id"], int((time.time() - start) / 60))
+    record_play(game["id"])  # last played; the time itself is counted when its session ends (session_end)
     if RUNNING.get(game["id"]) is proc:  # not if the game has been started again meanwhile
         del RUNNING[game["id"]]
         session_end(game["id"])
@@ -6088,11 +6095,23 @@ def watch_steam_button():
         time.sleep(30)
 
 
-def record_play(game_id, minutes=0):
+def played_seconds(p, game_id, sessions=None):
+    """Time played as seconds. Logs from before 1.2.7 kept whole minutes per launch (rounded down, so short launches
+    counted nothing) and missed launches the helper wasn't watching to the end: those take the session total if larger."""
+    if "seconds" not in p:
+        if sessions is None:
+            sessions = load("sessions.json", [])
+        total = sum(min(s["end"] - s["start"], 8 * 3600) for s in sessions if s.get("game") == game_id and s.get("end"))
+        p["seconds"] = max(p.get("minutes", 0) * 60, int(total))
+    return p["seconds"]
+
+
+def record_play(game_id, seconds=0):
     log = load("playlog.json", {})
-    p = log.setdefault(game_id, {"lastPlayed": 0, "minutes": 0})
+    p = log.setdefault(game_id, {"lastPlayed": 0, "minutes": 0, "seconds": 0})
     p["lastPlayed"] = int(time.time())
-    p["minutes"] += minutes
+    p["seconds"] = played_seconds(p, game_id) + int(seconds)
+    p["minutes"] = p["seconds"] // 60
     store("playlog.json", log)
     g = STATE["byId"].get(game_id)
     if g:
