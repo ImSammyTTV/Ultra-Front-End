@@ -13,6 +13,7 @@
   @keyframes in { from { opacity: 0; transform: translateY(-.6rem); } }
   .card svg { width: 3.2rem; height: 3.2rem; padding: .8rem; flex: none; border-radius: 1.2rem; background: rgba(255, 255, 255, .1); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2);
     fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .pic { width: 6.4rem; height: 6.4rem; flex: none; border-radius: 1.2rem; object-fit: contain; background: rgba(255, 255, 255, .08); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2); }  /* the picture of what's printing */
   .text { flex: 1; min-width: 0; }
   .text div { font-size: 2.3rem; font-weight: 600; letter-spacing: .01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .text small { display: block; margin-top: .2rem; font-size: 1.7rem; color: rgba(255, 255, 255, .66); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
@@ -40,7 +41,7 @@ async function tick() {
   try {
     const r = await (await fetch('/api/addon-hud', { cache: 'no-store' })).json();
     if (r.quit) return window.pywebview?.api?.quit();
-    const html = r.hidden ? '' : r.items.map(it => `<div class="card"><svg viewBox="0 0 24 24">${ICON[it.icon] || ICON.bolt}</svg><div class="text"><div>${esc(it.text)}</div>${it.sub ? `<small>${esc(it.sub)}</small>` : ''}${it.progress != null ? `<div class="bar${it.progress >= 100 ? ' full' : ''}" data-p="${it.progress}"><i></i></div>` : ''}</div></div>`).join('');
+    const html = r.hidden ? '' : r.items.map(it => `<div class="card">${it.image ? `<img class="pic" src="${esc(it.image)}" alt="">` : `<svg viewBox="0 0 24 24">${ICON[it.icon] || ICON.bolt}</svg>`}<div class="text"><div>${esc(it.text)}</div>${it.sub ? `<small>${esc(it.sub)}</small>` : ''}${it.progress != null ? `<div class="bar${it.progress >= 100 ? ' full' : ''}" data-p="${it.progress}"><i></i></div>` : ''}</div></div>`).join('');
     const shape = html.replace(/data-p="[^"]*"/g, '').replace(/<small>.*?<\/small>/g, '');
     if (shape !== last) {  // a new card or a new title: drawn again; otherwise only its words and bar change
       last = shape;

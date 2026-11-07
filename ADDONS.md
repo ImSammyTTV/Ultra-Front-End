@@ -77,6 +77,7 @@ Your rows fold under one row of their own, like Sound and Batteries. Give it a t
 
 ```js
 api.hud({ icon: 'printer', text: 'Benchy', sub: '42% · 1 h 10 min left', progress: 42 });
+// image: a picture from the app's own server (a path starting /api/) shown in place of the icon
 api.hud(null);  // takes it away
 ```
 

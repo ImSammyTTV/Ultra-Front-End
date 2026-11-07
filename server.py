@@ -4256,6 +4256,82 @@ def bambu_view():
             "nozzle": num("nozzle_temper"), "nozzleTarget": num("nozzle_target_temper"), "bed": num("bed_temper"), "bedTarget": num("bed_target_temper")}
 
 
+def _bambu_ftp(cfg):
+    """The printer's own storage, over FTPS (TLS from the start, port 990), with the same access code."""
+    import ftplib, socket, ssl
+    ctx = ssl.create_default_context()
+    ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE
+
+    class Implicit(ftplib.FTP_TLS):
+        def connect(self, host="", port=0, timeout=-999, source_address=None):
+            self.host, self.port = host, port
+            self.sock = self.context.wrap_socket(socket.create_connection((host, port), timeout=15), server_hostname=host)
+            self.af = self.sock.family
+            self.file = self.sock.makefile("r", encoding=self.encoding)
+            self.welcome = self.getresp()
+            return self.welcome
+
+        def ntransfercmd(self, cmd, rest=None):  # the data connection reuses the control connection's TLS session
+            conn, size = ftplib.FTP.ntransfercmd(self, cmd, rest)
+            return self.context.wrap_socket(conn, server_hostname=self.host, session=self.sock.session), size
+
+    ftp = Implicit(context=ctx)
+    ftp.connect(cfg["ip"], 990)
+    ftp.login("bblp", cfg["code"])
+    ftp.prot_p()
+    return ftp
+
+
+def bambu_preview():
+    """The picture of what's printing: Bambu Studio puts one in each .3mf (Metadata/plate_<n>.png). The file is
+    fetched from the printer once per print and kept, so this is quick after the first time."""
+    import io, zipfile
+    cfg, pr = bambu_config(), BAMBU["print"]
+    name, gfile = (pr.get("subtask_name") or "").strip(), (pr.get("gcode_file") or "").strip()
+    if not (cfg.get("ip") and cfg.get("code") and (name or gfile)):
+        return None
+    folder = os.path.join(DATA, "bambu-previews")
+    os.makedirs(folder, exist_ok=True)
+    key = hashlib.sha1(f"{name}|{gfile}".encode()).hexdigest()[:16]
+    out = os.path.join(folder, key + ".png")
+    if os.path.isfile(out):
+        return out
+    if BAMBU.get("preview_failed") == key and time.time() - BAMBU.get("preview_at", 0) < 300:
+        return None  # tried a moment ago: not again for a few minutes
+    BAMBU.update(preview_failed=key, preview_at=time.time())
+    ftp = _bambu_ftp(cfg)
+    try:
+        files = []
+        for d in ("/cache", "/", "/sdcard", "/model"):
+            try:
+                files += [f if f.startswith("/") else f"{d.rstrip('/')}/{f.lstrip('/')}" for f in ftp.nlst(d)]
+            except Exception:
+                pass
+        base = lambda f: os.path.basename(f).lower()
+        want = [x.lower() for x in (os.path.basename(gfile), f"{name}.gcode.3mf", f"{name}.3mf") if x]
+        hit = next((f for w in want for f in files if base(f) == w), None) \
+            or next((f for f in files if name and base(f).startswith(name.lower()) and base(f).endswith(".3mf")), None)
+        if not hit:
+            return None
+        buf = io.BytesIO()
+        ftp.retrbinary(f"RETR {hit}", buf.write)
+    finally:
+        try:
+            ftp.quit()
+        except Exception:
+            pass
+    with zipfile.ZipFile(buf) as z:
+        plate = re.search(r"plate_(\d+)", gfile)
+        pics = [n for n in z.namelist() if re.fullmatch(r"Metadata/plate_\d+\.png", n)]
+        pick = next((n for n in pics if plate and n == f"Metadata/plate_{plate.group(1)}.png"), pics[0] if pics else None)
+        if not pick:
+            return None
+        with open(out, "wb") as f:
+            f.write(z.read(pick))
+    BAMBU.pop("preview_failed", None)
+    return out
+
+
 def bambu_setup(body):
     cfg = bambu_config()
     for k in ("ip", "serial", "code"):
@@ -5113,7 +5189,9 @@ def hud_set(addon_id, item):
         HUD["items"].pop(addon_id, None)
     else:
         prog = item.get("progress")
+        image = str(item.get("image") or "")
         HUD["items"][addon_id] = {"icon": str(item.get("icon") or "")[:20], "text": str(item.get("text") or "")[:80],
+                                  "image": image[:300] if image.startswith("/api/") else "",
                                   "sub": str(item.get("sub") or "")[:100], "t": time.time(),
                                   "progress": max(0, min(100, float(prog))) if isinstance(prog, (int, float)) else None}
     hud_start()
@@ -9976,6 +10054,13 @@ class Handler(SimpleHTTPRequestHandler):
             return self.reply(game_details(g))
         if path == "/api/bambu":
             return self.reply(bambu_view())
+        if path == "/api/bambu/preview":
+            try:
+                f = bambu_preview()
+            except Exception:
+                log_error()
+                f = None
+            return self.send_path(f) if f else self.send_error(404)
         if path == "/api/addon-hud":
             return self.reply(hud_view())
         if path == "/api/addons":

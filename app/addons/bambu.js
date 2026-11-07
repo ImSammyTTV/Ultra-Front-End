@@ -33,17 +33,26 @@ UFE.addon({
     api.every(10000, check);
     // over the game: a card in the corner while it prints, and for a few minutes after it's done
     let doneAt = 0;
+    // the picture of what's printing, from the print file on the printer (once per print; none for a print not kept there)
+    let pic = { key: '', url: '' };
+    const picture = async () => {
+      const key = p.name || '';
+      if (key === pic.key) return pic.url;
+      pic = { key, url: '' };
+      try { if ((await fetch('/api/bambu/preview', { cache: 'no-store' })).ok) pic.url = `/api/bambu/preview?k=${encodeURIComponent(key)}`; } catch {}
+      return pic.url;
+    };
     // the file name as a title: no underscores or .3mf, only Latin letters and numbers ("X2D_&_P2S_全覆盖外排气接口" -> "X2D & P2S")
     const nice = n => (n || '').replace(/\.(gcode\.)?3mf$|\.gcode$/i, '').replace(/[_]+/g, ' ').replace(/[^\p{Script=Latin}\d\s&+\-().,']/gu, ' ')
       .replace(/\s+/g, ' ').replace(/^[\s&+\-.,]+|[\s&+\-.,]+$/g, '').trim() || '3D print';
-    const card = () => {
+    const card = async () => {
       if (!p?.connected) return api.hud(null);
       if (active(was) || p.state === 'RUNNING') doneAt = 0;
       if (p.state === 'FINISH' || p.state === 'FAILED') doneAt ||= Date.now();
-      const name = nice(p.name);
-      if (active(p.state)) return api.hud({ icon: 'printer', text: name, progress: p.percent,
+      const name = nice(p.name), image = active(p.state) || p.state === 'FINISH' ? await picture() : '';
+      if (active(p.state)) return api.hud({ icon: 'printer', image, text: name, progress: p.percent,
         sub: [p.state === 'PAUSE' ? 'Paused' : p.state === 'PREPARE' ? 'Getting ready' : `${p.percent ?? 0}%`, p.remaining ? `${left(p.remaining)} left` : '', p.layers ? `layer ${p.layer} of ${p.layers}` : ''].filter(Boolean).join(' · ') });
-      if (doneAt && Date.now() - doneAt < 5 * 60000) return api.hud({ icon: 'printer', text: name, sub: p.state === 'FINISH' ? 'Print finished' : 'Print stopped', progress: p.state === 'FINISH' ? 100 : null });
+      if (doneAt && Date.now() - doneAt < 5 * 60000) return api.hud({ icon: 'printer', image, text: name, sub: p.state === 'FINISH' ? 'Print finished' : 'Print stopped', progress: p.state === 'FINISH' ? 100 : null });
       api.hud(null);
     };
     api.every(10000, card);
