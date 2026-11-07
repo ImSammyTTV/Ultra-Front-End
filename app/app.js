@@ -2342,6 +2342,7 @@ const SETTINGS = [
   { id: 'general', label: 'General', icon: 'sliders' },
   { id: 'pad', label: 'Controllers', icon: 'controllers' },
   { id: 'hidden', label: 'Hidden games', icon: 'eyeoff' },
+  { id: 'addons', label: 'Add-ons', icon: 'star' },
   { id: 'about', label: 'About', icon: 'info' },
 ].filter(c => !(ON_ANDROID && c.id === 'accounts'));  // no store accounts on Android
 const GAME_SERVICES = [
@@ -2571,6 +2572,7 @@ function panelItems() {
     ];
   }
   if (P.view?.startsWith('setup-')) return setupItems(d, prof);
+  if (P.view === 'addons') return addonRows();
   if (P.view === 'hidden') {
     const hidden = LIB.filter(g => g.hidden).sort((a, b) => a.title.localeCompare(b.title));
     return [

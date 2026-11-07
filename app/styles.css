@@ -1244,3 +1244,9 @@ body.zone-2 #tabs, body.tabs-peek #tabs { pointer-events: auto; }
 .sp-toggle i { position: absolute; top: .25vh; left: .25vh; width: 1.5vh; height: 1.5vh; border-radius: 50%; background: #fff; transition: transform .2s var(--ease); }
 .sp-toggle.on { background: var(--accent); }
 .sp-toggle.on i { transform: translateX(1.6vh); }
+/* Add-ons: the icon on its row, and the weather next to the clock */
+.paddon { width: 4.4vh; height: 4.4vh; border-radius: 1vh; object-fit: cover; display: block; }
+.addon-weather { display: inline-flex; align-items: baseline; gap: .7vh; white-space: nowrap; }
+.addon-weather b { font-weight: 400; }
+.addon-weather small { opacity: .65; font-size: .8em; }
+.pic:has(.paddon) { width: 4.4vh; height: 4.4vh; }

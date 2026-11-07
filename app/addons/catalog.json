@@ -1,0 +1,11 @@
+[
+  {
+    "id": "weather",
+    "title": "Weather",
+    "description": "The temperature next to the clock, in °C or °F, with the humidity if you want it. From Open-Meteo, free and with no account.",
+    "author": "ImSammyTTV",
+    "version": "1.0",
+    "icon": "addons/weather.png",
+    "script": "addons/weather.js"
+  }
+]
