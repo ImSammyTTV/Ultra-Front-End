@@ -2113,10 +2113,10 @@ function sysRows() {
     label: shortDev(o.name), value: o.on ? '✓' : '', run: () => o.on ? sysView('') : qaDo({ action: 'output', id: o.id }).then(() => toast(`Sound plays on ${shortDev(o.name)}`, 2500)) })), back];
   if (SP.view === 'bt') return [{ head: 'Bluetooth audio' }, ...(SP.qa?.bt || []).map(d => ({ ic: d.kind === 'speaker' ? 'speaker' : 'headset', label: d.name, value: d.connected ? 'Connected' : '',
     sub: d.connected ? 'A disconnects it' : 'A connects it', run: () => btToggle(d) })),
-    ...(SP.btFound === undefined ? [] : SP.btFound === null ? [{ ic: 'search', label: 'Searching for devices…', sub: 'Put your headphones or speaker in pairing mode (AirPods: open the case and hold its button)' }]
+    ...(SP.btFound === undefined ? [] : SP.btFound === null ? [{ ic: 'search', label: 'Searching for devices…', sub: 'Put it in pairing mode now' }]
       : SP.btFound.length ? SP.btFound.map(d => ({ ic: d.kind === 'speaker' ? 'speaker' : 'headset', over: 'New', label: d.name, sub: 'A pairs and connects it', run: () => btPair(d) }))
       : [{ ic: 'headset', label: 'Nothing new found', sub: 'Check it’s in pairing mode, then search again' }]),
-    { ic: 'search', label: 'Search for new devices', sub: 'Pairs headphones and speakers right here', run: btScan }, back];
+    ...(SP.btFound === null ? [] : [{ ic: 'search', label: SP.btFound ? 'Search again' : 'Search for new devices', sub: 'Pairs headphones and speakers right here', run: btScan }]), back];  // one row while it searches
   if (SP.view === 'wifi') return [{ head: 'Wi-Fi' },
     { ic: 'wifi', label: SP.qa?.wifi?.off ? 'Wi-Fi is off' : 'Wi-Fi is on', value: SP.qa?.wifi?.off ? 'Off' : 'On', sub: SP.qa?.wifi?.off ? 'A turns it on' : 'A turns it off',
       run: () => { SP.networks = SP.qa?.wifi?.off ? null : []; renderSys(); qaDo({ action: 'wifiradio', on: !!SP.qa?.wifi?.off }); } },
