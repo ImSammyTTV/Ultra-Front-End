@@ -15,8 +15,8 @@ import webview  # noqa: E402
 
 if __name__ == "__main__" and os.name == "nt":  # Setup and Uninstall (Windows): their own window, before the helper is imported (it sets up a data folder)
     import setup_ui
-    if setup_ui.is_setup() or "--uninstall" in sys.argv:
-        setup_ui.main("install" if setup_ui.is_setup() else "uninstall")
+    if setup_ui.is_setup() or "--uninstall" in sys.argv or setup_ui.first_start_of_download():
+        setup_ui.main("uninstall" if "--uninstall" in sys.argv else "install")
         sys.exit()
 
 import server  # noqa: E402
