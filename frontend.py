@@ -552,8 +552,11 @@ def hud():
     margin = int(sh * .025)
 
     class HudApi:
-        def size(self, h):
+        def size(self, h, w=None):
+            nonlocal width
             try:
+                if w:
+                    width = max(100, int(float(w) * scale))
                 h = max(1, int(float(h) * scale))
                 window.resize(int(width / scale), int(h / scale))
                 window.move(int((sx + margin) / scale), int((sy + margin) / scale))

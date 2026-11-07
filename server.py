@@ -5214,7 +5214,10 @@ def hud_start():
 
 def hud_view():
     items = hud_items()
-    return {"items": items, "quit": not open_session() or not items, "hidden": overlay_open()}
+    # size: the card's scale (1 = normal), from data/hud-card.json, so it can be tuned without a restart
+    size = load("hud-card.json", {}).get("size", 1)
+    return {"items": items, "quit": not open_session() or not items, "hidden": overlay_open(),
+            "size": max(.5, min(2.0, float(size))) if isinstance(size, (int, float)) else 1}
 
 
 # ---------- in-game overlay ----------

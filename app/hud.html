@@ -27,7 +27,7 @@
 </style></head>
 <body><div id="cards"></div>
 <script>
-document.documentElement.style.fontSize = `${screen.height / 135}px`;  // about three quarters of the old size: small enough to stay out of the way
+let size = 0;  // the card's scale, from the app (data/hud-card.json), so it can be tuned while it runs
 // The in-game display: add-ons' cards, asked for every two seconds. Hidden while the in-game menu is open.
 const ICON = {
   printer: '<path d="M7 9V4h10v5"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v6H7z"/>',
@@ -41,6 +41,7 @@ async function tick() {
   try {
     const r = await (await fetch('/api/addon-hud', { cache: 'no-store' })).json();
     if (r.quit) return window.pywebview?.api?.quit();
+    if (r.size !== size) { size = r.size; last = ''; document.documentElement.style.fontSize = `${screen.height / 118 * size}px`; }
     const html = r.hidden ? '' : r.items.map(it => `<div class="card">${it.image ? `<img class="pic" src="${esc(it.image)}" alt="">` : `<svg viewBox="0 0 24 24">${ICON[it.icon] || ICON.bolt}</svg>`}<div class="text"><div>${esc(it.text)}</div>${it.sub ? `<small>${esc(it.sub)}</small>` : ''}${it.progress != null ? `<div class="bar${it.progress >= 100 ? ' full' : ''}" data-p="${it.progress}"><i></i></div>` : ''}</div></div>`).join('');
     const shape = html.replace(/data-p="[^"]*"/g, '').replace(/<small>.*?<\/small>/g, '');
     if (shape !== last) {  // a new card or a new title: drawn again; otherwise only its words and bar change
@@ -55,9 +56,10 @@ async function tick() {
         const b = c.querySelector('.bar'), nb = n.querySelector('.bar'); if (b && nb) { b.dataset.p = nb.dataset.p; b.className = nb.className; } });
     }
     document.querySelectorAll('.bar').forEach(b => { b.querySelector('i').style.width = `${b.dataset.p}%`; });
-    if (html !== window.lastHtml) {
+    if (html !== window.lastHtml || size !== window.lastSize) {
+      window.lastSize = size;
       window.lastHtml = html;
-      requestAnimationFrame(() => window.pywebview?.api?.size(html ? Math.ceil(document.getElementById('cards').getBoundingClientRect().height) + 4 : 1));
+      requestAnimationFrame(() => window.pywebview?.api?.size(html ? Math.ceil(document.getElementById('cards').getBoundingClientRect().height) + 4 : 1, screen.height * .27 * size));
     }
   } catch {}
 }
