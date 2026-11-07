@@ -2164,7 +2164,7 @@ function sysRows() {
     // Bluetooth headphones and controllers that report their battery to Windows (AirPods don't)
     ...(SP.qa?.batteries || []).map(b => ({ ic: /controller|gamepad|pad/i.test(b.name) ? 'pad' : 'headset', label: devName(b.name), value: `${b.level}%`, sub: 'Battery' })),
     ]),
-    ...group('Network and display', [
+    ...group(SP.qa?.brightness != null ? 'Network and display' : 'Network', [
     ...(SP.qa?.wifi ? [{ ic: 'wifi', id: 'fold-wifi', label: 'Wi-Fi', value: SP.qa.wifi.off ? 'Off' : chev('wifi'),
       sub: SP.qa.wifi.off ? 'A turns it on' : SP.qa.wifi.connected ? `${SP.qa.wifi.name}${SP.qa.wifi.signal != null ? ` · ${SP.qa.wifi.signal}% signal` : ''}` : 'Not connected · A shows networks',
       run: () => { sysView('wifi'); if (SP.fold === 'wifi') qaDo(SP.qa.wifi.off ? { action: 'wifiradio', on: true } : { action: 'wifiscan' }); } }, ...fold('wifi')] : []),
