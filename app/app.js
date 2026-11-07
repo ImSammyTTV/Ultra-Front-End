@@ -2133,8 +2133,8 @@ function sysRows() {
   const chev = v => SP.fold === v ? '▴' : '▾';
   const now = LIB.find(g => RUN.has(g.id));
   // grouped like a console's quick menu: a heading over each set, skipped when moving
-  // each kind of setting folds under one row (A opens or closes it); Sound starts open
-  SP.cats = SP.cats || { Sound: true };
+  // each kind of setting folds under one row (A opens or closes it); all start closed
+  SP.cats = SP.cats || {};
   const CAT_IC = { Sound: 'volume', Batteries: 'pad', Network: 'wifi', 'Network and display': 'wifi', More: 'settings', Power: 'power' };
   const group = (head, rows) => !rows.length ? [] : head === 'Games' ? rows : [
     { id: 'cat-' + head, ic: CAT_IC[head] || 'settings', label: head, value: SP.cats[head] ? '▴' : '▾',
