@@ -1413,13 +1413,16 @@ function openReader(n, image) {
   $('#reader .r-article').innerHTML = `${image ? `<img class="r-hero" src="${esc(image)}" alt="">` : ''}
     <div class="r-meta">${esc(fmtDate(n.date))}${n.source ? ' · ' + esc(n.source) : ''}</div>
     <h1 class="r-title">${esc(n.title)}</h1>
+    ${n.state === 'update' ? `<button class="r-update" type="button">Update to ${esc(n.version)} <span>A</span></button>` : ''}
     <div class="r-body">${body.map(b => b.t === 'img' ? `<img src="${esc(b.src)}" alt="" loading="lazy">`
       : b.t === 'h' ? `<h2>${esc(b.text)}</h2>` : b.t === 'li' ? `<li>${esc(b.text)}</li>` : `<p>${esc(b.text)}</p>`).join('') || `<p>${esc(n.summary)}</p>`}</div>`;
   $('#reader .r-scroll').scrollTop = 0;
-  R.open = true;
+  R.open = true; R.update = n.state === 'update';  // a newer release: A installs it
   document.body.classList.add('reader-open');
   tick(600, .07);
 }
+function readerUpdate() { closeReader(); updateNow('install'); }
+$('#reader').addEventListener('click', e => { if (e.target.closest('.r-update')) readerUpdate(); });
 function closeReader() { R.open = false; document.body.classList.remove('reader-open'); tick(420, .06); }
 const readerScroll = steps => $('#reader .r-scroll').scrollBy({ top: steps * innerHeight * .22, behavior: 'smooth' });
 $('#details').addEventListener('click', e => {
@@ -1475,7 +1478,7 @@ function renderNewsPage() {
       <div class="nb"><div class="ng">${esc(n.game)}</div><div class="nt">${esc(n.title)}</div><div class="ns">${esc(n.summary)}</div><div class="nd">${esc(fmtDate(n.date))}${n.source ? ' · ' + esc(n.source) : ''}</div></div></div>`).join('')
     : `<div class="d-empty">No news yet. Connect Steam or add Steam games to see their news here.${LIB.some(g => g.appid) ? '' : '<br>Press A to connect Steam.'}</div>`;
   else grid.innerHTML = list.length ? list.map(relPicture).map((n, i) => `<div class="np-card np-rel" data-i="${i}" style="animation-delay:${Math.min(i, 16) * 40}ms">
-      <div class="ni"${n.image ? ` style="background-image:linear-gradient(180deg, rgba(4, 8, 20, 0) 40%, rgba(4, 8, 20, .7)), url(&quot;${esc(n.image)}&quot;)"` : ''}><span class="np-ver">${esc(n.version)}</span>${n.state ? `<span class="np-state ${n.state}">${RELEASE_STATE[n.state]}</span>` : ''}</div>
+      <div class="ni"${n.image ? ` style="background-image:linear-gradient(180deg, rgba(4, 8, 20, 0) 40%, rgba(4, 8, 20, .7)), url(&quot;${esc(n.image)}&quot;)"` : ''}>${n.image ? '' : `<span class="np-ver">${esc(n.version)}</span>`}${n.state ? `<span class="np-state ${n.state}">${RELEASE_STATE[n.state]}</span>` : ''}</div>
       <div class="nb"><div class="ng">Ultra Front End</div><div class="nt">${esc(n.title)}</div><div class="ns">${esc(n.summary)}</div><div class="nd">${esc(fmtDate(n.date))}</div></div></div>`).join('')
     : `<div class="d-empty">${esc(NP.upErr || 'Nothing here yet.')}</div>`;
   newsFocus();
@@ -3268,7 +3271,7 @@ function input(action) {
     : V.open
       ? { left: () => showMedia(V.i - 1), right: () => showMedia(V.i + 1), ok: viewerToggle, back: closeViewer, prevTab: () => showMedia(V.i - 1), nextTab: () => showMedia(V.i + 1), options: viewerMore }
     : R.open
-      ? { up: () => readerScroll(-1), down: () => readerScroll(1), ok: () => readerScroll(3), back: closeReader, prevTab: () => readerScroll(-4), nextTab: () => readerScroll(4) }
+      ? { up: () => readerScroll(-1), down: () => readerScroll(1), ok: () => R.update ? readerUpdate() : readerScroll(3), back: closeReader, prevTab: () => readerScroll(-4), nextTab: () => readerScroll(4) }
     : AP.open
       ? { up: () => achMove(0, -1), down: () => achMove(0, 1), left: () => achMove(-1, 0), right: () => achMove(1, 0), back: closeAchievements,
           prevTab: () => achTab(-1), nextTab: () => achTab(1) }

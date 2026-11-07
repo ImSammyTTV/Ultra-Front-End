@@ -3422,7 +3422,7 @@ def whats_new():
         headers["If-None-Match"] = saved["etag"]
     releases, error = saved.get("releases"), ""
     try:
-        req = urllib.request.Request(f"https://api.github.com/repos/{UPDATE_REPO}/releases?per_page=12", headers=headers)
+        req = urllib.request.Request(f"https://api.github.com/repos/{UPDATE_REPO}/releases?per_page=100", headers=headers)
         with urllib.request.urlopen(req, timeout=15) as r:
             releases = [{"version": str(x.get("tag_name") or "").lstrip("vV"), "name": str(x.get("name") or ""), "notes": str(x.get("body") or ""),
                          "date": release_date(x.get("published_at")), "page": str(x.get("html_url") or "")}

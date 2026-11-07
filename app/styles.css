@@ -468,6 +468,10 @@ body.news-open #newspage { opacity: 1; pointer-events: auto; }
 
 /* news page: cards keep their natural height (clipped cards were collapsing to thin strips in the scrolling grid) */
 .np-grid { grid-auto-rows: max-content; }
+/* the selected card lifts and glows: room above it, so scrolling to the last row doesn't tuck its top under the tabs, and
+   cards fade out under the tab row instead of being sliced off by it */
+.np-grid { padding: 2.6vh 1.2vh 1.2vh; margin: -1.2vh -1.2vh -1.2vh; scroll-padding-block: 2.6vh 1.6vh;
+  -webkit-mask: linear-gradient(180deg, transparent 0, #000 2.4vh, #000 calc(100% - 1.6vh), transparent 100%); }
 .np-card { min-height: max-content; }
 /* no blur of their own: the page already blurs what's behind it, and a blur inside a blur let the home screen's sharp
    edges (a cover tile) show through the cards as a faint box */
@@ -1189,3 +1193,8 @@ body.zone-2 #tabs, body.tabs-peek #tabs { pointer-events: auto; }
 .sp-row.sel.sp-music { background: none; color: inherit; }
 .sp-row.sel.sp-music .sp-text small { color: rgba(255, 255, 255, .62); }  /* as when not selected: the highlight is on a button */
 .sp-row.sel .sp-mb.on { background: #fff; color: var(--menu-ink); }
+
+/* What's new: a newer release than this copy offers to install it */
+.r-update { display: inline-flex; align-items: center; gap: 1.2vh; margin: .4vh 0 2.4vh; padding: 1.3vh 2.6vh; border: 0; border-radius: 99px; cursor: pointer;
+  font: inherit; font-size: 2vh; font-weight: 600; background: var(--accent); color: #04121f; box-shadow: 0 0 2.4vh var(--accent-glow); }
+.r-update span { display: inline-grid; place-items: center; width: 2.6vh; height: 2.6vh; border-radius: 50%; font-size: 1.4vh; background: rgba(4, 18, 31, .85); color: #fff; }
