@@ -1264,3 +1264,5 @@ body.zone-2 #tabs, body.tabs-peek #tabs { pointer-events: auto; }
 
 .sp-row.fade-in { animation: spFadeIn .32s var(--ease) backwards; }  /* rows of a category as it opens */
 @keyframes spFadeIn { from { opacity: 0; transform: translateY(-.8vh); } }
+.sp-music .song-in { animation: spSongIn .5s var(--ease) backwards; }  /* a new song's art and name */
+@keyframes spSongIn { from { opacity: 0; } }

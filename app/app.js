@@ -2216,6 +2216,10 @@ function renderSys() {
   // the power choices and the song stay put at the bottom; the rest scrolls above them
   $('#syspanel .sp-list').innerHTML = html.filter((h, i) => !SP.rows[i].foot).join('');
   $('#syspanel .sp-foot').innerHTML = html.filter((h, i) => SP.rows[i].foot).join('');
+  // a new song: its art and name fade in
+  const songKey = SP.song ? `${SP.song.title}|${SP.song.artist}` : '';
+  if (songKey && SP.songKey && songKey !== SP.songKey) document.querySelectorAll('#syspanel .sp-music .sp-art, #syspanel .sp-music .sp-text').forEach(e => e.classList.add('song-in'));
+  SP.songKey = songKey;
   // a category just opened: its rows fade in one after another
   if (SP.catFresh || SP.foldFresh) { let n = 0; document.querySelectorAll('#syspanel .sp-row').forEach(e => { const r = SP.rows[+e.dataset.i];
     if (r && (SP.catFresh ? r.cat === SP.catFresh : r.fold)) { e.classList.add('fade-in'); e.style.animationDelay = `${n++ * 35}ms`; } }); }
