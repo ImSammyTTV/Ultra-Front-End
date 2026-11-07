@@ -240,7 +240,7 @@ body.viewer-open #viewer { opacity: 1; pointer-events: auto; }
 #reader { position: fixed; inset: 0; z-index: 8; background: rgba(3, 6, 14, .82); backdrop-filter: blur(22px); opacity: 0; pointer-events: none; transition: opacity .4s ease; }
 body.reader-open #reader { opacity: 1; pointer-events: auto; }
 .r-scroll { position: absolute; inset: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .2) transparent; }
-.r-article { width: min(118vh, 90vw / var(--scale, 1)); margin: 0 auto; padding: 7vh 0 14vh; transform: translateY(3vh); transition: transform .6s var(--ease); }
+.r-article { zoom: var(--rz, 1); width: calc(min(118vh, 90vw / var(--scale, 1)) / var(--rz, 1)); margin: 0 auto; padding: 7vh 0 14vh; transform: translateY(3vh); transition: transform .6s var(--ease); }
 body.reader-open .r-article { transform: none; }
 .r-hero { width: 100%; max-height: 52vh; object-fit: cover; border-radius: 1.8vh; display: block; box-shadow: 0 2vh 6vh rgba(0, 0, 0, .5); }
 .r-meta { margin-top: 3.4vh; font-size: 1.5vh; letter-spacing: .16em; text-transform: uppercase; color: #bfe6ff; opacity: .8; }
@@ -1200,3 +1200,7 @@ body.zone-2 #tabs, body.tabs-peek #tabs { pointer-events: auto; }
 .r-update span { display: inline-grid; place-items: center; width: 2.6vh; height: 2.6vh; border-radius: 50%; font-size: 1.4vh; background: rgba(4, 18, 31, .85); color: #fff; }
 /* a release's own picture is a wide banner with the logo near its left edge: shown whole on the card, not cropped to fill it */
 .np-rel.own .ni { background-size: 100% 100%, contain; background-color: #0a0b0f; }
+/* the post's zoom: Y, or this chip */
+.r-zoom { position: absolute; right: 3vh; bottom: 3vh; display: inline-flex; align-items: center; gap: 1vh; padding: 1vh 1.8vh; border: 0; border-radius: 99px;
+  cursor: pointer; font: inherit; font-size: 1.7vh; color: #fff; background: rgba(12, 22, 44, .75); box-shadow: var(--glass-edge); }
+.r-zoom span { display: inline-grid; place-items: center; width: 2.4vh; height: 2.4vh; border-radius: 50%; font-size: 1.3vh; font-weight: 700; background: #f5b400; color: #04121f; }

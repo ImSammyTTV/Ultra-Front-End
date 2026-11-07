@@ -1414,10 +1414,21 @@ function openReader(n, image) {
     <div class="r-body">${body.map(b => b.t === 'img' ? `<img src="${esc(b.src)}" alt="" loading="lazy">`
       : b.t === 'h' ? `<h2>${esc(b.text)}</h2>` : b.t === 'li' ? `<li>${esc(b.text)}</li>` : `<p>${esc(b.text)}</p>`).join('') || `<p>${esc(n.summary)}</p>`}</div>`;
   $('#reader .r-scroll').scrollTop = 0;
+  readerZoom(0);
   R.open = true; R.update = n.state === 'update';  // a newer release: A installs it
   document.body.classList.add('reader-open');
   tick(600, .07);
 }
+// Y zooms a post's text and pictures in, in steps, then back to normal
+const READER_ZOOM = [1, 1.3, 1.6];
+function readerZoom(step = 1) {
+  R.zoom = step ? (R.zoom + 1) % READER_ZOOM.length : 0;
+  const z = READER_ZOOM[R.zoom];
+  $('#reader').style.setProperty('--rz', z);
+  $('#reader .r-zoom').lastChild.textContent = z === 1 ? ' Zoom' : ` Zoom ${Math.round(z * 100)}%`;
+  if (step) tick(500, .05);
+}
+$('#reader .r-zoom').addEventListener('click', () => readerZoom());
 function readerUpdate() { closeReader(); updateNow('install'); }
 $('#reader').addEventListener('click', e => { if (e.target.closest('.r-update')) readerUpdate(); });
 function closeReader() { R.open = false; document.body.classList.remove('reader-open'); tick(420, .06); }
@@ -3268,7 +3279,7 @@ function input(action) {
     : V.open
       ? { left: () => showMedia(V.i - 1), right: () => showMedia(V.i + 1), ok: viewerToggle, back: closeViewer, prevTab: () => showMedia(V.i - 1), nextTab: () => showMedia(V.i + 1), options: viewerMore }
     : R.open
-      ? { up: () => readerScroll(-1), down: () => readerScroll(1), ok: () => R.update ? readerUpdate() : readerScroll(3), back: closeReader, prevTab: () => readerScroll(-4), nextTab: () => readerScroll(4) }
+      ? { up: () => readerScroll(-1), down: () => readerScroll(1), ok: () => R.update ? readerUpdate() : readerScroll(3), back: closeReader, options: () => readerZoom(), prevTab: () => readerScroll(-4), nextTab: () => readerScroll(4) }
     : AP.open
       ? { up: () => achMove(0, -1), down: () => achMove(0, 1), left: () => achMove(-1, 0), right: () => achMove(1, 0), back: closeAchievements,
           prevTab: () => achTab(-1), nextTab: () => achTab(1) }
