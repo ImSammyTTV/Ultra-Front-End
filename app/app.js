@@ -2175,8 +2175,7 @@ function sysRows() {
       run: () => { sysView('wifi'); if (SP.fold === 'wifi') qaDo(SP.qa.wifi.off ? { action: 'wifiradio', on: true } : { action: 'wifiscan' }); } }, ...fold('wifi')] : []),
     ...(SP.qa?.brightness != null ? [{ id: 'bright', ic: 'sun', label: 'Brightness', value: `${SP.qa.brightness}%`, sub: 'Left and right change it', run: () => {} }] : []),
     ]),
-    // Do not disturb, Friends and Settings on their own, outside the categories
-    { ic: SP.qa?.dnd ? 'bellOff' : 'bell', label: 'Do not disturb', value: SP.qa?.dnd ? 'On' : 'Off', sub: 'Silences notifications', run: () => qaDo({ action: 'dnd', on: !SP.qa?.dnd }) },
+    // Friends and Settings on their own, outside the categories
     { ic: 'friends', id: 'fold-friends', label: 'Friends', sub: SP.friends || '', value: SP.friendItems?.length ? chev('friends') : '', run: () => SP.friendItems?.length ? sysView('friends') : (closeSys(), closePages(), openHub('friends')) }, ...fold('friends'),
     { ic: 'settings', label: 'Settings', run: () => { closeSys(); closePages(); openPanel(); } },
     // the power choices, like the in-game menu; Restart and Shut down ask for A twice
@@ -2199,7 +2198,9 @@ function renderSys() {
   SP.i = clamp(SP.i, 0, SP.rows.length - 1);
   while (SP.rows[SP.i]?.head && SP.i < SP.rows.length - 1) SP.i++;
   const z = PROFILE.timezone;
-  $('#syspanel .sp-time').innerHTML = `<b>${esc(timeIn(z))}</b><span>${esc(dateIn(z))}</span>`;
+  // Do not disturb is the bell up by the time: Y (or a click) turns it on and off
+  $('#syspanel .sp-time').innerHTML = `<b>${esc(timeIn(z))}</b><span>${esc(dateIn(z))}</span><span class="sp-dnd${SP.qa?.dnd ? ' on' : ''}" title="Do not disturb (Y)">${icon(SP.qa?.dnd ? 'bellOff' : 'bell')}<small>${SP.qa?.dnd ? 'Do not disturb' : ''}</small></span>`;
+  $('#syspanel .sp-dnd').onclick = sysDnd;
   SP.p = clamp(SP.p || 0, 0, powerChoices().length - 1);
   $('#syspanel .sp-list').innerHTML = SP.rows.map((r, i) => r.head ? `<div class="sp-head">${esc(r.head)}</div>` : r.mix
     ? (() => { const ui = r.mix === 'ui', v = ui ? (S.uiVolume ?? 60) : SP.qa.mixer[r.mix];
@@ -2214,6 +2215,7 @@ function renderSys() {
     : `<div class="sp-row${r.fold ? ' sp-fold' + (SP.foldFresh ? ' fresh' : '') : ''}${r.run ? '' : ' info'}${r.cover ? ' sp-game' : ''}${r.face ? ' sp-friend' : ''}${r.dim ? ' off' : ''}" data-i="${i}">${r.cover || r.face ? `<img class="sp-art" src="${esc(r.cover || r.face)}" alt="">` : icon(r.ic)}<div class="sp-text">${r.over ? `<small>${esc(r.over)}</small>` : ''}<div>${esc(r.label)}</div>${r.sub ? `<small>${esc(r.sub)}</small>` : ''}</div>${r.value ? `<b class="sp-value">${esc(r.value)}</b>` : ''}</div>`).join('');
   sysFocus();
 }
+function sysDnd() { const on = !SP.qa?.dnd; if (SP.qa) SP.qa.dnd = on; tick(700, .04); renderSys(); toast(on ? 'Do not disturb is on' : 'Do not disturb is off', 2000); qaDo({ action: 'dnd', on }); }
 function sysFocus() { document.querySelectorAll('#syspanel .sp-row').forEach(e => e.classList.toggle('sel', +e.dataset.i === SP.i)); $('#syspanel .sp-row.sel')?.scrollIntoView({ block: 'nearest' }); }
 async function openSys() {
   SP.open = true; SP.i = 0; SP.p = 0; SP.confirm = null; SP.view = ''; SP.fold = ''; SP.mixOpen = false;
@@ -3490,7 +3492,7 @@ function input(action) {
   // The launch screen is over everything: B takes it down; nothing else may reach the menus hidden under it
   if (S.busy) return action === 'back' ? cancelLaunch() : undefined;
   if (PT.open) return action === 'back' && !PT.live ? closePadTester() : undefined;  // a controller in use is being tested: its B is held 2 s instead
-  if (SP.open) return ({ up: () => sysMove(-1), down: () => sysMove(1), left: () => sysSide(-1), right: () => sysSide(1), ok: sysOk, back: () => SP.view || SP.fold ? sysView('') : closeSys(), system: closeSys, options: () => SP.rows[SP.i]?.opt?.() })[action]?.();
+  if (SP.open) return ({ up: () => sysMove(-1), down: () => sysMove(1), left: () => sysSide(-1), right: () => sysSide(1), ok: sysOk, back: () => SP.view || SP.fold ? sysView('') : closeSys(), system: closeSys, options: () => SP.rows[SP.i]?.opt ? SP.rows[SP.i].opt() : sysDnd() })[action]?.();
   if (action === 'system') return Q.open || V.open || P.open ? undefined : openSys();
   const kb = { up: () => searchMove(0, -1), down: () => searchMove(0, 1), left: () => searchMove(-1, 0), right: () => searchMove(1, 0), ok: searchEnter, back: closeSearch,
     options: () => searchType('Delete') };

@@ -1146,7 +1146,11 @@ body.quick-open :is(#row, #title), body.sys-open :is(#row, #title) {
 .sp-time b { font-weight: 600; color: var(--text); margin-right: 1.2vh; }
 .sp-list { flex: 1; min-height: 0; overflow: hidden; gap: .4vh; }
 #syspanel .sp-box { padding-top: 5vh; }
-#syspanel .sp-time { margin-bottom: 2vh; }
+#syspanel .sp-time { margin-bottom: 2vh; display: flex; align-items: center; }
+.sp-dnd { margin-left: auto; display: flex; align-items: center; gap: .8vh; cursor: pointer; opacity: .55; }
+.sp-dnd svg { width: 2.6vh; height: 2.6vh; }
+.sp-dnd.on { opacity: 1; color: var(--text); }
+.sp-dnd small { font-size: 1.6vh; }
 .sp-list .sp-row { min-height: 6.6vh; }
 /* the game menu is a Quick Access panel for one game: the same spacing, title and line under it */
 #quick.sys .q-list { gap: .4vh; }
