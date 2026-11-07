@@ -2175,6 +2175,10 @@ function updateRows(u) {
     || (u.latest ? `Version ${u.latest} is available` : u.state === 'current' ? 'This is the newest version' : 'Looks for new versions every few hours');
   const nightly = u.channel === 'nightly';
   return [{ kind: 'info', label: `Version ${u.version}`, sub: note },
+    // a once-a-day anonymous check-in, so the project can count how many copies are in use
+    ...(u.off || !P.data?.options ? [] : [{ kind: 'row', label: 'Count this copy', value: onOff(P.data.options.usageCheckin),
+      sub: 'Once a day this copy downloads a tiny file from the project’s GitHub page, so ImSammyTTV can see how many copies are in use. Nothing about you or your games is sent',
+      act: () => setOpt('usageCheckin') }]),
     // main releases, or the newest code built every night (and the releases too)
     ...(u.off ? [] : [{ kind: 'row', label: 'Updates', value: nightly ? 'Nightly' : 'Main',
       sub: nightly ? 'A build of the newest changes every night, before they’re released. Can have bugs. Choose to go back to Main'

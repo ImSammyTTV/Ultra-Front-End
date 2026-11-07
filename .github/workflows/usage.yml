@@ -1,0 +1,38 @@
+# Usage tally: each copy of the app downloads checkin.txt from the "usage" release once a day (Settings › About › Count
+# this copy). Once a day this reads that file's download count and adds a line to stats/usage.csv: the date, the total,
+# and how many check-ins came in since the day before, which is about how many copies were in use that day.
+name: Usage tally
+
+on:
+  schedule:
+    - cron: "55 23 * * *"  # just before midnight UTC, so a line covers one day of check-ins
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: usage
+  cancel-in-progress: false
+
+jobs:
+  tally:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Add today's count
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          total=$(gh release view usage --json assets -q '.assets[] | select(.name == "checkin.txt") | .downloadCount')
+          mkdir -p stats
+          [ -f stats/usage.csv ] || echo "date,total,copies_that_day" > stats/usage.csv
+          last=$(tail -n 1 stats/usage.csv | cut -d, -f2)
+          case "$last" in ''|*[!0-9]*) last=$total ;; esac
+          echo "$(date -u +%Y-%m-%d),$total,$((total - last))" >> stats/usage.csv
+          tail -n 3 stats/usage.csv
+          git config user.name "github-actions[bot]"
+          git config user.email "41898299+github-actions[bot]@users.noreply.github.com"
+          git add stats/usage.csv
+          git commit -m "Usage: $(date -u +%Y-%m-%d)" && git push

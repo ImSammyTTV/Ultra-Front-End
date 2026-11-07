@@ -177,6 +177,13 @@ In `C:\Ultra-Front-End\App\data`. `errors.log` holds any errors and `emulator-in
 failed. Updating never removes them.
 </details>
 
+<details>
+<summary><b>Does it send anything about me?</b></summary>
+
+No. Once a day it downloads a tiny file from this project's GitHub page, so the number of downloads shows how many copies
+are in use. Nothing about you or your games is sent. Turn it off in **Settings › About › Count this copy**.
+</details>
+
 **Found a bug or have an idea?** [Open an issue](https://github.com/ImSammyTTV/Ultra-Front-End/issues/new). Say what
 you expected and what happened, and attach `errors.log` if there is one.
 

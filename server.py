@@ -6334,7 +6334,7 @@ LOCAL_PROVIDERS = {"ea": "EA app", "ubisoft": "Ubisoft Connect", "gog": "GOG", "
 # each launcher has installed on this PC from the entries it writes to Windows' installed-programs list, and starts
 # games through the launcher so sign-in, updates and cloud saves still work.
 SERVICE_SCANS = ("ea", "ubisoft", "gog", "battlenet")   # each has an on/off option "<id>Local" (on by default)
-OPTION_KEYS = ("steamLocal", "onlineCovers", "showUninstalled", "artBackground", "guideOpens", "wiiMotion", "keepOnScreen") + tuple(p + "Local" for p in SERVICE_SCANS)
+OPTION_KEYS = ("steamLocal", "onlineCovers", "showUninstalled", "artBackground", "guideOpens", "wiiMotion", "keepOnScreen", "usageCheckin") + tuple(p + "Local" for p in SERVICE_SCANS)
 SERVICE_APPS = {
     "ea": [r"C:\Program Files\Electronic Arts\EA Desktop\EA Desktop\EADesktop.exe"],
     "ubisoft": [r"C:\Program Files (x86)\Ubisoft\Ubisoft Game Launcher\UbisoftConnect.exe", r"C:\Program Files (x86)\Ubisoft\Ubisoft Game Launcher\upc.exe"],
@@ -9818,6 +9818,28 @@ def clean_after_update():
             pass  # still running (a window from before the update) or already gone
 
 
+USAGE_URL = f"https://github.com/{UPDATE_REPO}/releases/download/usage/checkin.txt"
+
+
+def watch_usage():
+    """Once a day, while the helper runs, this copy downloads a tiny file from the project's GitHub page, so GitHub's
+    download count shows how many copies are in use (a daily job writes the totals to stats/usage.csv). Nothing about
+    the person or their games is sent. Off in Settings › About; never from a test copy on another port or a source run."""
+    if PORT != 8137 or not getattr(sys, "frozen", False) or updates_off():
+        return
+    while True:
+        today = time.strftime("%Y-%m-%d", time.gmtime())
+        if config().get("usageCheckin", True) and load("usage.json", {}).get("day") != today:
+            try:
+                req = urllib.request.Request(USAGE_URL, headers={"User-Agent": "UltraFrontEnd"})
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    r.read(64)
+                store("usage.json", {"day": today})
+            except (urllib.error.URLError, OSError, ValueError, TimeoutError):
+                pass  # offline: tried again within the hour
+        time.sleep(3600)
+
+
 def watch_updates():
     """In the helper, once it has the port: finish an update that just went in, then look for the next one now and then."""
     if updates_off():
@@ -10293,6 +10315,7 @@ def main():
         return
     print(f"Game frontend on http://127.0.0.1:{PORT}")
     threading.Thread(target=watch_updates, daemon=True).start()  # once this copy really has the port
+    threading.Thread(target=watch_usage, daemon=True).start()
     server.serve_forever()
 
 

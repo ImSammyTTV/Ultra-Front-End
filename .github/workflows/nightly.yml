@@ -31,7 +31,8 @@ jobs:
         run: |
           last=$(gh release view nightly --json targetCommitish -q .targetCommitish 2>/dev/null || true)
           echo "last=$last" >> "$GITHUB_OUTPUT"
-          if [ "${{ github.event_name }}" != "workflow_dispatch" ] && [ "$last" = "$(git rev-parse HEAD)" ]; then
+          # the daily usage tally (stats/) doesn't count as a change
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ] && { [ "$last" = "$(git rev-parse HEAD)" ] || { git cat-file -e "$last" 2>/dev/null && git diff --quiet "$last" HEAD -- . ':!stats'; }; }; then
             echo "build=no" >> "$GITHUB_OUTPUT"
             echo "Nothing new since the last nightly build"
           else
