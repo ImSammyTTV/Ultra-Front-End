@@ -2179,7 +2179,7 @@ function sysRows() {
     { ic: 'friends', id: 'fold-friends', label: 'Friends', sub: SP.friends || '', value: SP.friendItems?.length ? chev('friends') : '', run: () => SP.friendItems?.length ? sysView('friends') : (closeSys(), closePages(), openHub('friends')) }, ...fold('friends'),
     { ic: 'settings', label: 'Settings', run: () => { closeSys(); closePages(); openPanel(); } },
     // the power choices, like the in-game menu; Restart and Shut down ask for A twice
-    ...group('Power', powerChoices().map(p => ({ ic: p.ic, label: SP.confirm === p.id ? 'Press A again' : p.label, run: () => powerPick(p) }))).map(r => ({ ...r, foot: true })),
+    { id: 'power', foot: true, run: () => powerPick(powerChoices()[SP.p]) },  // the power buttons, icons with their names, left and right pick one
     ...(SP.song ? [{ id: 'music', foot: true, run: sysMedia }] : []),  // the song that's playing, always last, pinned to the bottom
   ];
 }
