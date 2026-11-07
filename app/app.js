@@ -2262,7 +2262,7 @@ async function btScan() {
   if (SP.open) renderSys();
 }
 async function btPair(d) {
-  toast(`Pairing ${d.name}… Windows may ask you to confirm`, 6000);
+  toast(`Pairing ${d.name}…`, 8000);
   await qaDo({ action: 'btpair', addr: d.addr });
   SP.btFound = (SP.btFound || []).filter(x => x.addr !== d.addr);
   setTimeout(() => api('/api/qa').then(r => { SP.qa = r; if (SP.open) renderSys(); }).catch(() => {}), 4000);

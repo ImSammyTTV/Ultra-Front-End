@@ -6001,11 +6001,38 @@ def bt_scan():
 
 
 def bt_pair(addr):
-    """Pairs new Bluetooth headphones or a speaker, then connects it. Windows may show its own prompt to confirm."""
+    """Pairs new Bluetooth headphones or a speaker, then connects it, all from here: the app answers Bluetooth's pairing
+    question itself (accepting the code headphones offer, or 0000 for old ones), so Windows shows no prompt to click."""
     ctypes, W, bt, DEVINFO, SEARCH = _bt()
     info = DEVINFO(); info.dwSize = ctypes.sizeof(DEVINFO); info.Address = int(addr, 16)
     bt.BluetoothGetDeviceInfo(None, ctypes.byref(info))
-    err = bt.BluetoothAuthenticateDeviceEx(None, None, ctypes.byref(info), None, 0)  # MITM protection not required: headphones have no screen
+
+    class PARAMS(ctypes.Structure):
+        _fields_ = [("deviceInfo", DEVINFO), ("method", ctypes.c_int), ("io", ctypes.c_int), ("req", ctypes.c_int), ("value", W.ULONG)]
+
+    class RESPONSE(ctypes.Structure):
+        _fields_ = [("addr", ctypes.c_ulonglong), ("method", ctypes.c_int), ("data", ctypes.c_ubyte * 32), ("negative", ctypes.c_ubyte)]
+
+    answered = []
+
+    @ctypes.WINFUNCTYPE(W.BOOL, ctypes.c_void_p, ctypes.POINTER(PARAMS))
+    def on_auth(_, p):
+        r = RESPONSE()
+        r.addr, r.method = p.contents.deviceInfo.Address, p.contents.method
+        if p.contents.method == 1:  # an old device asks for a PIN: headphones use 0000
+            r.data[:4] = list(b"0000"); r.data[16] = 4
+        else:  # numeric comparison / passkey: accept what the device offers (it has no screen to compare)
+            ctypes.memmove(r.data, ctypes.byref(W.ULONG(p.contents.value)), 4)
+        answered.append(bt.BluetoothSendAuthenticationResponseEx(None, ctypes.byref(r)))
+        return True
+
+    handle = W.HANDLE()
+    bt.BluetoothRegisterForAuthenticationEx(ctypes.byref(info), ctypes.byref(handle), on_auth, None)
+    try:
+        err = bt.BluetoothAuthenticateDeviceEx(None, None, ctypes.byref(info), None, 0)  # MITM protection not required: headphones have no screen
+    finally:
+        if handle:
+            bt.BluetoothUnregisterAuthentication(handle)
     if err not in (0, 183):  # 183: already paired
         raise OSError("Pairing didn't finish: put it in pairing mode and try again")
     bt_audio_connect(addr, True)
@@ -9643,6 +9670,7 @@ class Handler(SimpleHTTPRequestHandler):
                     return self.reply({**qa_view(), "found": bt_scan()})
                 elif act == "btpair":
                     bt_pair(str(body.get("addr") or ""))
+                    time.sleep(3)  # its sound output takes a moment to appear
                 elif act == "bt":
                     bt_audio_connect(str(body.get("addr") or ""), bool(body.get("connect", True)))
                 elif act in ("wifi", "nightlight", "bluetooth"):
