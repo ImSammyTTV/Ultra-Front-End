@@ -2179,8 +2179,8 @@ function sysRows() {
     { ic: 'friends', id: 'fold-friends', label: 'Friends', sub: SP.friends || '', value: SP.friendItems?.length ? chev('friends') : '', run: () => SP.friendItems?.length ? sysView('friends') : (closeSys(), closePages(), openHub('friends')) }, ...fold('friends'),
     { ic: 'settings', label: 'Settings', run: () => { closeSys(); closePages(); openPanel(); } },
     // the power choices, like the in-game menu; Restart and Shut down ask for A twice
-    ...group('Power', powerChoices().map(p => ({ ic: p.ic, label: SP.confirm === p.id ? 'Press A again' : p.label, run: () => powerPick(p) }))),
-    ...(SP.song ? [{ id: 'music', run: sysMedia }] : []),  // the song that's playing, always last, pinned to the bottom
+    ...group('Power', powerChoices().map(p => ({ ic: p.ic, label: SP.confirm === p.id ? 'Press A again' : p.label, run: () => powerPick(p) }))).map(r => ({ ...r, foot: true })),
+    ...(SP.song ? [{ id: 'music', foot: true, run: sysMedia }] : []),  // the song that's playing, always last, pinned to the bottom
   ];
 }
 // Quick Access can open over a full page (News, Library, Search, Album...). What it opens takes that page's place: left
@@ -2202,7 +2202,7 @@ function renderSys() {
   $('#syspanel .sp-time').innerHTML = `<span class="sp-dnd${SP.qa?.dnd ? ' on' : ''}" title="Do not disturb (Y)">${icon(SP.qa?.dnd ? 'bellOff' : 'bell')}<small>${SP.qa?.dnd ? 'Do not disturb' : ''}</small></span><b>${esc(timeIn(z))}</b><span>${esc(dateIn(z))}</span>`;
   $('#syspanel .sp-dnd').onclick = sysDnd;
   SP.p = clamp(SP.p || 0, 0, powerChoices().length - 1);
-  $('#syspanel .sp-list').innerHTML = SP.rows.map((r, i) => r.head ? `<div class="sp-head">${esc(r.head)}</div>` : r.mix
+  const html = SP.rows.map((r, i) => r.head ? `<div class="sp-head">${esc(r.head)}</div>` : r.mix
     ? (() => { const ui = r.mix === 'ui', v = ui ? (S.uiVolume ?? 60) : SP.qa.mixer[r.mix];
         return `<div class="sp-row sp-vol sp-mix${SP.mixFresh ? ' fresh' : ''}${ui && !S.sound ? ' off' : ''}" data-i="${i}" data-mix="${r.mix}">${icon(r.mix === 'game' ? 'pad' : r.mix === 'media' ? 'music' : 'volume')}<div class="sp-text"><div>${esc(r.label)}<b>${ui ? `${v}<em class="sp-toggle${S.sound ? ' on' : ''}"><i></i></em>` : v}</b></div><div class="hub-bar"><i style="width:${ui && !S.sound ? 0 : v}%"></i></div></div></div>`; })()
     : r.id === 'volume'
@@ -2212,7 +2212,10 @@ function renderSys() {
       + `<div class="sp-mbtns">${[MEDIA_ICONS[0], MEDIA_ICONS[1][SP.song.playing === false ? 0 : 1], MEDIA_ICONS[2]].map((svg, j) => `<span class="sp-mb${j === SP.m ? ' on' : ''}" data-j="${j}">${svg}</span>`).join('')}</div></div>`
     : r.id === 'power'
     ? `<div class="sp-row sp-power" data-i="${i}">${powerChoices().map((p, j) => `<div class="sp-pw${j === SP.p ? ' on' : ''}${SP.confirm === p.id ? ' warn' : ''}" data-j="${j}">${icon(p.ic)}<span>${SP.confirm === p.id ? 'Press A again' : p.label}</span></div>`).join('')}</div>`
-    : `<div class="sp-row${r.fold ? ' sp-fold' + (SP.foldFresh ? ' fresh' : '') : ''}${r.run ? '' : ' info'}${r.cover ? ' sp-game' : ''}${r.face ? ' sp-friend' : ''}${r.dim ? ' off' : ''}" data-i="${i}">${r.cover || r.face ? `<img class="sp-art" src="${esc(r.cover || r.face)}" alt="">` : icon(r.ic)}<div class="sp-text">${r.over ? `<small>${esc(r.over)}</small>` : ''}<div>${esc(r.label)}</div>${r.sub ? `<small>${esc(r.sub)}</small>` : ''}</div>${r.value ? `<b class="sp-value">${esc(r.value)}</b>` : ''}</div>`).join('');
+    : `<div class="sp-row${r.fold ? ' sp-fold' + (SP.foldFresh ? ' fresh' : '') : ''}${r.run ? '' : ' info'}${r.cover ? ' sp-game' : ''}${r.face ? ' sp-friend' : ''}${r.dim ? ' off' : ''}" data-i="${i}">${r.cover || r.face ? `<img class="sp-art" src="${esc(r.cover || r.face)}" alt="">` : icon(r.ic)}<div class="sp-text">${r.over ? `<small>${esc(r.over)}</small>` : ''}<div>${esc(r.label)}</div>${r.sub ? `<small>${esc(r.sub)}</small>` : ''}</div>${r.value ? `<b class="sp-value">${esc(r.value)}</b>` : ''}</div>`);
+  // the power choices and the song stay put at the bottom; the rest scrolls above them
+  $('#syspanel .sp-list').innerHTML = html.filter((h, i) => !SP.rows[i].foot).join('');
+  $('#syspanel .sp-foot').innerHTML = html.filter((h, i) => SP.rows[i].foot).join('');
   sysFocus();
 }
 function sysDnd() { const on = !SP.qa?.dnd; if (SP.qa) SP.qa.dnd = on; tick(700, .04); renderSys(); toast(on ? 'Do not disturb is on' : 'Do not disturb is off', 2000); qaDo({ action: 'dnd', on }); }
