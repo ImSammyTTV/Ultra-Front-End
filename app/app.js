@@ -2201,7 +2201,7 @@ function updateRows(u) {
   return [{ kind: 'info', label: `Version ${u.version}`, sub: note },
     // a once-a-day anonymous check-in, so the project can count how many copies are in use
     ...(u.off || !P.data?.options ? [] : [{ kind: 'row', label: 'Count this copy', value: onOff(P.data.options.usageCheckin),
-      sub: 'Once a day this copy downloads a tiny file from the project’s GitHub page, so ImSammyTTV can see how many copies are in use. Nothing about you or your games is sent',
+      sub: 'Checks in once a day to show roughly how many people are using Ultra Front End. It only counts copies: nothing about you or your games is included',
       act: () => setOpt('usageCheckin') }]),
     // main releases, or the newest code built every night (and the releases too)
     ...(u.off ? [] : [{ kind: 'row', label: 'Updates', value: nightly ? 'Nightly' : 'Main',
