@@ -1419,16 +1419,15 @@ function openReader(n, image) {
   document.body.classList.add('reader-open');
   tick(600, .07);
 }
-// Y zooms a post's text and pictures in, in steps, then back to normal
-const READER_ZOOM = [1, 1.3, 1.6];
-function readerZoom(step = 1) {
-  R.zoom = step ? (R.zoom + 1) % READER_ZOOM.length : 0;
-  const z = READER_ZOOM[R.zoom];
-  $('#reader').style.setProperty('--rz', z);
-  $('#reader .r-zoom').lastChild.textContent = z === 1 ? ' Zoom' : ` Zoom ${Math.round(z * 100)}%`;
-  if (step) tick(500, .05);
+// Zoom a post in or out for reading from the sofa: the right stick (up in, down out) or the mouse wheel with Ctrl,
+// smoothly between 100% and 250%; L3 + R3 together, or the chip, back to 100%
+function readerZoom(by = 0) {
+  R.zoom = by === 0 ? 1 : clamp(Math.round(((R.zoom || 1) + by) * 100) / 100, 1, 2.5);
+  $('#reader').style.setProperty('--rz', R.zoom);
+  $('#reader .r-zoom').lastChild.textContent = R.zoom === 1 ? ' Zoom' : ` ${Math.round(R.zoom * 100)}%`;
 }
-$('#reader .r-zoom').addEventListener('click', () => readerZoom());
+$('#reader').addEventListener('wheel', e => { if (e.ctrlKey) { e.preventDefault(); readerZoom(e.deltaY < 0 ? .1 : -.1); } }, { passive: false });
+$('#reader .r-zoom').addEventListener('click', () => readerZoom(0));
 function readerUpdate() { closeReader(); updateNow('install'); }
 $('#reader').addEventListener('click', e => { if (e.target.closest('.r-update')) readerUpdate(); });
 function closeReader() { R.open = false; document.body.classList.remove('reader-open'); tick(420, .06); }
@@ -3263,6 +3262,7 @@ async function padTesterTick() {
   PT.timer = setTimeout(padTesterTick, 40);
 }
 function input(action) {
+  if (action.startsWith('zoom') && !R.open) return;  // the right stick only zooms a post; elsewhere it does nothing
   if (INTRO.open) return endIntro(true);  // any button skips the intro
   // The launch screen is over everything: B takes it down; nothing else may reach the menus hidden under it
   if (S.busy) return action === 'back' ? cancelLaunch() : undefined;
@@ -3279,7 +3279,7 @@ function input(action) {
     : V.open
       ? { left: () => showMedia(V.i - 1), right: () => showMedia(V.i + 1), ok: viewerToggle, back: closeViewer, prevTab: () => showMedia(V.i - 1), nextTab: () => showMedia(V.i + 1), options: viewerMore }
     : R.open
-      ? { up: () => readerScroll(-1), down: () => readerScroll(1), ok: () => R.update ? readerUpdate() : readerScroll(3), back: closeReader, options: () => readerZoom(), prevTab: () => readerScroll(-4), nextTab: () => readerScroll(4) }
+      ? { up: () => readerScroll(-1), down: () => readerScroll(1), ok: () => R.update ? readerUpdate() : readerScroll(3), back: closeReader, zoomIn: () => readerZoom(.03), zoomOut: () => readerZoom(-.03), zoomReset: () => readerZoom(0), prevTab: () => readerScroll(-4), nextTab: () => readerScroll(4) }
     : AP.open
       ? { up: () => achMove(0, -1), down: () => achMove(0, 1), left: () => achMove(-1, 0), right: () => achMove(1, 0), back: closeAchievements,
           prevTab: () => achTab(-1), nextTab: () => achTab(1) }
@@ -3475,6 +3475,8 @@ function poll() {
     edge('RB', b(5), () => inputFrom('pad', 'nextTab'));
     edge('VW', b(8), () => inputFrom('pad', 'system'));
     edge('ST', b(9), () => inputFrom('pad', 'options'));  // Start, like Y: the game's menu
+    edge('L3R3', b(10) && b(11), () => inputFrom('pad', 'zoomReset'));
+    if (Math.abs(ax(3)) > .35 && t - (poll.zoomT || 0) > 50) { poll.zoomT = t; inputFrom('pad', ax(3) < 0 ? 'zoomIn' : 'zoomOut'); }
   }
   const padIcon = gp ? 'on' : 'off';
   if (PAD_ICON.dataset.s !== padIcon) { PAD_ICON.dataset.s = padIcon; PAD_ICON.innerHTML = gp ? icon('pad') : ''; }

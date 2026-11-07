@@ -5513,7 +5513,7 @@ def watch_controller():
     except (AttributeError, OSError):
         get_state = xinput.XInputGetState
     user32 = ctypes.windll.user32
-    held, last_fire, last_fg, last_open, front, repeat, combo = {}, 0.0, 0.0, 0.0, False, {}, {}
+    held, last_fire, last_fg, last_open, front, repeat, combo, zoom_at = {}, 0.0, 0.0, 0.0, False, {}, {}, 0.0
     while True:
         time.sleep(0.016 if front else 0.04)
         now = time.time()
@@ -5558,6 +5558,11 @@ def watch_controller():
             for bit, action in PAD_BUTTONS.items():
                 if pressed & bit:
                     pad_emit(action)
+            if b & 0x00C0 == 0x00C0 and pressed & 0x00C0:  # L3 and R3 together: zoom back to normal (a post in News)
+                pad_emit("zoomReset")
+            if abs(st.pad.ry) > 12000 and now >= zoom_at:  # the right stick zooms a post smoothly while it's held
+                zoom_at = now + 0.05
+                pad_emit("zoomIn" if st.pad.ry > 0 else "zoomOut")
             lx, ly, dead = st.pad.lx, st.pad.ly, 18000
             for d, bit in PAD_DIRS.items():
                 stick = {"up": ly > dead, "down": ly < -dead, "left": lx < -dead, "right": lx > dead}[d]
