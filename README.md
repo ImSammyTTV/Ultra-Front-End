@@ -44,8 +44,9 @@ Store games start through their own launcher, so sign-in, updates and cloud save
 <td width="50%" valign="top">
 
 ### 🧰 Emulators set up for you
-Pick the consoles you play during setup. It makes a ROMs folder for each one and can **install the emulator it needs**,
-with a progress bar. Add more consoles later in Settings.
+Pick the consoles you play and it **installs each emulator from its own project**, with a ROMs and BIOS folder ready for
+each one, all together in `C:\Ultra-Front-End`. Emulators **stay up to date by themselves**. Add more consoles any time
+in Settings › Systems.
 
 </td>
 </tr>
