@@ -2168,10 +2168,10 @@ function sysRows() {
     ...(SP.qa?.wifi ? [{ ic: 'wifi', id: 'fold-wifi', label: 'Wi-Fi', value: SP.qa.wifi.off ? 'Off' : chev('wifi'),
       sub: SP.qa.wifi.off ? 'A turns it on' : SP.qa.wifi.connected ? `${SP.qa.wifi.name}${SP.qa.wifi.signal != null ? ` · ${SP.qa.wifi.signal}% signal` : ''}` : 'Not connected · A shows networks',
       run: () => { sysView('wifi'); if (SP.fold === 'wifi') qaDo(SP.qa.wifi.off ? { action: 'wifiradio', on: true } : { action: 'wifiscan' }); } }, ...fold('wifi')] : []),
-    { ic: SP.qa?.dnd ? 'bellOff' : 'bell', label: 'Do not disturb', value: SP.qa?.dnd ? 'On' : 'Off', sub: 'Hides Windows’ notification pop-ups while you play', run: () => qaDo({ action: 'dnd', on: !SP.qa?.dnd }) },
     ...(SP.qa?.brightness != null ? [{ id: 'bright', ic: 'sun', label: 'Brightness', value: `${SP.qa.brightness}%`, sub: 'Left and right change it', run: () => {} }] : []),
     ]),
     ...group('More', [
+    { ic: SP.qa?.dnd ? 'bellOff' : 'bell', label: 'Do not disturb', value: SP.qa?.dnd ? 'On' : 'Off', sub: 'Hides Windows’ notification pop-ups while you play', run: () => qaDo({ action: 'dnd', on: !SP.qa?.dnd }) },
     { ic: 'friends', id: 'fold-friends', label: 'Friends', sub: SP.friends || '', value: SP.friendItems?.length ? chev('friends') : '', run: () => SP.friendItems?.length ? sysView('friends') : (closeSys(), closePages(), openHub('friends')) }, ...fold('friends'),
     { ic: 'settings', label: 'Settings', run: () => { closeSys(); closePages(); openPanel(); } },
 
