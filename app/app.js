@@ -3145,15 +3145,18 @@ const INTRO = { open: false, timer: 0 };
 const PT = { open: false, timer: 0, last: null, change: 'Press something', bHeld: 0, live: '', drawn: '', pick: null, padId: '', prev: [] };
 const PT_FOOT = { '': 'Press B or Esc, or click, to leave', steam: 'Hold B for 2 seconds, or press Esc, to leave',
   pad: 'Hold B for 2 seconds, press Esc, or click, to leave · LB / RB switch drawings' };
-const PT_ART = { steam: ['controller-traced.svg', 'Steam Controller'], xbox: ['pad-xbox.svg', 'Xbox controller'], ps5: ['pad-ps5.png', 'DualSense'],
-  ps4: ['pad-ps4.svg', 'DualShock 4'], ps3: ['pad-ps3.svg', 'DualShock 3'] };
-const PT_PADS = ['xbox', 'ps5', 'ps4', 'ps3'];
+const PT_ART = { steam: ['controller-traced.svg', 'Steam Controller'], xbox: ['pad-xbox.png', 'Xbox controller'], ps5: ['pad-ps5.png', 'DualSense'],
+  ps4: ['pad-ps4.png', 'DualShock 4'], ps3: ['pad-ps3.png', 'DualShock 3'], sw2: ['pad-sw2.png', 'Pro Controller 2'], sw1: ['pad-sw1.png', 'Pro Controller'] };
+const PT_PADS = ['xbox', 'ps5', 'ps4', 'ps3', 'sw2', 'sw1'];
 // The standard Gamepad layout's buttons, as pads.json names them (17 is the touchpad on PlayStation pads, Share on Xbox ones)
 const PT_STD = ['a', 'b', 'x', 'y', 'lb', 'rb', 'lt', 'rt', 'view', 'menu', 'ls', 'rs', 'dup', 'ddown', 'dleft', 'dright', 'guide', 'touchpad share', 'mic'];
 const XI_BITS = [0x1000, 0x2000, 0x4000, 0x8000, 0x100, 0x200, 0, 0, 0x20, 0x10, 0x40, 0x80, 0x1, 0x2, 0x4, 0x8, 0x400];  // XInput's buttons in that order
 let PADS_AT = null;  // assets/pads.json: where each control is on each drawing
 const pct = (x, y) => `left:${x / 8.3}%;top:${y / 6.15}%`;
 function ptName(draw, k) {
+  if (draw === 'sw1' || draw === 'sw2')  // Nintendo's letters sit swapped: the bottom button is B, the right one A
+    return { dup: 'Up', ddown: 'Down', dleft: 'Left', dright: 'Right', a: 'B', b: 'A', x: 'Y', y: 'X', lb: 'L', rb: 'R', lt: 'ZL', rt: 'ZR', ls: 'L3', rs: 'R3',
+      guide: 'Home', view: '−', menu: '+', share: 'Capture' }[k] || '';
   const ps = draw !== 'xbox';
   return { dup: 'Up', ddown: 'Down', dleft: 'Left', dright: 'Right', a: ps ? '✕' : 'A', b: ps ? '○' : 'B', x: ps ? '□' : 'X', y: ps ? '△' : 'Y',
     lb: ps ? 'L1' : 'LB', rb: ps ? 'R1' : 'RB', lt: ps ? 'L2' : 'LT', rt: ps ? 'R2' : 'RT', ls: ps ? 'L3' : 'LS', rs: ps ? 'R3' : 'RS', guide: ps ? 'PS' : 'Xbox',
@@ -3164,6 +3167,7 @@ function ptName(draw, k) {
 function padDrawing(id) {
   const m = id.match(/vendor:?\s*([0-9a-f]{4}).*?product:?\s*([0-9a-f]{4})/i) || id.match(/^([0-9a-f]{4})-([0-9a-f]{4})-/i);
   const vp = m ? `${m[1]}:${m[2]}`.toLowerCase() : '';
+  if (/^057e:/.test(vp)) return vp === '057e:2009' ? 'sw1' : 'sw2';  // Nintendo: the first Pro Controller, else the newer one
   return /^054c:(0ce6|0df2)$/.test(vp) ? 'ps5' : /^054c:(05c4|09cc)$/.test(vp) ? 'ps4' : vp === '054c:0268' ? 'ps3' : 'xbox';
 }
 const padKnown = id => /xinput|xbox|045e/i.test(id) || padDrawing(id) !== 'xbox';

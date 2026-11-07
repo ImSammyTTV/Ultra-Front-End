@@ -92,17 +92,9 @@ The logos of the older systems, made plain white and trimmed to the artwork (the
 | msx.svg | MSX | [Commons: MSX-Logo.svg](https://commons.wikimedia.org/wiki/File:MSX-Logo.svg) | Public domain |
 | apple2.svg | Apple II | [Commons: Apple2Logo.svg](https://commons.wikimedia.org/wiki/File:Apple2Logo.svg) | Public domain |
 
-## Controller drawings
+## Controller pictures
 
-The controller drawings in `app/assets` (`pad-xbox.svg`, `pad-ps4.svg`, `pad-ps3.svg`) are traced from these photos and are shared under the same licences:
-
-| Drawing | Traced from | By | Licence |
-|---|---|---|---|
-| pad-xbox.svg | [Xbox Series Controller](https://commons.wikimedia.org/wiki/File:Xbox_Series_Controller_Remix_Special_Edition.jpg) | DirtLover03 | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) |
-| pad-ps4.svg | [PS4 controller](https://commons.wikimedia.org/wiki/File:PS4-controller.png) | RandompersonSWE | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) |
-| pad-ps3.svg | [DualShock 3](https://commons.wikimedia.org/wiki/File:DualShock_3_(8092015935).jpg) | phrawr | [CC BY 2.0](https://creativecommons.org/licenses/by/2.0/) |
-
-They are simplified outlines with the controls redrawn; no logos are included. `pad-ps5.png` is an original picture made for this project with an image generator, with no logos.
+The controller pictures in `app/assets` (`pad-xbox.png`, `pad-ps5.png`, `pad-ps4.png`, `pad-ps3.png`, `pad-sw1.png`, `pad-sw2.png`) are original pictures made for this project with an image generator. They have no logos. `controller-traced.svg` (the Steam Controller) is a drawing made for this project.
 
 ## Data the app fetches
 
