@@ -19,18 +19,31 @@ base = Image.fromarray(np.clip(bg, 0, 255).astype("uint8"))
 ys, xs = np.where(a.max(2) > 40)
 pad = 48
 box = (xs.min() - pad, ys.min() - pad, xs.max() + pad, ys.max() + pad)
-blurred = base.filter(ImageFilter.GaussianBlur(30))
-mask = Image.new("L", (W, H)); ImageDraw.Draw(mask).rounded_rectangle(box, 36, fill=255)
-glass = Image.blend(blurred, Image.new("RGB", (W, H), (255, 255, 255)), 0.08)
-# a light sheen from the top of the panel
-sheen = np.zeros((H, W)); t = np.clip((y - box[1]) / (box[3] - box[1]), 0, 1); sheen = (1 - t) ** 2 * 28
-glass = Image.fromarray(np.clip(np.asarray(glass).astype(float) + sheen[..., None], 0, 255).astype("uint8"))
-shadow = Image.new("L", (W, H)); ImageDraw.Draw(shadow).rounded_rectangle((box[0], box[1] + 14, box[2], box[3] + 14), 36, fill=150)
-base = Image.composite(Image.new("RGB", (W, H)), base, shadow.filter(ImageFilter.GaussianBlur(24)))
-base = Image.composite(glass, base, mask)
-edge = Image.new("L", (W, H)); ImageDraw.Draw(edge).rounded_rectangle(box, 36, outline=255, width=2)
-edge_col = Image.new("RGB", (W, H), tuple(int(c) for c in (col * 0.5 + 127)))
-base = Image.composite(edge_col, base, edge.point(lambda v: v * 0.55))
+R = 44  # corner radius
+x0, y0, x1, y1 = box
+mask = Image.new("L", (W, H)); ImageDraw.Draw(mask).rounded_rectangle(box, R, fill=255)
+inside = np.asarray(mask).astype(float) / 255
+# soft shadow under the glass
+shadow = Image.new("L", (W, H)); ImageDraw.Draw(shadow).rounded_rectangle((x0, y0 + 18, x1, y1 + 18), R, fill=170)
+shadow = np.asarray(shadow.filter(ImageFilter.GaussianBlur(30))).astype(float) / 255 * (1 - inside)
+px = np.asarray(base).astype(float) * (1 - shadow[..., None] * 0.8)
+# liquid glass: a clear body that lifts what's behind it a little, brighter towards the top
+t = np.clip((y - y0) / (y1 - y0), 0, 1)
+body = 14 + 18 * (1 - t) ** 1.5
+px += (body * inside)[..., None]
+px += inside[..., None] * col * 0.05
+# distance from the edge, inside the shape, for the rim light
+dist = np.asarray(mask.filter(ImageFilter.GaussianBlur(3))).astype(float) / 255
+ring = np.clip(1 - np.abs(dist - 0.5) * 2, 0, 1) ** 2 * inside
+# specular rim: bright at the top-left and bottom-right, faint on the other two sides, like light round the edge of glass
+u = (x - x0) / (x1 - x0); v = (y - y0) / (y1 - y0)
+spec = np.clip(1.15 - (u + v), 0, 1) ** 1.5 + 0.55 * np.clip((u + v) - 1.2, 0, 1) ** 1.2 + 0.18
+px += (ring * spec * 210)[..., None]
+# an inner glow just inside the rim
+inner = np.asarray(mask.filter(ImageFilter.GaussianBlur(14))).astype(float) / 255
+glow = np.clip(1 - inner, 0, 1) * inside
+px += (glow * 30)[..., None] + glow[..., None] * col * 0.12
+base = Image.fromarray(np.clip(px, 0, 255).astype("uint8"))
 # the highlights on top (black = see-through)
 out = ImageChops.lighter(base, im)
 out.save(dst, quality=92)
