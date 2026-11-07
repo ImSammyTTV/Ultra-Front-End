@@ -31,8 +31,7 @@ UFE.addon({
     };
     check();
     api.every(10000, check);
-    // over the game: a card in the corner while it prints, and for a few minutes after it's done
-    let doneAt = 0;
+    // over the game: a card in the corner at the print's milestones
     // the picture of what's printing, from the print file on the printer (once per print; none for a print not kept there)
     let pic = { key: '', url: '' };
     const picture = async () => {
@@ -45,17 +44,30 @@ UFE.addon({
     // the file name as a title: no underscores or .3mf, only Latin letters and numbers ("X2D_&_P2S_全覆盖外排气接口" -> "X2D & P2S")
     const nice = n => (n || '').replace(/\.(gcode\.)?3mf$|\.gcode$/i, '').replace(/[_]+/g, ' ').replace(/[^\p{Script=Latin}\d\s&+\-().,']/gu, ' ')
       .replace(/\s+/g, ' ').replace(/^[\s&+\-.,]+|[\s&+\-.,]+$/g, '').trim() || '3D print';
+    // Only while it prints, and only at the moments that matter: as it starts (0%), at 25%, 50% and 75%, and when it
+    // finishes, stops or pauses. Each time the card shows for 10 seconds, then goes again.
+    let seen = { key: '', step: -1, state: '' }, showUntil = 0;
     const card = async () => {
       if (!p?.connected) return api.hud(null);
-      if (active(was) || p.state === 'RUNNING') doneAt = 0;
-      if (p.state === 'FINISH' || p.state === 'FAILED') doneAt ||= Date.now();
-      const name = nice(p.name), image = active(p.state) || p.state === 'FINISH' ? await picture() : '';
-      if (active(p.state)) return api.hud({ place: api.settings().place || 'top-left', icon: 'printer', image, text: name, progress: p.percent,
-        sub: [p.state === 'PAUSE' ? 'Paused' : p.state === 'PREPARE' ? 'Getting ready' : `${p.percent ?? 0}%`, p.remaining ? `${left(p.remaining)} left` : '', p.layers ? `layer ${p.layer} of ${p.layers}` : ''].filter(Boolean).join(' · ') });
-      if (doneAt && Date.now() - doneAt < 5 * 60000) return api.hud({ place: api.settings().place || 'top-left', icon: 'printer', image, text: name, sub: p.state === 'FINISH' ? 'Print finished' : 'Print stopped', progress: p.state === 'FINISH' ? 100 : null });
-      api.hud(null);
+      const key = `${p.name}|${p.layers}`;
+      if (key !== seen.key) seen = { key, step: -1, state: '' };  // a new print
+      let show = false;
+      if (active(p.state) && p.state !== 'PAUSE') {
+        const step = Math.min(3, Math.floor((p.percent || 0) / 25));
+        if (step > seen.step) { seen.step = step; show = true; }
+      }
+      if (p.state !== seen.state) {
+        if (seen.state && ['FINISH', 'FAILED', 'PAUSE'].includes(p.state)) show = true;
+        seen.state = p.state;
+      }
+      if (show) showUntil = Date.now() + 10000;
+      if (Date.now() > showUntil) return api.hud(null);
+      const name = nice(p.name), image = await picture(), place = api.settings().place || 'top-left';
+      if (p.state === 'FINISH' || p.state === 'FAILED') return api.hud({ place, icon: 'printer', image, text: name, sub: p.state === 'FINISH' ? 'Print finished' : 'Print stopped', progress: p.state === 'FINISH' ? 100 : null });
+      api.hud({ place, icon: 'printer', image, text: name, progress: p.percent,
+        sub: [p.state === 'PAUSE' ? 'Paused' : p.state === 'PREPARE' ? 'Getting ready' : `${p.percent ?? 0}%`, p.remaining ? `${left(p.remaining)} left` : ''].filter(Boolean).join(' · ') });
     };
-    api.every(10000, card);
+    api.every(2000, card);
   },
   options(api) {
     const set = patch => api.request('/api/bambu', patch).then(() => { api.toast('Saved'); renderPanel(); }).catch(e => api.toast(e.message));
