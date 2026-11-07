@@ -1431,7 +1431,22 @@ $('#reader .r-zoom').addEventListener('click', () => readerZoom(0));
 function readerUpdate() { closeReader(); updateNow('install'); }
 $('#reader').addEventListener('click', e => { if (e.target.closest('.r-update')) readerUpdate(); });
 function closeReader() { R.open = false; document.body.classList.remove('reader-open'); tick(420, .06); }
-const readerScroll = steps => $('#reader .r-scroll').scrollBy({ top: steps * innerHeight * .22, behavior: 'smooth' });
+// Scrolling glides: each press (and the steady repeats while a direction is held) moves a target, and the page eases
+// towards it every frame, so holding down reads as one smooth scroll rather than a jump per repeat
+function readerScroll(steps) {
+  const el = $('#reader .r-scroll'), max = el.scrollHeight - el.clientHeight;
+  if (!R.glide) R.target = el.scrollTop;
+  R.target = clamp(R.target + steps * innerHeight * .14, 0, max);
+  if (R.glide) return;
+  const step = () => {
+    const d = R.target - el.scrollTop;
+    const before = el.scrollTop;
+    el.scrollTop += Math.sign(d) * Math.max(1, Math.abs(d) * .16);
+    if (!R.open || Math.abs(d) < 1 || el.scrollTop === before) { R.glide = 0; return; }
+    R.glide = requestAnimationFrame(step);
+  };
+  R.glide = requestAnimationFrame(step);
+}
 $('#details').addEventListener('click', e => {
   const mi = e.target.closest('.d-mi'), b = e.target.closest('.d-btn'), md = e.target.closest('.d-media'), n = e.target.closest('.d-item');
   if (mi) { D.mi = +mi.dataset.j; return detailsActivate(); }
