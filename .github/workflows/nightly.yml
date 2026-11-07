@@ -66,8 +66,8 @@ jobs:
         run: |
           version="${{ steps.build.outputs.version }}"
           last="${{ steps.new.outputs.last }}"
-          # a readable title that still carries the exact version, which copies of the app read from it
-          title="Ultra Front End ${version%%-*} Nightly, $(date -u '+%-d %B %Y') ($version)"
+          # a readable title; copies of the app read the exact version from the notes' first line
+          title="Ultra Front End ${version%%-*} Nightly, $(date -u '+%-d %B %Y')"
           {
             echo "Nightly build $version, made from the newest changes on main. It can have bugs: Settings › About › Updates goes back to Main."
             echo

@@ -9619,8 +9619,8 @@ def fetch_release(api_url, key):
     ok = digest.startswith("sha256:") and asset.get("size") and (test or url.startswith(f"https://github.com/{UPDATE_REPO}/releases/download/"))
     # a nightly build's version is its release title (its tag, "nightly", stays the same every night)
     version = str(rel.get("name") if key != "release" else rel.get("tag_name") or "").strip().lstrip("vV")
-    if key != "release":  # its title reads "Ultra Front End 1.2.7 Nightly, 6 November 2026 (1.2.7-nightly.202611062311)"
-        m = re.search(r"\d+\.\d+\.\d+-nightly\.\d+", version)
+    if key != "release":  # a readable title ("Ultra Front End 1.2.7 Nightly, 6 November 2026"): the exact version is in its notes
+        m = re.search(r"\d+\.\d+\.\d+-nightly\.\d+", f'{rel.get("name") or ""} {rel.get("body") or ""}')
         version = m.group(0) if m else version
     release = {"version": version, "notes": str(rel.get("body") or ""), "page": str(rel.get("html_url") or ""),
                "exe": {"url": url, "size": asset["size"], "sha256": digest[7:]} if ok else None}
