@@ -2144,7 +2144,7 @@ function sysRows() {
     // paired Bluetooth headphones and speakers: A opens them, and A on one connects or disconnects it
     ...(SP.qa?.bt ? [{ ic: 'headset', label: 'Bluetooth audio', sub: SP.qa.bt.find(d => d.connected)?.name || (SP.qa.bt.length ? `${SP.qa.bt.length} paired` : 'Nothing paired yet'), value: '›', run: () => sysView('bt') }] : []),
     ]),
-    ...group('Controllers', [
+    ...group('Batteries', [
     // each controller's battery; a wireless Xbox-style one can be turned off from here
     ...(SP.qa?.pads || []).map((p, n) => ({ ic: 'pad', label: (SP.qa.pads.length > 1 ? `Controller ${n + 1}` : 'Controller'), value: p.battery ? p.battery[0].toUpperCase() + p.battery.slice(1) : '',
       sub: p.wireless ? (SP.confirm === 'pad' + p.slot ? 'Press A again to turn it off' : 'A turns it off') : p.battery === 'wired' ? 'Plugged in' : '',
@@ -2181,7 +2181,7 @@ function renderSys() {
   SP.i = clamp(SP.i, 0, SP.rows.length - 1);
   while (SP.rows[SP.i]?.head && SP.i < SP.rows.length - 1) SP.i++;
   const z = PROFILE.timezone;
-  $('#syspanel .sp-time').innerHTML = `<b>${esc(timeIn(z))}</b><span>${esc(dateIn(z))}${SP.battery != null ? ` · Controller ${SP.battery}%` : ''}</span>`;
+  $('#syspanel .sp-time').innerHTML = `<b>${esc(timeIn(z))}</b><span>${esc(dateIn(z))}</span>`;
   SP.p = clamp(SP.p || 0, 0, powerChoices().length - 1);
   $('#syspanel .sp-list').innerHTML = SP.rows.map((r, i) => r.head ? `<div class="sp-head">${esc(r.head)}</div>` : r.id === 'volume'
     ? `<div class="sp-row sp-vol" data-i="${i}">${icon(SP.muted ? 'mute' : 'volume')}<div class="sp-text"><div>Volume<b>${SP.muted ? 'Muted' : SP.volume}</b></div><div class="hub-bar"><i style="width:${SP.muted ? 0 : SP.volume}%"></i></div></div></div>`
