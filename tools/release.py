@@ -4,7 +4,7 @@
     2. python tools/release.py [notes.md] [--venv DIR] [--dry-run [--skip-build]]
 
 Every release has a picture of its own, shown on its card in the app's What's new: assets/whatsnew/<VERSION>.jpg, committed
-and pushed with the release's commit (16:9, about 1280x720). It goes at the top of the notes. Without a notes file, GitHub
+and pushed with the release's commit (a 1280x400 banner). It goes at the top of the notes. Without a notes file, GitHub
 writes the notes from the commits. It builds Game Frontend.exe with PyInstaller and uploads it
 as UltraFrontEnd.exe under the tag v<VERSION>, with THIRD_PARTY_NOTICES.md and licenses.zip beside it (the updater only ever
 takes UltraFrontEnd.exe). Needs the GitHub CLI (gh), signed in to an account that can publish to the project.
@@ -148,7 +148,7 @@ def picture_notes(notes, version, repo, head, out):
     in the release's commit, so its address (by tag) never changes."""
     path = f"assets/whatsnew/{version}.jpg"
     if subprocess.run(["git", "-C", ROOT, "cat-file", "-e", f"{head}:{path}"], capture_output=True).returncode:
-        sys.exit(f"No picture for this release: add {path} (16:9, about 1280x720), commit and push it. Every release has its own.")
+        sys.exit(f"No picture for this release: add {path} (a 1280x400 banner), commit and push it. Every release has its own.")
     text = open(notes, encoding="utf-8").read() if notes else ""
     line = f"![Ultra Front End {version}](https://raw.githubusercontent.com/{repo}/v{version}/{path})"
     with_picture = os.path.join(out, "notes.md")
