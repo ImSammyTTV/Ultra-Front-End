@@ -109,10 +109,20 @@ function mixItems() {
   return [...[['game', 'Game Volume'], ['media', 'Music Volume']].filter(([k]) => qa.mixer?.[k] != null).map(([k, label]) => ({ mix: k, label })),
     ...(qa.outputs?.length > 1 ? [{ output: true }] : [])];
 }
-function rebuild() {  // Volume's own rows follow it
+// Batteries: one row that opens (A) into each controller's and headphone's level
+let battOpen = false;
+function battList() {
+  const pods = qa?.pods;
+  return [battery != null ? { name: 'Controller', level: `${battery}%`, icon: 'pad' } : null,
+    pods ? { name: pods.model, level: [['L', 'left'], ['R', 'right'], ['Case', 'case']].filter(([, k]) => pods[k] != null).map(([n, k]) => `${n} ${pods[k]}%`).join(' · '), icon: 'volume' } : null,
+    ...(qa?.batteries || []).filter(b => !/controller/i.test(b.name) || battery == null).map(b => ({ name: devName(b.name), level: `${b.level}%`, icon: /controller|pad/i.test(b.name) ? 'pad' : 'volume' }))].filter(Boolean);
+}
+function rebuild() {  // Volume's own rows follow it, then Batteries and its rows
   const cur = items[sel];
-  items = items.filter(x => !x.mix && !x.output);
+  items = items.filter(x => !x.mix && !x.output && !x.batt && !x.batts);
   const at = items.findIndex(x => x.volume);
+  const list = battList();
+  if (list.length) items.splice(at >= 0 ? at + 1 : 1, 0, { batts: true }, ...(battOpen ? list.map(b => ({ batt: b })) : []));
   if (at >= 0) items.splice(at + 1, 0, ...mixItems());
   sel = Math.max(0, items.indexOf(cur));
 }
@@ -121,6 +131,8 @@ function rowHTML(it, i) {
   if (it.volume) return `<div class="row${on}" data-i="${i}">${muted ? ICON.mute : ICON.volume}<div class="text"><div>Volume<span class="value">${muted ? 'Muted' : volume}<em class="chev">${mixOpen ? '▴' : '▾'}</em></span></div><div class="bar"><i style="width:${muted ? 0 : volume}%"></i></div></div></div>`;
   if (it.mix) { const v = qa.mixer[it.mix]; return `<div class="row sub${on}" data-i="${i}">${it.mix === 'game' ? ICON.pad : ICON.music}<div class="text"><div>${esc(it.label)}<span class="value">${v}</span></div><div class="bar"><i style="width:${v}%"></i></div></div></div>`; }
   if (it.output) { const o = qa.outputs.find(x => x.on); return `<div class="row sub${on}" data-i="${i}">${ICON.volume}<div class="text"><div>Sound output<span class="value">${esc(shortDev(o?.name || ''))} ›</span></div></div></div>`; }
+  if (it.batts) { const l = battList(); return `<div class="row${on}" data-i="${i}">${ICON.pad}<div class="text"><div>Batteries<span class="value">${esc(l[0]?.level.split(' · ')[0] || '')}<em class="chev">${battOpen ? '▴' : '▾'}</em></span></div></div></div>`; }
+  if (it.batt) return `<div class="row sub${on}" data-i="${i}">${ICON[it.batt.icon] || ''}<div class="text"><div>${esc(it.batt.name)}<span class="value">${esc(it.batt.level)}</span></div></div></div>`;
   if (it.media) return `<div class="row music${on}" data-i="${i}">${music.art ? `<img class="art" src="${esc(music.art)}" alt="">` : ICON.music}<div class="text"><div>${esc(music.title)}</div><small>${esc([music.playing ? 'Now playing' : 'Paused', music.artist].filter(Boolean).join(' · '))}</small></div>`
     + `<div class="mbtns">${[MEDIA.prev, music.playing ? MEDIA.pause : MEDIA.play, MEDIA.next].map((svg, j) => `<span class="mb${j === mediaSel ? ' on' : ''}">${svg}</span>`).join('')}</div></div>`;
   return `<div class="row${it.warn ? ' warn' : ''}${on}" data-i="${i}">${ICON[it.icon] || ''}<div class="text"><div>${esc(it.label)}${it.value ? `<span class="value">${esc(it.value)}</span>` : ''}</div></div></div>`;
@@ -152,6 +164,8 @@ function act(name) {
   }
   else if (name === 'ok') {
     if (items[sel]?.volume) { mixOpen = !mixOpen; rebuild(); return draw(); }
+    if (items[sel]?.batts) { battOpen = !battOpen; rebuild(); return draw(); }
+    if (items[sel]?.batt) return;
     if (items[sel]?.output) return nextOutput(1);
     if (items[sel]?.mix) return;
     return items[sel]?.media ? media() : go(items[sel]);
@@ -241,11 +255,7 @@ async function song() {  // one at a time: each asks Windows through a PowerShel
 let zone = {}, battery = null;  // the profile's time zone, as the frontend's clock uses
 const clock = () => {
   const d = new Date();
-  // batteries at a glance: the controller, AirPods (left and right) and other Bluetooth headphones
-  const pods = qa?.pods, batts = [battery != null ? `Controller ${battery}%` : '',
-    pods ? `${pods.model} ${[['L', 'left'], ['R', 'right']].filter(([, k]) => pods[k] != null).map(([n, k]) => n + pods[k]).join(' ')}` : '',
-    ...(qa?.batteries || []).filter(b => !/controller/i.test(b.name) || battery == null).map(b => `${devName(b.name)} ${b.level}%`)].filter(Boolean);
-  $('#time').innerHTML = `<b>${esc(d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...zone }))}</b>${esc(d.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', ...zone }))}${batts.length ? ` · ${esc(batts.join(' · '))}` : ''}`;
+  $('#time').innerHTML = `<b>${esc(d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...zone }))}</b>${esc(d.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', ...zone }))}`;
 };
 fetch('/api/profile', { cache: 'no-store' }).then(r => r.json()).then(p => {
   const z = p.timezone;
@@ -270,7 +280,7 @@ async function wake() {
     { label: 'Take screenshot', action: 'screenshot', icon: 'shot' },
     { label: s.recording ? 'Stop recording' : 'Record video', action: 'record', icon: 'record' },
     { label: 'Close game', action: 'close', warn: true, icon: 'close' }];
-  mixOpen = false;
+  mixOpen = false; battOpen = false;
   draw(); clock(); setVolume(); loadQa();
   document.body.classList.add('on');
   if (!started) { started = true; setInterval(clock, 5000); padLoop(); song(); }
