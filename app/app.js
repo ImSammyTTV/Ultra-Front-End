@@ -55,6 +55,12 @@ const API = location.protocol.startsWith('http');
 let LIB = [];
 let TABS = [{ name: 'All Games', has: () => true }];
 let NEWS_DOT = false;  // a new version's notes not seen yet: a dot on the News button
+// Steam's key page, step by step: the first time, Steam shows a Register form asking for a domain name
+const STEAM_KEY_STEPS = ['1. Choose “Open Steam’s API key page” below and sign in to Steam there.',
+  '2. The first time, Steam shows “Register Steam Web API Key” and asks for a Domain Name: type localhost (any name works, it isn’t used).',
+  '3. Tick “I agree to the Steam Web API Terms of Use” and choose Register.',
+  '4. Copy the Key it shows, come back here, select the box below and choose Paste on the keyboard (or press Ctrl+V), then Connect.',
+  'Steam only gives keys to accounts that have bought something on Steam.'].join(String.fromCharCode(10));
 const BUTTONS = [
   { name: 'Library', icon: 'library', run: () => openLibraryPage('pc') },
   { name: 'Emulators', icon: 'pad', run: () => openLibraryPage('emu') },
@@ -2407,7 +2413,8 @@ function panelItems() {
   }
   if (P.view === 'steam') return [  // in the order they're done: get the key, fill in both, check privacy, connect
     { kind: 'note', label: 'Connecting your account shows every game you own on Steam, including ones that aren’t installed. Playing them still needs the Steam app.' },
-    { kind: 'row', label: 'Open Steam’s API key page', sub: 'Sign in, type any domain (for example localhost), then copy the key and paste it below. The on-screen keyboard has a Paste key.', act: () => api('/api/accounts/steam/open', {}).then(() => toast('Opened in your browser')) },
+    { kind: 'note', label: STEAM_KEY_STEPS },
+    { kind: 'row', label: 'Open Steam’s API key page', sub: 'Opens steamcommunity.com/dev/apikey in your web browser', act: () => api('/api/accounts/steam/open', {}).then(() => toast('Opened in your browser')) },
     { kind: 'input', id: 'profile', label: 'Steam profile link or ID', value: d.steamSuggestedId || '', placeholder: 'https://steamcommunity.com/id/yourname' },
     { kind: 'input', id: 'key', label: 'Steam Web API key', value: '', placeholder: '32 letters and numbers' },
     { kind: 'note', label: 'Your game details must be public: Steam › Profile › Edit Profile › Privacy Settings › Game details: Public.' },
