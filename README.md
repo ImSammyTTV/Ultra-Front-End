@@ -1,4 +1,8 @@
 <p align="center">
+  <img src="assets/logo/banner.png" alt="Ultra Front End" width="100%">
+</p>
+
+<p align="center">
   <img src="assets/banner.webp" alt="Ultra Front End's home screen moving along a row of game covers (the games shown are made up for this demo)" width="100%">
 </p>
 
