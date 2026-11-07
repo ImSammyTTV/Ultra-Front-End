@@ -56,11 +56,11 @@ let LIB = [];
 let TABS = [{ name: 'All Games', has: () => true }];
 let NEWS_DOT = false;  // a new version's notes not seen yet: a dot on the News button
 const BUTTONS = [
-  { name: 'News', icon: 'news', run: () => openNewsPage() },
   { name: 'Library', icon: 'library', run: () => openLibraryPage('pc') },
   { name: 'Emulators', icon: 'pad', run: () => openLibraryPage('emu') },
   { name: 'Album', icon: 'album', run: () => openAlbum() },
   { name: 'Search', icon: 'search', run: () => openSearch() },
+  { name: 'News', icon: 'news', run: () => openNewsPage() },
   { name: 'Settings', icon: 'settings', run: () => openPanel() },
 ];
 
@@ -182,11 +182,8 @@ async function loadLibrary() {
   renderTabs(); drawButtons();
   decodeCoversIdle();
 }
-// The round buttons. News is first when there are Steam games to have news, and after Search when there are none.
+// The round buttons, always in this order: Library, Emulators, Album, Search, News, Settings
 function drawButtons() {
-  const cur = BUTTONS[S.btn], news = BUTTONS.splice(BUTTONS.findIndex(b => b.name === 'News'), 1)[0];
-  BUTTONS.splice(!API || LIB.some(g => g.appid) ? 0 : BUTTONS.findIndex(b => b.name === 'Search') + 1, 0, news);
-  S.btn = Math.max(0, BUTTONS.indexOf(cur));
   $('#buttons').innerHTML = BUTTONS.map((b, i) => `<div class="btn${S.zone === 1 && i === S.btn ? ' sel' : ''}" data-i="${i}"><div class="ring">${icon(b.icon)}${b.name === 'News' && NEWS_DOT ? '<i class="btn-dot"></i>' : ''}</div><span>${b.name}</span></div>`).join('');
 }
 // Every cover decoded in idle time, a few at a time, so a fast scroll through games not seen yet still shows each
