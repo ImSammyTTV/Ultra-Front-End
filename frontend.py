@@ -600,6 +600,7 @@ def hud():
         except Exception:
             user32.ShowWindow(hwnd, 4)  # SW_SHOWNOACTIVATE
         user32.SetWindowPos(hwnd, ctypes.c_void_p(-1), 0, 0, 0, 0, 0x0013)  # topmost, no move, no size, no activate
+        window.evaluate_js("drawn = ''")  # fitted again now the window is known, so its shape is cut too
         window_log("hud: shown")
     webview.start(styles, private_mode=True, storage_path=os.path.join(server.DATA, "webview-hud"))
     os._exit(0)
