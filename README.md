@@ -3,10 +3,6 @@
 </p>
 
 <p align="center">
-  <img src="assets/banner.webp" alt="Ultra Front End's home screen moving along a row of game covers (the games shown are made up for this demo)" width="100%">
-</p>
-
-<p align="center">
   <a href="https://github.com/ImSammyTTV/Ultra-Front-End/releases/latest"><img src="https://img.shields.io/github/v/release/ImSammyTTV/Ultra-Front-End?style=for-the-badge&color=3aa0ff&label=Download" alt="Latest release"></a>
   <a href="https://github.com/ImSammyTTV/Ultra-Front-End/releases"><img src="https://img.shields.io/github/downloads/ImSammyTTV/Ultra-Front-End/total?style=for-the-badge&color=f5b400&label=Downloads" alt="Downloads"></a>
   <img src="assets/badges/windows.svg" alt="Windows 10 and 11">
