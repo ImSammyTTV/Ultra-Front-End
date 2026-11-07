@@ -2138,8 +2138,8 @@ function sysRows() {
   const CAT_IC = { Sound: 'volume', Batteries: 'pad', Network: 'wifi', 'Network and display': 'wifi', More: 'settings', Power: 'power' };
   const group = (head, rows) => !rows.length ? [] : head === 'Games' ? rows : [
     { id: 'cat-' + head, ic: CAT_IC[head] || 'settings', label: head, value: SP.cats[head] ? '▴' : '▾',
-      run: () => { SP.cats[head] = !SP.cats[head]; SP.foldFresh = SP.cats[head]; tick(700, .04); renderSys(); SP.foldFresh = false; } },
-    ...(SP.cats[head] ? rows : [])];  // in line with Volume, which isn't indented
+      run: () => { SP.cats[head] = !SP.cats[head]; SP.catFresh = SP.cats[head] ? head : ''; tick(700, .04); renderSys(); SP.catFresh = ''; } },
+    ...(SP.cats[head] ? rows.map(r => ({ ...r, cat: head })) : [])];  // in line with Volume, which isn't indented
   return [
     ...group('Games', [
     ...(now ? [{ ic: 'pad', label: now.title, sub: 'Running · A resumes', run: () => { closeSys(); resumeGame(now); } }] : []),
@@ -2216,6 +2216,9 @@ function renderSys() {
   // the power choices and the song stay put at the bottom; the rest scrolls above them
   $('#syspanel .sp-list').innerHTML = html.filter((h, i) => !SP.rows[i].foot).join('');
   $('#syspanel .sp-foot').innerHTML = html.filter((h, i) => SP.rows[i].foot).join('');
+  // a category just opened: its rows fade in one after another
+  if (SP.catFresh || SP.foldFresh) { let n = 0; document.querySelectorAll('#syspanel .sp-row').forEach(e => { const r = SP.rows[+e.dataset.i];
+    if (r && (SP.catFresh ? r.cat === SP.catFresh : r.fold)) { e.classList.add('fade-in'); e.style.animationDelay = `${n++ * 35}ms`; } }); }
   sysFocus();
 }
 function sysDnd() { const on = !SP.qa?.dnd; if (SP.qa) SP.qa.dnd = on; tick(700, .04); renderSys(); toast(on ? 'Do not disturb is on' : 'Do not disturb is off', 2000); qaDo({ action: 'dnd', on }); }

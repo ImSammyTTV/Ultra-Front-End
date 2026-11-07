@@ -1261,3 +1261,6 @@ body.zone-2 #tabs, body.tabs-peek #tabs { pointer-events: auto; }
 .addon-weather b { font-weight: 400; font-size: 1em; }
 .addon-weather small { opacity: .65; font-size: 1em; }
 .pic:has(.paddon) { width: 4.4vh; height: 4.4vh; }
+
+.sp-row.fade-in { animation: spFadeIn .32s var(--ease) backwards; }  /* rows of a category as it opens */
+@keyframes spFadeIn { from { opacity: 0; transform: translateY(-.8vh); } }
