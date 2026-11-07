@@ -57,6 +57,21 @@ def is_setup():
     return "--setup" in sys.argv or name.startswith("ultrafrontend-setup")
 
 
+def first_start_of_download():
+    """The plain UltraFrontEnd.exe opened for the first time from wherever it was saved (Downloads, the desktop): Setup
+    runs instead, so the app, its settings, the ROMs and the emulators all end up together in C:\\Ultra-Front-End. Not for
+    a copy that's already installed, one that already has settings beside it (someone keeping it portable), or a copy
+    started with options (at sign-in, the overlay, a test on another port)."""
+    if not getattr(sys, "frozen", False) or len(sys.argv) > 1:
+        return False
+    here = os.path.normcase(os.path.dirname(os.path.abspath(sys.executable)))
+    if here in (os.path.normcase(os.path.join(HOME, "App")), os.path.normcase(OLD_TARGET)):
+        return False
+    if any(os.path.isfile(os.path.join(t, "UltraFrontEnd.exe")) for t in (os.path.join(HOME, "App"), OLD_TARGET)):
+        return False  # installed already: this download just runs (its settings are found where the installed copy keeps them)
+    return not os.path.isfile(os.path.join(os.path.dirname(sys.executable), "data", "config.json"))
+
+
 def version():
     """VERSION from server.py, read from its code without running it (running it would set up a data folder)."""
     import dis
