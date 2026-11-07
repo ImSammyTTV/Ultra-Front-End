@@ -180,7 +180,7 @@ failed. Updating never removes them.
 <details>
 <summary><b>Usage stats</b></summary>
 
-Ultra Front End checks in once a day so I can see roughly how many people are playing with it. It only counts copies:
+Ultra Front End checks in once a day to show roughly how many people are using it. It only counts copies:
 nothing about you or your games is included. To opt out, turn off **Settings › About › Count this copy**.
 </details>
 
