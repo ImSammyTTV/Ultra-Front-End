@@ -1240,7 +1240,11 @@ body.zone-2 #tabs, body.tabs-peek #tabs { pointer-events: auto; }
 /* Quick Access: the game, music and app volumes fold down under Volume */
 .sp-row.sp-mix, .sp-row.sp-fold { margin-left: 3vh; }
 .sp-row.sp-fold.fresh { animation: spMixIn .35s var(--ease) backwards; }
-.sp-row.sp-music .sp-art { width: 8vh; height: 8vh; border-radius: 1.1vh; box-shadow: 0 .6vh 1.8vh rgba(0,0,0,.45); }
+.sp-row.sp-music { position: relative; height: 24vh; align-items: flex-end; overflow: hidden; border-radius: 1.4vh; padding-bottom: 1.6vh; }  /* the song as a big card: its art fills it */
+.sp-row.sp-music .sp-art { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
+.sp-row.sp-music::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(to top, rgba(0,0,0,.82), rgba(0,0,0,.15) 60%, transparent); pointer-events: none; }
+.sp-row.sp-music > :not(.sp-art) { position: relative; z-index: 1; }
+.sp-row.sp-music > svg { display: none; }
 .sp-row.sp-mix.fresh { animation: spMixIn .35s var(--ease) backwards; }  /* only as it opens, not on every volume step */
 @keyframes spMixIn { from { opacity: 0; transform: translateY(-1.2vh); } }
 .sp-chev { font-style: normal; font-size: 1.3vh; opacity: .6; margin-left: .8vh; }
