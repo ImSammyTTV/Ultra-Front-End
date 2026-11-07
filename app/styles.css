@@ -1224,8 +1224,8 @@ body.zone-2 #tabs, body.tabs-peek #tabs { pointer-events: auto; }
 .np-rel.own .ni { background-size: 100% 100%, contain; background-color: #0a0b0f; }
 /* the post's zoom: Y, or this chip */
 .r-zoom { position: absolute; right: 3vh; bottom: 3vh; display: inline-flex; align-items: center; gap: 1vh; padding: 1vh 1.8vh; border: 0; border-radius: 99px;
-  cursor: pointer; font: inherit; font-size: 1.7vh; color: #fff; background: rgba(12, 22, 44, .75); box-shadow: var(--glass-edge); }
-.r-zoom span { display: inline-grid; place-items: center; min-width: 2.4vh; height: 2.4vh; padding: 0 .6vh; border-radius: 99px; font-size: 1.3vh; font-weight: 700; background: #f5b400; color: #04121f; }
+  cursor: pointer; font: inherit; font-size: 1.7vh; color: #fff; background: rgba(24, 25, 28, .66); backdrop-filter: blur(20px) saturate(1.5); box-shadow: var(--glass-edge); }
+.r-zoom span { display: inline-grid; place-items: center; min-width: 2.4vh; height: 2.4vh; padding: 0 .6vh; border-radius: 99px; font-size: 1.3vh; font-weight: 700; background: #fff; color: #16171a; }
 /* Quick Access: a recent game's cover in place of the icon */
 .sp-row.sp-game .sp-art { width: 3.6vh; height: 4.8vh; object-fit: cover; border-radius: .6vh; flex: none; }
 .sp-head { margin: 1.6vh 0 .4vh 1.2vh; font-size: 1.3vh; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; opacity: .55; }
