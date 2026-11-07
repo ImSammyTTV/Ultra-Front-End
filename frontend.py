@@ -548,7 +548,7 @@ def hud():
     webview_args()
     scale = ctypes.windll.user32.GetDpiForSystem() / 96 or 1
     sx, sy, sw, sh = game_screen()
-    width = int(sh * .26)
+    width = int(sh * .32)
     margin = int(sh * .025)
 
     class HudApi:

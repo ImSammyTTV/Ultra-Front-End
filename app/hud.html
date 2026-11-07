@@ -35,7 +35,8 @@ async function tick() {
       last = html;
       document.getElementById('cards').innerHTML = html;
       document.getElementById('cards').style.display = html ? '' : 'none';
-      window.pywebview?.api?.size(html ? document.getElementById('cards').offsetHeight : 1);
+      // measured once it's laid out, with room to spare, so nothing is cut off at the bottom
+      requestAnimationFrame(() => window.pywebview?.api?.size(html ? Math.ceil(document.getElementById('cards').getBoundingClientRect().height) + 4 : 1));
     }
   } catch {}
 }
