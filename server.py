@@ -5009,7 +5009,7 @@ if ($s) {
       if ($ms.Length -gt 0 -and $ms.Length -le 4MB) { $art = [Convert]::ToBase64String($ms.ToArray()) }
     }
   } catch {}
-  @{ title = $p.Title; artist = $p.Artist; playing = ($s.GetPlaybackInfo().PlaybackStatus -eq 'Playing'); art = $art } | ConvertTo-Json -Compress
+  @{ title = $p.Title; artist = $p.Artist; playing = ($s.GetPlaybackInfo().PlaybackStatus -eq 'Playing'); art = $art; app = $s.SourceAppUserModelId } | ConvertTo-Json -Compress
 } else { '{}' }
 """
 NP_ART = {"key": "", "data": b"", "type": ""}  # the latest album art, served at /api/nowplaying/art
@@ -5024,6 +5024,7 @@ def now_playing():
         out = json.loads(r.stdout.decode("utf-8", "replace").strip() or "{}")
     except (OSError, ValueError, subprocess.TimeoutExpired):
         return {}
+    MEDIA_APP[0] = out.pop("app", "") or MEDIA_APP[0]
     art = out.pop("art", "") or ""
     if art:  # kept here and served by its own address: the page asks for it again only when the picture changes
         import hashlib
@@ -6210,11 +6211,103 @@ def pods_battery():
     return {k: p[k] for k in ("model", "left", "right", "case", "charging")}
 
 
+MEDIA_APP = ['']  # the app Windows' media controls last named (Spotify, a browser...), from now_playing
+
+
+def audio_sessions(set_pids=None, level=None):
+    """Each program playing sound on the speakers now: [{"pid", "name", "volume" 0-100, "muted"}], Windows' volume mixer.
+    With set_pids and level, those programs' volume is set first (0-100)."""
+    if not WIN:
+        return []
+    ctypes, W, guid, call = _com()
+    enum, dev, mgr, sess_enum, out = ctypes.c_void_p(), ctypes.c_void_p(), ctypes.c_void_p(), ctypes.c_void_p(), []
+    if ctypes.windll.ole32.CoCreateInstance(guid("{BCDE0395-E52F-467C-8E3D-C4579291692E}"), None, 1, guid("{A95664D2-9614-4F35-A746-DE8DB63617E6}"), ctypes.byref(enum)):
+        return []
+    try:
+        if call(enum, 4, ctypes.c_int, ctypes.c_int, ctypes.c_void_p)(enum, 0, 1, ctypes.byref(dev)):
+            return []
+        if call(dev, 3, ctypes.c_void_p, W.DWORD, ctypes.c_void_p, ctypes.c_void_p)(dev, guid("{77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F}"), 1, None, ctypes.byref(mgr)):
+            return []
+        if call(mgr, 5, ctypes.c_void_p)(mgr, ctypes.byref(sess_enum)):
+            return []
+        n = ctypes.c_int()
+        call(sess_enum, 3, ctypes.c_void_p)(sess_enum, ctypes.byref(n))
+        for i in range(n.value):
+            ctl, ctl2, vol = ctypes.c_void_p(), ctypes.c_void_p(), ctypes.c_void_p()
+            if call(sess_enum, 4, ctypes.c_int, ctypes.c_void_p)(sess_enum, i, ctypes.byref(ctl)):
+                continue
+            try:
+                if call(ctl, 0, ctypes.c_void_p, ctypes.c_void_p)(ctl, guid("{bfb7ff88-7239-4fc9-8fa2-07c950be9c6d}"), ctypes.byref(ctl2)):
+                    continue
+                pid = W.DWORD()
+                call(ctl2, 14, ctypes.c_void_p)(ctl2, ctypes.byref(pid))
+                if call(ctl, 0, ctypes.c_void_p, ctypes.c_void_p)(ctl, guid("{87CE5498-68D6-44E5-9215-6DA47EF883D8}"), ctypes.byref(vol)):
+                    continue
+                if set_pids is not None and pid.value in set_pids and level is not None:
+                    call(vol, 3, ctypes.c_float, ctypes.c_void_p)(vol, max(0.0, min(1.0, level / 100)), None)
+                v, m = ctypes.c_float(), W.BOOL()
+                call(vol, 4, ctypes.c_void_p)(vol, ctypes.byref(v))
+                call(vol, 6, ctypes.c_void_p)(vol, ctypes.byref(m))
+                if pid.value:
+                    out.append({"pid": pid.value, "name": process_name(pid.value), "volume": round(v.value * 100), "muted": bool(m.value)})
+            finally:
+                for obj in (vol, ctl2, ctl):
+                    if obj:
+                        call(obj, 2)(obj)
+        return out
+    finally:
+        for obj in (sess_enum, mgr, dev, enum):
+            if obj:
+                call(obj, 2)(obj)
+
+
+def mixer_groups(sessions=None):
+    """The three volumes Quick Access shows: the game that's running, the music or video player Windows' media controls
+    name, and Ultra Front End's own sounds. {"game": [pids], "media": [pids], "ui": [pids]}"""
+    sessions = sessions if sessions is not None else audio_sessions()
+    groups = {"game": [], "media": [], "ui": []}
+    session = open_session()
+    run = RUNNING.get(session["game"]) if session else None
+    game_pids = set(game_tree(run.pid)) | {run.pid} if run else set()
+    if session and session["game"] in RUN_NOW:
+        game_pids.add(RUN_NOW[session["game"]][1])
+    mine = {os.getpid()} | set(process_tree(os.getpid()))
+    aumid = MEDIA_APP[0] or ""  # "Spotify.exe", or a Store app's "SpotifyAB.SpotifyMusic_...!Spotify"
+    app = re.sub(r"\.exe$", "", aumid.split("!")[-1] if "!" in aumid else os.path.basename(aumid), flags=re.I).lower()
+    for s in sessions:
+        name = (s["name"] or "").lower()
+        if s["pid"] in game_pids:
+            groups["game"].append(s["pid"])
+        elif s["pid"] in mine or name.startswith("ultrafrontend") or name.startswith("game frontend"):
+            groups["ui"].append(s["pid"])
+        elif app and app in name:
+            groups["media"].append(s["pid"])
+    return groups
+
+
+def mixer_view():
+    """Volume (0-100) of each group that's playing sound now, or None for one that isn't."""
+    sessions = audio_sessions()
+    groups, by_pid = mixer_groups(sessions), {s["pid"]: s for s in sessions}
+    return {k: (round(sum(by_pid[p]["volume"] for p in pids) / len(pids)) if pids else None) for k, pids in groups.items()}
+
+
+def mixer_set(group, delta):
+    """Turns one group's volume up or down (all its programs together)."""
+    sessions = audio_sessions()
+    pids = mixer_groups(sessions).get(group) or []
+    if not pids:
+        raise ValueError("Nothing is playing there right now")
+    now = round(sum(s["volume"] for s in sessions if s["pid"] in pids) / len(pids))
+    audio_sessions(set(pids), max(0, min(100, now + int(delta))))
+    return mixer_view()
+
+
 def qa_view():
     """Everything Quick Access shows beyond volume and music, read fresh each time it opens."""
     view = {"outputs": [], "pads": [], "wifi": None, "dnd": False, "brightness": None, "bt": None}
     for k, fn in (("outputs", sound_outputs), ("pads", xinput_pads), ("wifi", wifi_status), ("dnd", do_not_disturb), ("brightness", screen_brightness),
-                  ("bt", bt_audio_devices), ("batteries", bt_batteries), ("pods", pods_battery)):
+                  ("bt", bt_audio_devices), ("batteries", bt_batteries), ("pods", pods_battery), ("mixer", mixer_view)):
         try:
             view[k] = fn()
         except Exception:
@@ -9808,6 +9901,8 @@ class Handler(SimpleHTTPRequestHandler):
                     return self.reply({**qa_view(), "joined": wifi_join_new(str(body.get("ssid") or ""), str(body.get("password") or ""))})
                 elif act == "btscan":
                     return self.reply({**qa_view(), "found": bt_scan()})
+                elif act == "mix":
+                    return self.reply({"mixer": mixer_set(str(body.get("group")), int(body.get("delta", 0)))})  # quick: only the mixer
                 elif act == "btforget":
                     bt_forget(str(body.get("addr") or ""))
                 elif act == "btpair":

@@ -2139,6 +2139,9 @@ function sysRows() {
     ...group('Sound', [
     ...(SP.song ? [{ id: 'music', run: sysMedia }] : []),  // the song that's playing, then its volume
     ...(SP.volume === null ? [] : [{ id: 'volume', run: () => setSound({ mute: !SP.muted }) }]),
+    // each kind of sound on its own, like a console's mixer: only the ones playing right now
+    ...[['game', 'Game'], ['media', 'Music and video'], ['ui', 'Ultra Front End sounds']].filter(([k]) => SP.qa?.mixer?.[k] != null)
+      .map(([k, label]) => ({ id: 'mix-' + k, mix: k, label, run: () => {} })),
     // where the sound plays: A opens the list of speakers, headsets and TVs (left and right still step through them)
     ...(SP.qa?.outputs?.length ? [{ id: 'output', ic: /head|ear|airpod|buds|bose|qc/i.test(SP.qa.outputs.find(o => o.on)?.name || '') ? 'headset' : 'speaker', label: 'Sound output',
       sub: shortDev(SP.qa.outputs.find(o => o.on)?.name || 'Choose one'), value: '›', run: () => sysView('output') }] : []),
@@ -2189,7 +2192,9 @@ function renderSys() {
   const z = PROFILE.timezone;
   $('#syspanel .sp-time').innerHTML = `<b>${esc(timeIn(z))}</b><span>${esc(dateIn(z))}</span>`;
   SP.p = clamp(SP.p || 0, 0, powerChoices().length - 1);
-  $('#syspanel .sp-list').innerHTML = SP.rows.map((r, i) => r.head ? `<div class="sp-head">${esc(r.head)}</div>` : r.id === 'volume'
+  $('#syspanel .sp-list').innerHTML = SP.rows.map((r, i) => r.head ? `<div class="sp-head">${esc(r.head)}</div>` : r.mix
+    ? `<div class="sp-row sp-vol sp-mix" data-i="${i}" data-mix="${r.mix}">${icon(r.mix === 'game' ? 'pad' : r.mix === 'media' ? 'music' : 'volume')}<div class="sp-text"><div>${esc(r.label)}<b>${SP.qa.mixer[r.mix]}</b></div><div class="hub-bar"><i style="width:${SP.qa.mixer[r.mix]}%"></i></div></div></div>`
+    : r.id === 'volume'
     ? `<div class="sp-row sp-vol" data-i="${i}">${icon(SP.muted ? 'mute' : 'volume')}<div class="sp-text"><div>Volume<b>${SP.muted ? 'Muted' : SP.volume}</b></div><div class="hub-bar"><i style="width:${SP.muted ? 0 : SP.volume}%"></i></div></div></div>`
     : r.id === 'music'
     ? `<div class="sp-row sp-music" data-i="${i}">${SP.song.art ? `<img class="sp-art" src="${esc(SP.song.art)}" alt="" onerror="this.replaceWith(document.createRange().createContextualFragment(ICON_MUSIC))">` : icon('music')}<div class="sp-text"><div>${esc(SP.song.title)}</div><small>${esc([SP.song.playing === false ? 'Paused' : 'Now playing', SP.song.artist].filter(Boolean).join(' · '))}</small></div>`
@@ -2228,13 +2233,21 @@ function sysMove(dir) {
 async function setSound(change) {
   try { const r = await api('/api/volume', change); SP.volume = r.volume; SP.muted = r.muted; renderSys(); tick(700, .03); } catch (e) { toast(e.message); }
 }
+async function mixDo(group, delta) {
+  try { const r = await api('/api/qa', { action: 'mix', group, delta }); if (SP.qa) SP.qa.mixer = r.mixer; renderSys(); } catch (e) { toast(e.message); }
+}
+// 1 a step; held (repeats close together), 2, then 4
+function volStep(dir, row) {
+  const t = performance.now();
+  SP.volRun = t - (SP.volAt || 0) < 320 && SP.volDir === dir && SP.volRow === row ? (SP.volRun || 0) + 1 : 0;
+  SP.volAt = t; SP.volDir = dir; SP.volRow = row;
+  return SP.volRun < 6 ? 1 : SP.volRun < 16 ? 2 : 4;
+}
 function sysSide(dir) {
   const row = SP.rows[SP.i]?.id;
+  if (row?.startsWith('mix-')) return mixDo(row.slice(4), dir * volStep(dir, row));
   if (row === 'volume') {  // 1 at a time; held, it speeds up (2, then 4 a step)
-    const t = performance.now();
-    SP.volRun = t - (SP.volAt || 0) < 320 && SP.volDir === dir ? (SP.volRun || 0) + 1 : 0;
-    SP.volAt = t; SP.volDir = dir;
-    return setSound({ delta: dir * (SP.volRun < 6 ? 1 : SP.volRun < 16 ? 2 : 4) });
+    return setSound({ delta: dir * volStep(dir, row) });
   }
   if (row === 'output') return sysOutput(dir);
   if (row === 'bright') return qaDo({ action: 'brightness', level: clamp((SP.qa.brightness || 0) + dir * 10, 5, 100) });
@@ -2292,6 +2305,8 @@ $('#syspanel').addEventListener('wheel', e => {
   e.preventDefault();
   const t = performance.now();
   if (Math.abs(e.deltaY) <= 4) return;
+  const mix = e.target.closest('.sp-mix')?.dataset.mix;
+  if (mix) return mixDo(mix, e.deltaY < 0 ? 1 : -1);
   if (e.target.closest('.sp-vol')) return setSound({ delta: e.deltaY < 0 ? 1 : -1 });  // over the volume: the wheel turns it up and down
   if (t - (SP.wheelAt || 0) > 90) { SP.wheelAt = t; sysMove(Math.sign(e.deltaY)); }  // elsewhere it moves like up and down
 }, { passive: false });  // the mouse wheel moves like up and down
