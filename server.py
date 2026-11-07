@@ -5979,6 +5979,14 @@ def bt_kind(cod):
     """What a Bluetooth audio device is, from its class: "headphones" (headsets, earbuds) or "speaker" (speakers, soundbars, TVs)."""
     return "headphones" if (cod >> 2) & 0x3F in (1, 2, 6) else "speaker"
 
+
+def bt_forget(addr):
+    """Removes a paired Bluetooth device from Windows, so it can be paired again from scratch."""
+    ctypes, W, bt, DEVINFO, SEARCH = _bt()
+    a = ctypes.c_ulonglong(int(addr, 16))
+    if bt.BluetoothRemoveDevice(ctypes.byref(a)) not in (0, 1168):  # 1168: already gone
+        raise OSError("Windows wouldn't forget that device")
+
 def bt_scan():
     """Bluetooth headphones and speakers nearby that aren't paired yet (they must be in pairing mode). Takes about 10 seconds."""
     ctypes, W, bt, DEVINFO, SEARCH = _bt()
@@ -9668,6 +9676,8 @@ class Handler(SimpleHTTPRequestHandler):
                     return self.reply({**qa_view(), "joined": wifi_join_new(str(body.get("ssid") or ""), str(body.get("password") or ""))})
                 elif act == "btscan":
                     return self.reply({**qa_view(), "found": bt_scan()})
+                elif act == "btforget":
+                    bt_forget(str(body.get("addr") or ""))
                 elif act == "btpair":
                     bt_pair(str(body.get("addr") or ""))
                     time.sleep(3)  # its sound output takes a moment to appear

@@ -2112,7 +2112,8 @@ function sysRows() {
   if (SP.view === 'output') return [{ head: 'Sound output' }, ...(SP.qa?.outputs || []).map(o => ({ ic: /head|ear|airpod|buds|bose|qc/i.test(o.name) ? 'headset' : 'speaker',
     label: shortDev(o.name), value: o.on ? '✓' : '', run: () => o.on ? sysView('') : qaDo({ action: 'output', id: o.id }).then(() => toast(`Sound plays on ${shortDev(o.name)}`, 2500)) })), back];
   if (SP.view === 'bt') return [{ head: 'Bluetooth audio · paired devices' }, ...(SP.qa?.bt || []).map(d => ({ ic: d.kind === 'speaker' ? 'speaker' : 'headset', label: d.name, value: d.connected ? 'Connected' : '',
-    sub: d.connected ? 'Paired and connected · A disconnects it' : 'Paired · A connects it', run: () => btToggle(d) })),
+    sub: SP.confirm === 'forget' + d.addr ? 'Press Y again to forget it' : d.connected ? 'Paired and connected · A disconnects · Y forgets' : 'Paired · A connects · Y forgets',
+    run: () => btToggle(d), opt: () => SP.confirm === 'forget' + d.addr ? qaDo({ action: 'btforget', addr: d.addr }).then(() => toast(`Forgot ${d.name}: search to pair it again`, 3500)) : (SP.confirm = 'forget' + d.addr, renderSys()) })),
     ...(SP.btFound === undefined ? [] : SP.btFound === null ? [{ ic: 'search', label: 'Searching for devices…', sub: 'Put it in pairing mode now' }]
       : SP.btFound.length ? SP.btFound.map(d => ({ ic: d.kind === 'speaker' ? 'speaker' : 'headset', over: 'New', label: d.name, sub: 'A pairs and connects it', run: () => btPair(d) }))
       : [{ ic: 'headset', label: 'Nothing new found', sub: 'Check it’s in pairing mode, then search again' }]),
@@ -3428,7 +3429,7 @@ function input(action) {
   // The launch screen is over everything: B takes it down; nothing else may reach the menus hidden under it
   if (S.busy) return action === 'back' ? cancelLaunch() : undefined;
   if (PT.open) return action === 'back' && !PT.live ? closePadTester() : undefined;  // a controller in use is being tested: its B is held 2 s instead
-  if (SP.open) return ({ up: () => sysMove(-1), down: () => sysMove(1), left: () => sysSide(-1), right: () => sysSide(1), ok: sysOk, back: () => SP.view ? sysView('') : closeSys(), system: closeSys })[action]?.();
+  if (SP.open) return ({ up: () => sysMove(-1), down: () => sysMove(1), left: () => sysSide(-1), right: () => sysSide(1), ok: sysOk, back: () => SP.view ? sysView('') : closeSys(), system: closeSys, options: () => SP.rows[SP.i]?.opt?.() })[action]?.();
   if (action === 'system') return Q.open || V.open || P.open ? undefined : openSys();
   const kb = { up: () => searchMove(0, -1), down: () => searchMove(0, 1), left: () => searchMove(-1, 0), right: () => searchMove(1, 0), ok: searchEnter, back: closeSearch,
     options: () => searchType('Delete') };
