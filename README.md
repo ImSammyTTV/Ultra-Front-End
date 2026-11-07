@@ -184,7 +184,3 @@ you expected and what happened, and attach `errors.log` if there is one.
 ## License
 
 [MIT](LICENSE) © ImSammyTTV. Third-party software and artwork: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
-The code is free to use under the MIT license, but the **Ultra Front End logo belongs to ImSammyTTV**: a copy or fork
-can use the code, but not the logo. The official download is only on the
-[Releases page](https://github.com/ImSammyTTV/Ultra-Front-End/releases).
