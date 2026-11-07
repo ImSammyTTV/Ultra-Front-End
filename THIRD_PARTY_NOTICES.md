@@ -94,7 +94,7 @@ The logos of the older systems, made plain white and trimmed to the artwork (the
 
 ## Controller pictures
 
-The controller pictures in `app/assets` (`pad-xbox.png`, `pad-ps5.png`, `pad-ps4.png`, `pad-ps3.png`, `pad-sw1.png`, `pad-sw2.png`) are original pictures made for this project with an image generator. They have no logos. `controller-steam.png` is Valve's product image of the Steam Controller; the Steam Controller and the Steam logo belong to Valve Corporation.
+The controller pictures in `app/assets` (`pad-xbox.png`, `pad-ps4.png`, `pad-ps3.png`, `pad-sw1.png`, `pad-sw2.png`) are original pictures made for this project with an image generator. They have no logos. `pad-ps5.png` is Sony's product image of the DualSense; the DualSense and the PlayStation logo belong to Sony Interactive Entertainment. `controller-steam.png` is Valve's product image of the Steam Controller; the Steam Controller and the Steam logo belong to Valve Corporation.
 
 ## Data the app fetches
 
