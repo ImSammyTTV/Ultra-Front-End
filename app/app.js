@@ -2199,7 +2199,7 @@ function renderSys() {
   while (SP.rows[SP.i]?.head && SP.i < SP.rows.length - 1) SP.i++;
   const z = PROFILE.timezone;
   // Do not disturb is the bell up by the time: Y (or a click) turns it on and off
-  $('#syspanel .sp-time').innerHTML = `<b>${esc(timeIn(z))}</b><span>${esc(dateIn(z))}</span><span class="sp-dnd${SP.qa?.dnd ? ' on' : ''}" title="Do not disturb (Y)">${icon(SP.qa?.dnd ? 'bellOff' : 'bell')}<small>${SP.qa?.dnd ? 'Do not disturb' : ''}</small></span>`;
+  $('#syspanel .sp-time').innerHTML = `<span class="sp-dnd${SP.qa?.dnd ? ' on' : ''}" title="Do not disturb (Y)">${icon(SP.qa?.dnd ? 'bellOff' : 'bell')}<small>${SP.qa?.dnd ? 'Do not disturb' : ''}</small></span><b>${esc(timeIn(z))}</b><span>${esc(dateIn(z))}</span>`;
   $('#syspanel .sp-dnd').onclick = sysDnd;
   SP.p = clamp(SP.p || 0, 0, powerChoices().length - 1);
   $('#syspanel .sp-list').innerHTML = SP.rows.map((r, i) => r.head ? `<div class="sp-head">${esc(r.head)}</div>` : r.mix

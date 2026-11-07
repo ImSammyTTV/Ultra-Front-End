@@ -1147,7 +1147,7 @@ body.quick-open :is(#row, #title), body.sys-open :is(#row, #title) {
 .sp-list { flex: 1; min-height: 0; overflow: hidden; gap: .4vh; }
 #syspanel .sp-box { padding-top: 5vh; }
 #syspanel .sp-time { margin-bottom: 2vh; display: flex; align-items: center; }
-.sp-dnd { margin-left: auto; display: flex; align-items: center; gap: .8vh; cursor: pointer; opacity: .55; }
+.sp-dnd { margin-right: 1.4vh; display: flex; align-items: center; gap: .8vh; cursor: pointer; opacity: .55; }
 .sp-dnd svg { width: 2.6vh; height: 2.6vh; }
 .sp-dnd.on { opacity: 1; color: var(--text); }
 .sp-dnd small { font-size: 1.6vh; }
