@@ -2227,7 +2227,12 @@ async function setSound(change) {
 }
 function sysSide(dir) {
   const row = SP.rows[SP.i]?.id;
-  if (row === 'volume') return setSound({ delta: dir * 5 });
+  if (row === 'volume') {  // 1 at a time; held, it speeds up (2, then 4 a step)
+    const t = performance.now();
+    SP.volRun = t - (SP.volAt || 0) < 320 && SP.volDir === dir ? (SP.volRun || 0) + 1 : 0;
+    SP.volAt = t; SP.volDir = dir;
+    return setSound({ delta: dir * (SP.volRun < 6 ? 1 : SP.volRun < 16 ? 2 : 4) });
+  }
   if (row === 'output') return sysOutput(dir);
   if (row === 'bright') return qaDo({ action: 'brightness', level: clamp((SP.qa.brightness || 0) + dir * 10, 5, 100) });
   if (row === 'music') { const n = clamp(SP.m + dir, 0, 2); if (n !== SP.m) { SP.m = n; tick(700, .03); renderSys(); } return; }
@@ -2278,7 +2283,13 @@ function sysOutput(dir) {
   if (next) qaDo({ action: 'output', id: next.id }).then(() => toast(`Sound plays on ${next.name.replace(/\s*\([^)]*\)\s*$/, '')}`, 2500));
 }
 function sysOk() { const r = SP.rows[SP.i]; if (r?.run) { tick(880, .08); r.run(); } }
-$('#syspanel').addEventListener('wheel', e => { e.preventDefault(); const t = performance.now(); if (Math.abs(e.deltaY) > 4 && t - (SP.wheelAt || 0) > 90) { SP.wheelAt = t; sysMove(Math.sign(e.deltaY)); } }, { passive: false });  // the mouse wheel moves like up and down
+$('#syspanel').addEventListener('wheel', e => {
+  e.preventDefault();
+  const t = performance.now();
+  if (Math.abs(e.deltaY) <= 4) return;
+  if (e.target.closest('.sp-vol')) return setSound({ delta: e.deltaY < 0 ? 1 : -1 });  // over the volume: the wheel turns it up and down
+  if (t - (SP.wheelAt || 0) > 90) { SP.wheelAt = t; sysMove(Math.sign(e.deltaY)); }  // elsewhere it moves like up and down
+}, { passive: false });  // the mouse wheel moves like up and down
 $('#syspanel').addEventListener('click', e => {
   const r = e.target.closest('.sp-row');
   const pw = e.target.closest('.sp-pw'), bar = e.target.closest('.sp-vol') && !e.target.closest('svg') && $('#syspanel .sp-vol .hub-bar').getBoundingClientRect();
