@@ -2175,11 +2175,8 @@ function sysRows() {
       run: () => { sysView('wifi'); if (SP.fold === 'wifi') qaDo(SP.qa.wifi.off ? { action: 'wifiradio', on: true } : { action: 'wifiscan' }); } }, ...fold('wifi')] : []),
     ...(SP.qa?.brightness != null ? [{ id: 'bright', ic: 'sun', label: 'Brightness', value: `${SP.qa.brightness}%`, sub: 'Left and right change it', run: () => {} }] : []),
     ]),
-    ...group('More', [
+    // Do not disturb, Friends and Settings on their own, outside the categories
     { ic: SP.qa?.dnd ? 'bellOff' : 'bell', label: 'Do not disturb', value: SP.qa?.dnd ? 'On' : 'Off', sub: 'Silences notifications', run: () => qaDo({ action: 'dnd', on: !SP.qa?.dnd }) },
-
-    ]),
-    // Friends and Settings on their own, outside the categories
     { ic: 'friends', id: 'fold-friends', label: 'Friends', sub: SP.friends || '', value: SP.friendItems?.length ? chev('friends') : '', run: () => SP.friendItems?.length ? sysView('friends') : (closeSys(), closePages(), openHub('friends')) }, ...fold('friends'),
     { ic: 'settings', label: 'Settings', run: () => { closeSys(); closePages(); openPanel(); } },
     // the power choices, like the in-game menu; Restart and Shut down ask for A twice
