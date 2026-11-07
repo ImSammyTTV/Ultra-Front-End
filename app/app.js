@@ -1533,7 +1533,7 @@ async function connectSteam() {
 function closeNewsPage() { NP.open = false; document.body.classList.remove('news-open'); tick(420, .06); }
 function newsFocus() {
   document.querySelectorAll('#newspage .np-card').forEach((e, i) => e.classList.toggle('sel', i === NP.i));
-  $('#newspage .np-card.sel')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  glideTo($('#newspage .np-grid'), $('#newspage .np-card.sel'));
 }
 const newsCols = () => { const els = [...document.querySelectorAll('#newspage .np-card')]; return els.filter(e => e.offsetTop === els[0]?.offsetTop).length || 1; };
 function newsMove(dx, dy) {
@@ -1754,11 +1754,34 @@ function coverRetry(im) {
   const src = im.getAttribute('src') || '';
   setTimeout(() => { if (im.isConnected) im.src = src.replace(/([?&])r=\d+&?/, '$1').replace(/[?&]$/, '') + (src.includes('?') ? '&' : '?') + 'r=' + (n + 1); }, 1500 * (n + 1));
 }
+// Keeps the selected item in view by gliding the list towards it: each move (and the repeats while a direction is held)
+// only moves the target, so stepping row after row reads as one smooth scroll, not a jump and a stop per step
+function glideTo(box, el, pad = 0.12) {
+  if (!box || !el) return;
+  const b = box.getBoundingClientRect(), r = el.getBoundingClientRect(), room = b.height * pad, max = box.scrollHeight - box.clientHeight;
+  const now = box._glide ? box._target : box.scrollTop;
+  let t = now;
+  if (r.top - room < b.top) t = now - (b.top + room - r.top);
+  else if (r.bottom + room > b.bottom) t = now + (r.bottom + room - b.bottom);
+  box._target = clamp(t, 0, max);
+  if (box._glide && performance.now() - box._glideAt < 250) return;  // one already running (a stalled one is restarted)
+  cancelAnimationFrame(box._glide);
+  const step = () => {
+    const d = box._target - box.scrollTop, before = box.scrollTop;
+    if (Math.abs(d) < 1) { box.scrollTop = box._target; box._glide = 0; return; }
+    box._glideAt = performance.now();
+    box.scrollTop += Math.sign(d) * Math.max(1, Math.abs(d) * .14);
+    if (box.scrollTop === before) { box._glide = 0; return; }
+    box._glide = requestAnimationFrame(step);
+  };
+  box._glideAt = performance.now();
+  box._glide = requestAnimationFrame(step);
+}
 function lpFocus() {
   document.querySelectorAll('#libpage .lp-btn').forEach((e, j) => e.classList.toggle('sel', LP.zone === 'head' && j === LP.h));
   $('#libpage .lp-cats').classList.toggle('focus', LP.zone === 'cats');
   document.querySelectorAll('#libpage .lp-hit').forEach(e => e.classList.toggle('sel', LP.zone === 'grid' && +e.dataset.i === LP.i));
-  $('#libpage .lp-hit.sel')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  glideTo($('#libpage .lp-grid'), $('#libpage .lp-hit.sel'));
   watchAnims($('#libpage .lp-grid'), LP.open);
 }
 function lpMove(dx, dy) {
