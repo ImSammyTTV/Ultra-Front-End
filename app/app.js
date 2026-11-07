@@ -2111,11 +2111,11 @@ function sysRows() {
   const back = { ic: 'back', label: 'Back', run: () => sysView('') };
   if (SP.view === 'output') return [{ head: 'Sound output' }, ...(SP.qa?.outputs || []).map(o => ({ ic: /head|ear|airpod|buds|bose|qc/i.test(o.name) ? 'headset' : 'speaker',
     label: shortDev(o.name), value: o.on ? '✓' : '', run: () => o.on ? sysView('') : qaDo({ action: 'output', id: o.id }).then(() => toast(`Sound plays on ${shortDev(o.name)}`, 2500)) })), back];
-  if (SP.view === 'bt') return [{ head: 'Bluetooth audio · paired devices' }, ...(SP.qa?.bt || []).map(d => ({ ic: d.kind === 'speaker' ? 'speaker' : 'headset', label: d.name, value: d.connected ? 'Connected' : '',
+  if (SP.view === 'bt') return [{ head: 'Bluetooth audio · paired devices' }, ...(SP.qa?.bt || []).map(d => ({ ic: d.kind === 'speaker' ? 'speaker' : 'headset', label: devName(d.name), value: d.connected ? 'Connected' : '',
     sub: SP.confirm === 'forget' + d.addr ? 'Press Y again to forget it' : d.connected ? 'Paired and connected · A disconnects · Y forgets' : 'Paired · A connects · Y forgets',
     run: () => btToggle(d), opt: () => SP.confirm === 'forget' + d.addr ? qaDo({ action: 'btforget', addr: d.addr }).then(() => toast(`Forgot ${d.name}: search to pair it again`, 3500)) : (SP.confirm = 'forget' + d.addr, renderSys()) })),
     ...(SP.btFound === undefined ? [] : SP.btFound === null ? [{ ic: 'search', label: 'Searching for devices…', sub: 'Put it in pairing mode now' }]
-      : SP.btFound.length ? SP.btFound.map(d => ({ ic: d.kind === 'speaker' ? 'speaker' : 'headset', over: 'New', label: d.name, sub: 'A pairs and connects it', run: () => btPair(d) }))
+      : SP.btFound.length ? SP.btFound.map(d => ({ ic: d.kind === 'speaker' ? 'speaker' : 'headset', over: 'New', label: devName(d.name), sub: 'A pairs and connects it', run: () => btPair(d) }))
       : [{ ic: 'headset', label: 'Nothing new found', sub: 'Check it’s in pairing mode, then search again' }]),
     ...(SP.btFound === null ? [] : [{ ic: 'search', label: SP.btFound ? 'Search again' : 'Search for new devices', sub: 'Pairs headphones and speakers right here', run: btScan }]), back];  // one row while it searches
   if (SP.view === 'wifi') return [{ head: 'Wi-Fi' },
@@ -2143,7 +2143,7 @@ function sysRows() {
     ...(SP.qa?.outputs?.length ? [{ id: 'output', ic: /head|ear|airpod|buds|bose|qc/i.test(SP.qa.outputs.find(o => o.on)?.name || '') ? 'headset' : 'speaker', label: 'Sound output',
       sub: shortDev(SP.qa.outputs.find(o => o.on)?.name || 'Choose one'), value: '›', run: () => sysView('output') }] : []),
     // paired Bluetooth headphones and speakers: A opens them, and A on one connects or disconnects it
-    ...(SP.qa?.bt ? [{ ic: 'headset', label: 'Bluetooth audio', sub: SP.qa.bt.find(d => d.connected)?.name || (SP.qa.bt.length ? `${SP.qa.bt.length} paired` : 'Nothing paired yet'), value: '›', run: () => sysView('bt') }] : []),
+    ...(SP.qa?.bt ? [{ ic: 'headset', label: 'Bluetooth audio', sub: devName(SP.qa.bt.find(d => d.connected)?.name) || (SP.qa.bt.length ? `${SP.qa.bt.length} paired` : 'Nothing paired yet'), value: '›', run: () => sysView('bt') }] : []),
     ]),
     ...group('Batteries', [
     // each controller's battery; a wireless Xbox-style one can be turned off from here
@@ -2152,7 +2152,7 @@ function sysRows() {
       run: p.wireless ? () => SP.confirm === 'pad' + p.slot ? qaDo({ action: 'padoff', slot: p.slot }).then(() => toast('Controller turned off')) : (SP.confirm = 'pad' + p.slot, renderSys()) : null })),
     ...(SP.qa?.steamBattery != null ? [{ ic: 'pad', label: 'Steam Controller', value: `${SP.qa.steamBattery}%`, sub: 'Battery' }] : []),
     // Bluetooth headphones and controllers that report their battery to Windows (AirPods don't)
-    ...(SP.qa?.batteries || []).map(b => ({ ic: /controller|gamepad|pad/i.test(b.name) ? 'pad' : 'headset', label: b.name, value: `${b.level}%`, sub: 'Battery' })),
+    ...(SP.qa?.batteries || []).map(b => ({ ic: /controller|gamepad|pad/i.test(b.name) ? 'pad' : 'headset', label: devName(b.name), value: `${b.level}%`, sub: 'Battery' })),
     ]),
     ...group('Network and display', [
     ...(SP.qa?.wifi ? [{ ic: 'wifi', label: 'Wi-Fi', value: SP.qa.wifi.off ? 'Off' : '›',
@@ -2241,9 +2241,11 @@ function sysSide(dir) {
   if (n !== SP.p) { SP.p = n; SP.confirm = null; tick(700, .03); renderSys(); }
 }
 function sysView(v) { SP.view = v; SP.i = 0; if (v === 'wifi') SP.networks = null; if (v === 'bt') SP.btFound = undefined; tick(700, .05); renderSys(); }
+// A device's own name, tidied: "Sam’s AirPods Pro - Find My" -> "AirPods Pro" (no owner, no Find My)
+const devName = n => (n || '').replace(/\s*-\s*Find My\s*$/i, '').replace(/^[^’'\s]+[’']s\s+/, '').trim() || n;
 const shortDev = n => {  // "Speakers (EDIFIER QR65)" -> "EDIFIER QR65"; "2 - LG TV (AMD High Definition Audio Device)" -> "LG TV"
   const m = n.replace(/^\d+\s*-\s*/, '').match(/^(.*?)\s*\(([^)]*)\)\s*$/);
-  return !m ? n : /^(speakers?|headphones?|headset( earphone)?|digital audio.*|realtek.*)$/i.test(m[1]) ? m[2].replace(/^\d+\s*-\s*/, '') : m[1];
+  return devName(!m ? n : /^(speakers?|headphones?|headset( earphone)?|digital audio.*|realtek.*)$/i.test(m[1]) ? m[2].replace(/^\d+\s*-\s*/, '') : m[1]);
 };
 async function btToggle(d) {
   toast(d.connected ? `Disconnecting ${d.name}…` : `Connecting ${d.name}…`, 3000);
