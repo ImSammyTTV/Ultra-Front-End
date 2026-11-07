@@ -5648,6 +5648,191 @@ def audio_volume(level=None, delta=None, mute=None):
                 call(obj, 2)(obj)
 
 
+
+# ---------------------------------------------------------------- Quick Access: sound output, controllers, Wi-Fi, focus, brightness
+def _com():
+    import ctypes
+    from ctypes import wintypes as W
+
+    def guid(text):
+        g = ctypes.create_string_buffer(16)
+        ctypes.windll.ole32.CLSIDFromString(text, g)
+        return g
+
+    def call(obj, slot, *types):
+        vtable = ctypes.cast(obj, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
+        return ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, *types)(vtable[slot])
+    ctypes.windll.ole32.CoInitialize(None)
+    ctypes.windll.ole32.CoCreateInstance.argtypes = [ctypes.c_void_p, ctypes.c_void_p, W.DWORD, ctypes.c_void_p, ctypes.c_void_p]
+    return ctypes, W, guid, call
+
+
+def sound_outputs():
+    """The speakers, headsets and TVs Windows can play through, and which one it uses now: [{"id", "name", "on"}]."""
+    if not WIN:
+        return []
+    ctypes, W, guid, call = _com()
+
+    class PROPKEY(ctypes.Structure):
+        _fields_ = [("fmtid", ctypes.c_byte * 16), ("pid", W.DWORD)]
+    key = PROPKEY()
+    ctypes.memmove(key.fmtid, guid("{a45c254e-df1c-4efd-8020-67d146a850e0}"), 16)
+    key.pid = 14  # the device's friendly name
+    enum, col, out = ctypes.c_void_p(), ctypes.c_void_p(), []
+    if ctypes.windll.ole32.CoCreateInstance(guid("{BCDE0395-E52F-467C-8E3D-C4579291692E}"), None, 1, guid("{A95664D2-9614-4F35-A746-DE8DB63617E6}"), ctypes.byref(enum)):
+        return []
+    try:
+        default = ""
+        dev = ctypes.c_void_p()
+        if not call(enum, 4, ctypes.c_int, ctypes.c_int, ctypes.c_void_p)(enum, 0, 1, ctypes.byref(dev)):
+            p = ctypes.c_void_p()
+            call(dev, 5, ctypes.c_void_p)(dev, ctypes.byref(p))
+            default = ctypes.wstring_at(p.value) if p.value else ""
+            ctypes.windll.ole32.CoTaskMemFree(p)
+            call(dev, 2)(dev)
+        if call(enum, 3, ctypes.c_int, W.DWORD, ctypes.c_void_p)(enum, 0, 1, ctypes.byref(col)):  # playback devices that are active
+            return []
+        n = W.UINT()
+        call(col, 3, ctypes.c_void_p)(col, ctypes.byref(n))
+        for i in range(n.value):
+            dev, store = ctypes.c_void_p(), ctypes.c_void_p()
+            if call(col, 4, W.UINT, ctypes.c_void_p)(col, i, ctypes.byref(dev)):
+                continue
+            p = ctypes.c_void_p()
+            call(dev, 5, ctypes.c_void_p)(dev, ctypes.byref(p))
+            dev_id = ctypes.wstring_at(p.value) if p.value else ""
+            ctypes.windll.ole32.CoTaskMemFree(p)
+            name = dev_id
+            if not call(dev, 4, W.DWORD, ctypes.c_void_p)(dev, 0, ctypes.byref(store)):
+                var = (ctypes.c_byte * 24)()
+                if not call(store, 5, ctypes.c_void_p, ctypes.c_void_p)(store, ctypes.byref(key), ctypes.byref(var)):
+                    if ctypes.cast(var, ctypes.POINTER(ctypes.c_ushort))[0] == 31:  # VT_LPWSTR
+                        name = ctypes.wstring_at(ctypes.cast(ctypes.addressof(var) + 8, ctypes.POINTER(ctypes.c_void_p))[0])
+                    ctypes.windll.ole32.PropVariantClear(ctypes.byref(var))
+                call(store, 2)(store)
+            call(dev, 2)(dev)
+            out.append({"id": dev_id, "name": name, "on": dev_id == default})
+        return out
+    finally:
+        for obj in (col, enum):
+            if obj:
+                call(obj, 2)(obj)
+
+
+def set_sound_output(dev_id):
+    """Windows plays everything through this device from now on, as choosing it in the taskbar's sound menu does."""
+    if dev_id not in {d["id"] for d in sound_outputs()}:
+        raise ValueError("That sound device isn't connected any more")
+    ctypes, W, guid, call = _com()
+    pc = ctypes.c_void_p()
+    if ctypes.windll.ole32.CoCreateInstance(guid("{870af99c-171d-4f9e-af0d-e63df40c2bc9}"), None, 1, guid("{f8679f50-850a-41cf-9c72-430f290290c8}"), ctypes.byref(pc)):
+        raise OSError("Windows wouldn't switch the sound device")
+    try:
+        for role in (0, 1, 2):  # games and system sounds, music and video, calls
+            call(pc, 13, ctypes.c_wchar_p, ctypes.c_int)(pc, dev_id, role)
+    finally:
+        call(pc, 2)(pc)
+
+
+def xinput_pads():
+    """Each connected Xbox-style controller: its slot, battery ("empty", "low", "medium", "full", "wired" or None) and if it's wireless."""
+    if not WIN:
+        return []
+    import ctypes
+    try:
+        xi = ctypes.WinDLL("xinput1_4")
+    except OSError:
+        return []
+
+    class Batt(ctypes.Structure):
+        _fields_ = [("type", ctypes.c_ubyte), ("level", ctypes.c_ubyte)]
+    out = []
+    for i in range(4):
+        if i not in XSTATE:
+            continue
+        b = Batt()
+        xi.XInputGetBatteryInformation(i, 0, ctypes.byref(b))
+        wired, wireless = b.type == 1, b.type in (2, 3)
+        out.append({"slot": i, "battery": "wired" if wired else ["empty", "low", "medium", "full"][b.level & 3] if wireless else None, "wireless": wireless})
+    return out
+
+
+def xinput_off(slot):
+    """Turns a wireless Xbox-style controller off, like holding its Xbox button (XInput's power-off call, ordinal 103)."""
+    import ctypes
+    for name in ("xinput1_4", "xinput1_3"):
+        try:
+            fn = ctypes.WinDLL(name)[103]
+        except (OSError, AttributeError):
+            continue
+        if fn(int(slot)) == 0:
+            return True
+    raise OSError("This controller can't be turned off from here: hold its own button")
+
+
+def wifi_status():
+    """The Wi-Fi network this PC is on and its signal (0-100), or None on a PC without Wi-Fi."""
+    if not WIN:
+        return None
+    try:
+        r = subprocess.run(["netsh", "wlan", "show", "interfaces"], capture_output=True, text=True, timeout=5, creationflags=0x08000000)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    info = {}
+    for line in r.stdout.splitlines():
+        k, _, v = line.partition(":")
+        if v.strip():
+            info.setdefault(k.strip().lower(), v.strip())
+    if "state" not in info:
+        return None  # no Wi-Fi adapter
+    connected = info.get("state", "").lower() == "connected"
+    sig = re.sub(r"\D", "", info.get("signal", ""))
+    return {"connected": connected, "name": info.get("ssid", "") if connected else "", "signal": int(sig) if sig else None}
+
+
+DND_KEY = r"Software\Microsoft\Windows\CurrentVersion\Notifications\Settings"
+
+
+def do_not_disturb(on=None):
+    """Windows' notification banners off (True) or back on (False); None only reads it. This user's banners, nothing else."""
+    import winreg
+    if on is not None:
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, DND_KEY) as k:
+            winreg.SetValueEx(k, "NOC_GLOBAL_SETTING_TOASTS_ENABLED", 0, winreg.REG_DWORD, 0 if on else 1)
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, DND_KEY) as k:
+            return winreg.QueryValueEx(k, "NOC_GLOBAL_SETTING_TOASTS_ENABLED")[0] == 0
+    except OSError:
+        return False
+
+
+def screen_brightness(level=None):
+    """The built-in screen's brightness (0-100) on laptops and handhelds; None where Windows can't set it (most monitors and TVs)."""
+    if not WIN:
+        return None
+    script = ("$m = Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightnessMethods -ErrorAction Stop; "
+              + (f"Invoke-CimMethod -InputObject $m -MethodName WmiSetBrightness -Arguments @{{Timeout=1; Brightness={int(level)}}} | Out-Null; " if level is not None else "")
+              + "(Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightness).CurrentBrightness")
+    try:
+        r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script], capture_output=True, text=True, timeout=10, creationflags=0x08000000)
+        val = re.findall(r"\d+", r.stdout)
+        return int(val[0]) if r.returncode == 0 and val else None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+
+def qa_view():
+    """Everything Quick Access shows beyond volume and music, read fresh each time it opens."""
+    view = {"outputs": [], "pads": [], "wifi": None, "dnd": False, "brightness": None}
+    for k, fn in (("outputs", sound_outputs), ("pads", xinput_pads), ("wifi", wifi_status), ("dnd", do_not_disturb), ("brightness", screen_brightness)):
+        try:
+            view[k] = fn()
+        except Exception:
+            log_error()
+    view["steamBattery"] = PAD_BATTERY[0] if time.time() - PAD_RAW[1] < 60 else None
+    return view
+
 def system_power(action):
     """The power menu. Restart and shut down wait a few seconds, so the frontend can say what's happening."""
     if MAC:
@@ -8906,6 +9091,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self.wfile.write(NP_ART["data"])
         if path == "/api/spawn/next":
             return self.reply(spawn_next())
+        if path == "/api/qa":  # Quick Access: sound outputs, controllers, Wi-Fi, notifications, brightness
+            return self.reply(qa_view())
         if path == "/api/padraw":
             return self.reply({"hex": PAD_RAW[0].hex(), "age": time.time() - PAD_RAW[1], "battery": PAD_BATTERY[0] if time.time() - PAD_RAW[1] < 60 else None})
         if path == "/api/xinput":  # the controller tester, when the browser can't see an Xbox pad (Steam Input can hide it)
@@ -9210,6 +9397,21 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.reply({"ok": True})
             if path == "/api/volume":
                 return self.reply(audio_volume(delta=body.get("delta"), mute=body.get("mute")))
+            if path == "/api/qa":
+                act = body.get("action")
+                if act == "output":
+                    set_sound_output(str(body.get("id") or ""))
+                elif act == "padoff":
+                    xinput_off(int(body.get("slot", -1)))
+                elif act == "dnd":
+                    do_not_disturb(bool(body.get("on")))
+                elif act == "brightness":
+                    screen_brightness(max(5, min(100, int(body.get("level", 50)))))
+                elif act in ("wifi", "nightlight"):
+                    open_target({"wifi": "ms-availablenetworks:", "nightlight": "ms-settings:nightlight"}[act])
+                else:
+                    raise ValueError("Unknown action")
+                return self.reply(qa_view())
             if path == "/api/rescan":
                 scan()
                 return self.reply({"ok": True})

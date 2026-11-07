@@ -7,6 +7,12 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const raf2 = f => requestAnimationFrame(() => requestAnimationFrame(f));
 
 const ICONS = {
+  speaker: '<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a8.5 8.5 0 0 1 0 12"/>',
+  headset: '<path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="14" width="4" height="6" rx="1.5"/><rect x="17" y="14" width="4" height="6" rx="1.5"/>',
+  wifi: '<path d="M2.5 9a14 14 0 0 1 19 0"/><path d="M5.5 12.5a9.5 9.5 0 0 1 13 0"/><path d="M8.7 16a5 5 0 0 1 6.6 0"/><circle cx="12" cy="19.3" r="1"/>',
+  bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+  bellOff: '<path d="M6 16V11a6 6 0 0 1 9.5-4.9"/><path d="M18 11v5l1.5 2H8"/><path d="M10 20a2 2 0 0 0 4 0"/><path d="M4 4l16 16"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   back: '<path d="M15 5l-7 7 7 7"/>',
   exit: '<path d="M14 4h5v16h-5"/><path d="M4 12h10"/><path d="M10 8l4 4-4 4"/>',
   power: '<path d="M12 3v9"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/>',
@@ -2105,6 +2111,21 @@ function sysRows() {
   return [
     ...(now ? [{ ic: 'pad', label: now.title, sub: 'Running · A resumes', run: () => { closeSys(); resumeGame(now); } }] : []),
     ...(SP.volume === null ? [] : [{ id: 'volume', run: () => setSound({ mute: !SP.muted }) }]),
+    // where the sound plays: A (or left / right) moves to the next speaker, headset or TV
+    ...(SP.qa?.outputs?.length > 1 ? [{ id: 'output', ic: /head|ear|airpod|buds/i.test(SP.qa.outputs.find(o => o.on)?.name || '') ? 'headset' : 'speaker', label: 'Sound output',
+      sub: (SP.qa.outputs.find(o => o.on)?.name || 'Choose one').replace(/\s*\([^)]*\)\s*$/, ''), value: `${SP.qa.outputs.findIndex(o => o.on) + 1} of ${SP.qa.outputs.length}`, run: () => sysOutput(1) }] : []),
+    ...(SP.qa?.brightness != null ? [{ id: 'bright', ic: 'sun', label: 'Brightness', value: `${SP.qa.brightness}%`, sub: 'Left and right change it', run: () => {} }] : []),
+    ...(SP.qa?.wifi ? [{ ic: 'wifi', label: 'Wi-Fi', sub: SP.qa.wifi.connected ? `${SP.qa.wifi.name}${SP.qa.wifi.signal != null ? ` · ${SP.qa.wifi.signal}% signal` : ''}` : 'Not connected · A to choose a network',
+      run: () => qaDo({ action: 'wifi' }).then(() => toast('Opened Windows’ Wi-Fi list')) }] : []),
+    { ic: SP.qa?.dnd ? 'bellOff' : 'bell', label: 'Do not disturb', value: SP.qa?.dnd ? 'On' : 'Off', sub: 'Hides Windows’ notification pop-ups while you play', run: () => qaDo({ action: 'dnd', on: !SP.qa?.dnd }) },
+    // each controller's battery; a wireless Xbox-style one can be turned off from here
+    ...(SP.qa?.pads || []).map((p, n) => ({ ic: 'pad', label: (SP.qa.pads.length > 1 ? `Controller ${n + 1}` : 'Controller'), value: p.battery ? p.battery[0].toUpperCase() + p.battery.slice(1) : '',
+      sub: p.wireless ? (SP.confirm === 'pad' + p.slot ? 'Press A again to turn it off' : 'A turns it off') : p.battery === 'wired' ? 'Plugged in' : '',
+      run: p.wireless ? () => SP.confirm === 'pad' + p.slot ? qaDo({ action: 'padoff', slot: p.slot }).then(() => toast('Controller turned off')) : (SP.confirm = 'pad' + p.slot, renderSys()) : null })),
+    ...(SP.qa?.steamBattery != null ? [{ ic: 'pad', label: 'Steam Controller', value: `${SP.qa.steamBattery}%`, sub: 'Battery' }] : []),
+    // the last games played, to jump straight into one
+    ...LIB.filter(g => !g.hidden && g.lastPlayed && !RUN.has(g.id)).sort((a, b) => b.lastPlayed - a.lastPlayed).slice(0, 3)
+      .map((g, n) => ({ cover: g.cover, ic: 'pad', over: n === 0 ? 'Recent' : '', label: g.title, sub: platformOf(g), run: () => { closeSys(); closePages(); launchGame(g); } })),
     { ic: 'friends', label: 'Friends', sub: SP.friends || '', run: () => { closeSys(); closePages(); openHub('friends'); } },
     { ic: 'settings', label: 'Settings', run: () => { closeSys(); closePages(); openPanel(); } },
     ...(SP.song ? [{ id: 'music', run: sysMedia }] : []),  // the song, just above the power buttons
@@ -2134,7 +2155,7 @@ function renderSys() {
       + `<div class="sp-mbtns">${[MEDIA_ICONS[0], MEDIA_ICONS[1][SP.song.playing === false ? 0 : 1], MEDIA_ICONS[2]].map((svg, j) => `<span class="sp-mb${j === SP.m ? ' on' : ''}" data-j="${j}">${svg}</span>`).join('')}</div></div>`
     : r.id === 'power'
     ? `<div class="sp-row sp-power" data-i="${i}">${powerChoices().map((p, j) => `<div class="sp-pw${j === SP.p ? ' on' : ''}${SP.confirm === p.id ? ' warn' : ''}" data-j="${j}">${icon(p.ic)}<span>${SP.confirm === p.id ? 'Press A again' : p.label}</span></div>`).join('')}</div>`
-    : `<div class="sp-row${r.run ? '' : ' info'}" data-i="${i}">${icon(r.ic)}<div class="sp-text">${r.over ? `<small>${esc(r.over)}</small>` : ''}<div>${esc(r.label)}</div>${r.sub ? `<small>${esc(r.sub)}</small>` : ''}</div>${r.value ? `<b class="sp-value">${esc(r.value)}</b>` : ''}</div>`).join('');
+    : `<div class="sp-row${r.run ? '' : ' info'}${r.cover ? ' sp-game' : ''}" data-i="${i}">${r.cover ? `<img class="sp-art" src="${esc(r.cover)}" alt="">` : icon(r.ic)}<div class="sp-text">${r.over ? `<small>${esc(r.over)}</small>` : ''}<div>${esc(r.label)}</div>${r.sub ? `<small>${esc(r.sub)}</small>` : ''}</div>${r.value ? `<b class="sp-value">${esc(r.value)}</b>` : ''}</div>`).join('');
   sysFocus();
 }
 function sysFocus() { document.querySelectorAll('#syspanel .sp-row').forEach(e => e.classList.toggle('sel', +e.dataset.i === SP.i)); $('#syspanel .sp-row.sel')?.scrollIntoView({ block: 'nearest' }); }
@@ -2142,6 +2163,7 @@ async function openSys() {
   SP.open = true; SP.i = 0; SP.p = 0; SP.confirm = null;
   document.body.classList.add('sys-open'); tick(600, .07); renderSys();
   api('/api/padraw').then(r => { SP.battery = r.battery; if (SP.open) renderSys(); }).catch(() => {});
+  api('/api/qa').then(r => { SP.qa = r; if (SP.open) renderSys(); }).catch(() => {});
   api('/api/friends').then(r => {
     const on = (r.items || []).filter(f => f.online), busy = on.find(f => f.game);
     SP.friends = !r.items?.length ? '' : busy ? `${busy.name} is playing ${busy.game}` : on.length ? `${on.length} online` : 'Nobody online';
@@ -2165,10 +2187,19 @@ async function setSound(change) {
 function sysSide(dir) {
   const row = SP.rows[SP.i]?.id;
   if (row === 'volume') return setSound({ delta: dir * 5 });
+  if (row === 'output') return sysOutput(dir);
+  if (row === 'bright') return qaDo({ action: 'brightness', level: clamp((SP.qa.brightness || 0) + dir * 10, 5, 100) });
   if (row === 'music') { const n = clamp(SP.m + dir, 0, 2); if (n !== SP.m) { SP.m = n; tick(700, .03); renderSys(); } return; }
   if (row !== 'power') return;
   const n = clamp(SP.p + dir, 0, powerChoices().length - 1);
   if (n !== SP.p) { SP.p = n; SP.confirm = null; tick(700, .03); renderSys(); }
+}
+async function qaDo(body) {
+  try { SP.qa = await api('/api/qa', body); SP.confirm = null; tick(700, .03); renderSys(); } catch (e) { toast(e.message); }
+}
+function sysOutput(dir) {
+  const o = SP.qa?.outputs || [], at = o.findIndex(x => x.on), next = o[(at + dir + o.length) % o.length];
+  if (next) qaDo({ action: 'output', id: next.id }).then(() => toast(`Sound plays on ${next.name.replace(/\s*\([^)]*\)\s*$/, '')}`, 2500));
 }
 function sysOk() { const r = SP.rows[SP.i]; if (r?.run) { tick(880, .08); r.run(); } }
 $('#syspanel').addEventListener('click', e => {
