@@ -2137,8 +2137,8 @@ function sysRows() {
     ...(now ? [{ ic: 'pad', label: now.title, sub: 'Running · A resumes', run: () => { closeSys(); resumeGame(now); } }] : []),
     ]),
     ...group('Sound', [
+    ...(SP.song ? [{ id: 'music', run: sysMedia }] : []),  // the song that's playing, then its volume
     ...(SP.volume === null ? [] : [{ id: 'volume', run: () => setSound({ mute: !SP.muted }) }]),
-    ...(SP.song ? [{ id: 'music', run: sysMedia }] : []),  // the song that's playing
     // where the sound plays: A opens the list of speakers, headsets and TVs (left and right still step through them)
     ...(SP.qa?.outputs?.length ? [{ id: 'output', ic: /head|ear|airpod|buds|bose|qc/i.test(SP.qa.outputs.find(o => o.on)?.name || '') ? 'headset' : 'speaker', label: 'Sound output',
       sub: shortDev(SP.qa.outputs.find(o => o.on)?.name || 'Choose one'), value: '›', run: () => sysView('output') }] : []),
