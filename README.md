@@ -7,6 +7,7 @@
   <a href="https://github.com/ImSammyTTV/Ultra-Front-End/releases"><img src="https://img.shields.io/github/downloads/ImSammyTTV/Ultra-Front-End/total?style=for-the-badge&color=f5b400&label=Downloads" alt="Downloads"></a>
   <img src="assets/badges/windows.svg" alt="Windows 10 and 11">
   <a href="LICENSE"><img src="assets/badges/license.svg" alt="MIT license"></a>
+  <a href="https://ko-fi.com/imsammyttv"><img src="https://img.shields.io/badge/Buy_me_a-drink-ff5e5b?style=for-the-badge&logo=kofi&logoColor=white" alt="Buy me a drink on Ko-fi"></a>
 </p>
 
 <p align="center">
