@@ -3137,15 +3137,15 @@ function toggleFS() { (document.fullscreenElement ? document.exitFullscreen() : 
 // browser's Gamepad API, or the helper's copy of its XInput state when Steam Input hides an Xbox pad from the browser. Every
 // control lights up on a drawing; LB / RB switch drawings. Hold B or press Esc to leave (B is being tested too).
 // [name, byte, bit, x, y] with x, y in the drawing's 830x615 frame. Bits follow SDL's Steam Controller driver; L stick and R stick are thumb touch, by their place among the bits.
-const PT_BITS = [['A', 2, 0, 660, 173], ['B', 2, 1, 706, 134], ['X', 2, 2, 613, 130], ['Y', 2, 3, 659, 88], ['Up', 3, 5, 168, 102], ['Down', 3, 2, 168, 168],
-  ['Left', 3, 4, 130, 134], ['Right', 3, 3, 208, 134], ['L1', 4, 3, 165, 38], ['R1', 3, 1, 660, 38], ['L2', 5, 3, 100, 62], ['R2', 4, 7, 730, 62], ['Steam', 4, 0, 413, 132],
-  ['View', 3, 6, 272, 78], ['Menu', 2, 6, 554, 78], ['...', 2, 4, 413, 340], ['L3', 3, 7, 300, 150], ['R3', 2, 5, 530, 180], ['L pad', 5, 2, 262, 340], ['R pad', 4, 6, 565, 340],
-  ['L4', 4, 1, 45, 250], ['L5', 4, 2, 45, 310], ['R4', 2, 7, 785, 250], ['R5', 3, 0, 785, 310], ['L stick', 5, 0, 300, 225], ['R stick', 4, 4, 530, 255]];
+const PT_BITS = [['A', 2, 0, 665, 163], ['B', 2, 1, 711, 122], ['X', 2, 2, 618, 120], ['Y', 2, 3, 664, 77], ['Up', 3, 5, 162, 88], ['Down', 3, 2, 162, 160],
+  ['Left', 3, 4, 125, 123], ['Right', 3, 3, 200, 123], ['L1', 4, 3, 175, 20], ['R1', 3, 1, 655, 20], ['L2', 5, 3, 110, 40], ['R2', 4, 7, 720, 40], ['Steam', 4, 0, 414, 118],
+  ['View', 3, 6, 270, 66], ['Menu', 2, 6, 558, 66], ['...', 2, 4, 414, 333], ['L3', 3, 7, 292, 170], ['R3', 2, 5, 535, 170], ['L pad', 5, 2, 260, 330], ['R pad', 4, 6, 570, 330],
+  ['L4', 4, 1, 40, 320], ['L5', 4, 2, 40, 390], ['R4', 2, 7, 790, 320], ['R5', 3, 0, 790, 390], ['L stick', 5, 0, 292, 215], ['R stick', 4, 4, 535, 215]];
 const INTRO = { open: false, timer: 0 };
 const PT = { open: false, timer: 0, last: null, change: 'Press something', bHeld: 0, live: '', drawn: '', pick: null, padId: '', prev: [] };
 const PT_FOOT = { '': 'Press B or Esc, or click, to leave', steam: 'Hold B for 2 seconds, or press Esc, to leave',
   pad: 'Hold B for 2 seconds, press Esc, or click, to leave · LB / RB switch drawings' };
-const PT_ART = { steam: ['controller-traced.svg', 'Steam Controller'], xbox: ['pad-xbox.png', 'Xbox controller'], ps5: ['pad-ps5.png', 'DualSense'],
+const PT_ART = { steam: ['controller-steam.png', 'Steam Controller'], xbox: ['pad-xbox.png', 'Xbox controller'], ps5: ['pad-ps5.png', 'DualSense'],
   ps4: ['pad-ps4.png', 'DualShock 4'], ps3: ['pad-ps3.png', 'DualShock 3'], sw2: ['pad-sw2.png', 'Pro Controller 2'], sw1: ['pad-sw1.png', 'Pro Controller'] };
 const PT_PADS = ['xbox', 'ps5', 'ps4', 'ps3', 'sw2', 'sw1'];
 // The standard Gamepad layout's buttons, as pads.json names them (17 is the touchpad on PlayStation pads, Share on Xbox ones)
@@ -3177,8 +3177,8 @@ function ptBuild(box, draw) {
   PT.drawn = draw;
   const marks = draw === 'steam'
     ? PT_BITS.map(([n, , , x, y]) => `<i class="pt-dot" data-n="${n}" style="${pct(x, y)}"><b>${n}</b></i>`).join('')
-      + `<i class="pt-stick" data-axis="l" style="${pct(300, 180)}"></i><i class="pt-stick" data-axis="r" style="${pct(530, 180)}"></i>`
-      + `<i class="pt-zone" data-pad="l" style="${pct(262, 340)}"><u></u></i><i class="pt-zone" data-pad="r" style="${pct(565, 340)}"><u></u></i>`
+      + `<i class="pt-stick" data-axis="l" style="${pct(292, 170)}"></i><i class="pt-stick" data-axis="r" style="${pct(535, 170)}"></i>`
+      + `<i class="pt-zone" data-pad="l" style="${pct(260, 330)}"><u></u></i><i class="pt-zone" data-pad="r" style="${pct(570, 330)}"><u></u></i>`
     : Object.entries(PADS_AT?.[draw] || {}).map(([k, c]) => {
       const w = c.r ? c.r * 2 : c.w, h = c.r ? c.r * 2 : c.h, trig = k === 'lt' || k === 'rt';
       return `<i class="pt-ctl${c.r ? ' round' : ''}${trig ? ' pt-trig' : ''}" data-k="${k}" style="left:${(c.x - w / 2) / 8.3}%;top:${(c.y - h / 2) / 6.15}%;width:${w / 8.3}%;height:${h / 6.15}%">`
