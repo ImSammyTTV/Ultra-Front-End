@@ -564,9 +564,6 @@ def hud():
                 x = sx + margin if "left" in place else sx + sw - width - margin if "right" in place else sx + (sw - width) // 2
                 y = sy + sh - h - margin * 2 if place.startswith("bottom") else sy + margin
                 window.move(int(x / scale), int(y / scale))
-                if HUD_WIN.get("hwnd") and round_px:  # cut to the card's rounded shape: only the pill shows over the game
-                    d = int(float(round_px) * scale)
-                    ctypes.windll.user32.SetWindowRgn(ctypes.c_void_p(HUD_WIN["hwnd"]), ctypes.windll.gdi32.CreateRoundRectRgn(0, 0, width + 1, h + 1, d, d), True)
             except Exception:
                 pass
 
@@ -575,7 +572,7 @@ def hud():
 
     window = webview.create_window("Ultra Front End HUD", URL + "/hud.html", x=int((sx + margin) / scale), y=int((sy + margin) / scale),
                                    width=int(width / scale), height=int(sh * .1 / scale), on_top=True, frameless=True, easy_drag=False,
-                                   focus=False, background_color="#141518", hidden=True, js_api=HudApi())
+                                   focus=False, background_color="#010203", hidden=True, js_api=HudApi())
 
     def styles():
         window.events.loaded.wait(15)
@@ -589,7 +586,7 @@ def hud():
         GWL_EXSTYLE = -20
         ex = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
         user32.SetWindowLongW(hwnd, GWL_EXSTYLE, ex | 0x20 | 0x80000 | 0x8000000 | 0x80)  # transparent, layered, no-activate, tool window
-        user32.SetLayeredWindowAttributes(hwnd, 0, 222, 2)  # LWA_ALPHA: a little see-through, like glass
+        user32.SetLayeredWindowAttributes(hwnd, 0x030201, 232, 3)  # LWA_COLORKEY | LWA_ALPHA: the page's #010203 is see-through, the rest a little, like glass
         round = ctypes.c_int(1)  # DWMWCP_DONOTROUND: the window is cut to the pill's own shape instead
         ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 33, ctypes.byref(round), ctypes.sizeof(round))
         no_border = ctypes.c_uint(0xFFFFFFFE)
