@@ -155,8 +155,14 @@ function addonRows() {
     const on = !!st[a.id]?.installed;
     return [
       { kind: 'head', label: a.title },
-      { kind: 'row', ic: `<img class="paddon" src="${esc(a.icon)}" alt="">`, label: a.title, sub: `${a.description} · by ${a.author}${a.own ? ' · from your add-ons folder' : ''}`, value: on ? 'Remove' : 'Install', act: () => addonSet(a, !on) },
-      ...(on && ADDONS.defs[a.id]?.options ? ADDONS.defs[a.id].options(ADDONS.ctx[a.id] || UFE) : []),
+      // installed: A opens or closes its settings (and Remove, at the end of them); not installed: A installs it
+      { kind: 'row', ic: `<img class="paddon" src="${esc(a.icon)}" alt="">`, label: a.title, sub: `${a.description} · by ${a.author}${a.own ? ' · from your add-ons folder' : ''}`,
+        value: on ? (ADDONS.open === a.id ? '▴' : '▾') : 'Install',
+        act: () => { if (!on) return addonSet(a, true); ADDONS.open = ADDONS.open === a.id ? '' : a.id; renderPanel(); } },
+      ...(on && ADDONS.open === a.id ? [
+        ...(ADDONS.defs[a.id]?.options ? ADDONS.defs[a.id].options(ADDONS.ctx[a.id] || UFE) : []),
+        { kind: 'row', ic: icon('close'), label: `Remove ${a.title}`, warn: true, sub: 'Takes it off; install it again any time', act: () => { ADDONS.open = ''; addonSet(a, false); } },
+      ] : []),
     ];
   }), ...folder];
 }
