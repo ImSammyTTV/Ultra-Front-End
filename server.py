@@ -6114,11 +6114,41 @@ def screen_brightness(level=None):
 
 
 
+
+BT_BATTERY = {"at": 0.0, "items": [], "busy": False}
+
+
+def bt_batteries():
+    """Battery levels Windows has for Bluetooth devices (headphones, controllers): [{"name", "level"}]. Reading them
+    takes a few seconds, so it runs in the background at most every 2 minutes and Quick Access shows the last answer.
+    Some devices (AirPods among them) don't tell Windows their battery at all."""
+    if WIN and not BT_BATTERY["busy"] and time.time() - BT_BATTERY["at"] > 120:
+        BT_BATTERY["busy"] = True
+
+        def read():
+            script = ("Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -match '^(BTHENUM|BTHLE|BTHLEDEVICE)\\\\' } | "
+                      "Get-PnpDeviceProperty -KeyName '{104EA319-6EE2-4701-BD47-8DDBF425BBE5} 2' -ErrorAction SilentlyContinue | Where-Object Data -ne $null | "
+                      "ForEach-Object { (Get-PnpDevice -InstanceId $_.InstanceId).FriendlyName + '|' + $_.Data }")
+            try:
+                r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script], capture_output=True, text=True, timeout=60, creationflags=0x08000000)
+                items = {}
+                for line in r.stdout.splitlines():
+                    name, _, level = line.strip().rpartition("|")
+                    if name and level.isdigit():
+                        items.setdefault(name, int(level))
+                BT_BATTERY["items"] = [{"name": n, "level": v} for n, v in items.items()]
+            except (OSError, subprocess.SubprocessError):
+                pass
+            finally:
+                BT_BATTERY.update(at=time.time(), busy=False)
+        threading.Thread(target=read, daemon=True).start()
+    return BT_BATTERY["items"]
+
 def qa_view():
     """Everything Quick Access shows beyond volume and music, read fresh each time it opens."""
     view = {"outputs": [], "pads": [], "wifi": None, "dnd": False, "brightness": None, "bt": None}
     for k, fn in (("outputs", sound_outputs), ("pads", xinput_pads), ("wifi", wifi_status), ("dnd", do_not_disturb), ("brightness", screen_brightness),
-                  ("bt", bt_audio_devices)):
+                  ("bt", bt_audio_devices), ("batteries", bt_batteries)):
         try:
             view[k] = fn()
         except Exception:

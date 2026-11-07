@@ -2151,6 +2151,8 @@ function sysRows() {
       sub: p.wireless ? (SP.confirm === 'pad' + p.slot ? 'Press A again to turn it off' : 'A turns it off') : p.battery === 'wired' ? 'Plugged in' : '',
       run: p.wireless ? () => SP.confirm === 'pad' + p.slot ? qaDo({ action: 'padoff', slot: p.slot }).then(() => toast('Controller turned off')) : (SP.confirm = 'pad' + p.slot, renderSys()) : null })),
     ...(SP.qa?.steamBattery != null ? [{ ic: 'pad', label: 'Steam Controller', value: `${SP.qa.steamBattery}%`, sub: 'Battery' }] : []),
+    // Bluetooth headphones and controllers that report their battery to Windows (AirPods don't)
+    ...(SP.qa?.batteries || []).map(b => ({ ic: /controller|gamepad|pad/i.test(b.name) ? 'pad' : 'headset', label: b.name, value: `${b.level}%`, sub: 'Battery' })),
     ]),
     ...group('Network and display', [
     ...(SP.qa?.wifi ? [{ ic: 'wifi', label: 'Wi-Fi', value: SP.qa.wifi.off ? 'Off' : '›',
