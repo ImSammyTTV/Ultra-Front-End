@@ -2226,9 +2226,9 @@ function renderSys() {
   sysFocus();
 }
 function sysDnd() { const on = !SP.qa?.dnd; if (SP.qa) SP.qa.dnd = on; tick(700, .04); renderSys(); toast(on ? 'Do not disturb is on' : 'Do not disturb is off', 2000); qaDo({ action: 'dnd', on }); }
-function sysFocus() { document.querySelectorAll('#syspanel .sp-row').forEach(e => e.classList.toggle('sel', +e.dataset.i === SP.i)); $('#syspanel .sp-row.sel')?.scrollIntoView({ block: 'nearest' }); }
+function sysFocus() { $('#syspanel .sp-dnd')?.classList.toggle('sel', !!SP.bell); document.querySelectorAll('#syspanel .sp-row').forEach(e => e.classList.toggle('sel', !SP.bell && +e.dataset.i === SP.i)); $('#syspanel .sp-row.sel')?.scrollIntoView({ block: 'nearest' }); }
 async function openSys() {
-  SP.open = true; SP.i = 0; SP.p = 0; SP.confirm = null; SP.view = ''; SP.fold = ''; SP.mixOpen = false;
+  SP.open = true; SP.i = 0; SP.p = 0; SP.confirm = null; SP.view = ''; SP.fold = ''; SP.bell = false; SP.mixOpen = false;
   document.body.classList.add('sys-open'); tick(600, .07); renderSys();
   api('/api/padraw').then(r => { SP.battery = r.battery; if (SP.open) renderSys(); }).catch(() => {});
   api('/api/qa').then(r => { SP.qa = r; if (SP.open) renderSys(); }).catch(() => {});
@@ -2249,6 +2249,9 @@ async function openSys() {
 }
 function closeSys() { SP.open = false; document.body.classList.remove('sys-open'); tick(420, .06); }
 function sysMove(dir) {
+  // up from the first row reaches the Do not disturb bell by the time; down comes back
+  if (SP.bell) { if (dir > 0) { SP.bell = false; tick(700, .03); sysFocus(); } return; }
+  if (dir < 0 && SP.i === 0) { SP.bell = true; tick(700, .03); sysFocus(); return; }
   let n = clamp(SP.i + dir, 0, SP.rows.length - 1);
   while (SP.rows[n]?.head && n > 0 && n < SP.rows.length - 1) n += dir;  // headings aren't stops
   if (SP.rows[n]?.head) n = SP.i;
@@ -2330,7 +2333,7 @@ function sysOutput(dir) {
   const o = SP.qa?.outputs || [], at = o.findIndex(x => x.on), next = o[(at + dir + o.length) % o.length];
   if (next) qaDo({ action: 'output', id: next.id }).then(() => toast(`Sound plays on ${next.name.replace(/\s*\([^)]*\)\s*$/, '')}`, 2500));
 }
-function sysOk() { const r = SP.rows[SP.i]; if (r?.run) { tick(880, .08); r.run(); } }
+function sysOk() { if (SP.bell) return sysDnd(); const r = SP.rows[SP.i]; if (r?.run) { tick(880, .08); r.run(); } }
 $('#syspanel').addEventListener('wheel', e => {
   e.preventDefault();
   const t = performance.now();

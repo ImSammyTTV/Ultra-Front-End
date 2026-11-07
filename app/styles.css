@@ -1266,3 +1266,4 @@ body.zone-2 #tabs, body.tabs-peek #tabs { pointer-events: auto; }
 @keyframes spFadeIn { from { opacity: 0; transform: translateY(-.8vh); } }
 .sp-music .song-in { animation: spSongIn .5s var(--ease) backwards; }  /* a new song's art and name */
 @keyframes spSongIn { from { opacity: 0; } }
+.sp-dnd.sel { opacity: 1; background: #fff; color: var(--menu-ink); border-radius: 2vh; padding: .5vh 1vh; margin-left: -1vh; }  /* the bell, reached by pressing up */
