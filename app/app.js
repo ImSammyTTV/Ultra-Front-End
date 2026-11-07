@@ -1474,7 +1474,7 @@ function renderNewsPage() {
       <div class="ni" style="background-image:url(&quot;${esc(n.image || n.cover)}&quot;)"></div>
       <div class="nb"><div class="ng">${esc(n.game)}</div><div class="nt">${esc(n.title)}</div><div class="ns">${esc(n.summary)}</div><div class="nd">${esc(fmtDate(n.date))}${n.source ? ' · ' + esc(n.source) : ''}</div></div></div>`).join('')
     : `<div class="d-empty">No news yet. Connect Steam or add Steam games to see their news here.${LIB.some(g => g.appid) ? '' : '<br>Press A to connect Steam.'}</div>`;
-  else grid.innerHTML = list.length ? list.map(relPicture).map((n, i) => `<div class="np-card np-rel" data-i="${i}" style="animation-delay:${Math.min(i, 16) * 40}ms">
+  else grid.innerHTML = list.length ? list.map(relPicture).map((n, i) => `<div class="np-card np-rel${n.image ? ' own' : ''}" data-i="${i}" style="animation-delay:${Math.min(i, 16) * 40}ms">
       <div class="ni"${n.image ? ` style="background-image:linear-gradient(180deg, rgba(4, 8, 20, 0) 40%, rgba(4, 8, 20, .7)), url(&quot;${esc(n.image)}&quot;)"` : ''}>${n.image ? '' : `<span class="np-ver">${esc(n.version)}</span>`}${n.state ? `<span class="np-state ${n.state}">${RELEASE_STATE[n.state]}</span>` : ''}</div>
       <div class="nb"><div class="ng">Ultra Front End</div><div class="nt">${esc(n.title)}</div><div class="ns">${esc(n.summary)}</div><div class="nd">${esc(fmtDate(n.date))}</div></div></div>`).join('')
     : `<div class="d-empty">${esc(NP.upErr || 'Nothing here yet.')}</div>`;

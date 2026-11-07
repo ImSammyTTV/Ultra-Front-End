@@ -1198,3 +1198,5 @@ body.zone-2 #tabs, body.tabs-peek #tabs { pointer-events: auto; }
 .r-update { display: inline-flex; align-items: center; gap: 1.2vh; margin: .4vh 0 2.4vh; padding: 1.3vh 2.6vh; border: 0; border-radius: 99px; cursor: pointer;
   font: inherit; font-size: 2vh; font-weight: 600; background: var(--accent); color: #04121f; box-shadow: 0 0 2.4vh var(--accent-glow); }
 .r-update span { display: inline-grid; place-items: center; width: 2.6vh; height: 2.6vh; border-radius: 50%; font-size: 1.4vh; background: rgba(4, 18, 31, .85); color: #fff; }
+/* a release's own picture is a wide banner with the logo near its left edge: shown whole on the card, not cropped to fill it */
+.np-rel.own .ni { background-size: 100% 100%, contain; background-color: #0a0b0f; }
