@@ -44,9 +44,8 @@ Store games start through their own launcher, so sign-in, updates and cloud save
 <td width="50%" valign="top">
 
 ### 🧰 Emulators set up for you
-Pick the consoles you play and it **installs each emulator from its own project**, with a ROMs and BIOS folder ready for
-each one, all together in `C:\Ultra-Front-End`. Emulators **stay up to date by themselves**. Add more consoles any time
-in Settings › Systems.
+Your emulators are **set up for you**: pick the consoles you play and they're ready to go. You can **add new ones** any
+time in Settings › Systems.
 
 </td>
 </tr>
@@ -195,6 +194,12 @@ C:\Ultra-Front-End\ROMs
 
 Each `BIOS` folder has a `README.txt` listing the files that console needs, and the frontend copies them to the emulator
 for you. Zipped games are unpacked when you play them.
+
+> [!IMPORTANT]
+> **Ultra Front End doesn't come with any games, ROMs, BIOS files or console keys, and never downloads them.** Use only
+> games and system files you own and have copied (dumped) from your own consoles and discs yourself. Downloading them
+> from elsewhere is against the law in most countries. The emulators it installs are separate projects, each with its own
+> license.
 
 ---
 
