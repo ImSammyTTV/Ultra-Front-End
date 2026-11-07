@@ -141,12 +141,13 @@ def bring_forward():
 
 def open_at_sign_in():
     """Open the window once the helper is up. Through Steam when the frontend has a shortcut there (then a Steam Controller
-    is a gamepad in it), so this gives Steam, which starts at sign-in too, a minute to come up."""
+    is a gamepad in it), so this gives Steam, which starts at sign-in too, a minute to come up. With no shortcut there it
+    opens at once: waiting on Steam would only hold it up."""
     deadline = time.time() + 30
     while not helper_up() and time.time() < deadline:
         time.sleep(0.5)
     deadline = time.time() + 60
-    while server.steam_path() and not server.steam_shortcut_id() and time.time() < deadline:
+    while server.steam_shortcut_id(running=False) and not server.steam_shortcut_id() and time.time() < deadline:
         time.sleep(2)
     server.open_frontend()
 

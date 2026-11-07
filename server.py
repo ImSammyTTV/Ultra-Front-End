@@ -5143,11 +5143,11 @@ def overlay_action(action):
 OPENING = [0.0]
 
 
-def steam_shortcut_id():
-    """The frontend's id as a non-Steam game, if Steam is running. Opened through Steam, a Steam Controller acts as a gamepad;
-    opened any other way it stays in Steam's desktop layout, as a mouse."""
+def steam_shortcut_id(running=True):
+    """The frontend's id as a non-Steam game, if Steam is running (running=False: whether Steam has one at all). Opened through
+    Steam, a Steam Controller acts as a gamepad; opened any other way it stays in Steam's desktop layout, as a mouse."""
     root = steam_path()
-    if not root or not folder_processes(root):
+    if not root or (running and not folder_processes(root)):
         return 0
     exe = os.path.normcase(frontend_exe())
     for f in glob.glob(os.path.join(root, "userdata", "*", "config", "shortcuts.vdf")):
