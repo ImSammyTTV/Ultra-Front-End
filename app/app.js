@@ -2181,9 +2181,9 @@ function sysRows() {
     { ic: 'settings', label: 'Settings', run: () => { closeSys(); closePages(); openPanel(); } },
 
     ]),
-    ...(SP.song ? [{ id: 'music', run: sysMedia }] : []),  // the song that's playing, at the bottom like the in-game menu
     // the power choices, like the in-game menu; Restart and Shut down ask for A twice
     ...group('Power', powerChoices().map(p => ({ ic: p.ic, label: SP.confirm === p.id ? 'Press A again' : p.label, run: () => powerPick(p) }))),
+    ...(SP.song ? [{ id: 'music', run: sysMedia }] : []),  // the song that's playing, always last, pinned to the bottom
   ];
 }
 // Quick Access can open over a full page (News, Library, Search, Album...). What it opens takes that page's place: left
