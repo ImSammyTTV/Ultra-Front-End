@@ -1870,7 +1870,7 @@ function renderAlbum() {
   });
   const how = 'In a game, use the overlay, or hold View and press RB for a screenshot and View + LB to start or stop recording.';
   $('#albumpage .al-grid').innerHTML = html || `<div class="d-empty">${AL.still ? (AL.view === 'video' ? 'No gameplay recordings yet.' : 'No screenshots yet.') : 'Take a screenshot or record a video from the in-game menu while you play, and it shows up here.'}</div>`;
-  $('#albumpage .np-sub').textContent = how + (items.length ? ' To delete one, press Y or its ⋯ button.' : '');
+  $('#albumpage .np-sub').textContent = how + (items.length ? ' Press Y (or ⋯) to trim, export for sharing or delete one.' : '');
   albumFocus();
 }
 function albumFocus() {
@@ -1884,12 +1884,85 @@ function albumMore(i = AL.i) {
   const c = albumItems()[i];
   if (!c) return;
   AL.i = i; albumFocus();
-  const what = c.kind === 'video' ? 'video' : 'screenshot';
-  sysMenu(c.kind === 'video' ? 'Gameplay video' : 'Screenshot', [
-    { label: c.kind === 'video' ? 'Play' : 'View', ic: c.kind === 'video' ? ICON_PLAY : icon('image'), run: albumOpen },
-    { label: `Delete this ${what}`, ic: icon('close'), warn: true, run: () => setTimeout(() => albumDelete(c), 0) },
+  captureMenu(c, albumOpen);
+}
+// What can be done with one capture: open it, trim a video, export it for sharing, delete it
+function captureMenu(c, open, afterDelete) {
+  const video = c.kind === 'video', what = video ? 'video' : 'screenshot';
+  sysMenu(video ? 'Gameplay video' : 'Screenshot', [
+    ...(open ? [{ label: video ? 'Play' : 'View', ic: video ? ICON_PLAY : icon('image'), run: open }] : []),
+    ...(video ? [{ label: 'Trim and export', ic: icon('sliders'), run: () => setTimeout(() => openTrim(c), 0) }] : []),
+    { label: video ? 'Export for sharing' : 'Export for social media', ic: icon('download'), run: () => setTimeout(() => exportMenu(c), 0) },
+    { label: `Delete this ${what}`, ic: icon('close'), warn: true, run: () => setTimeout(() => albumDelete(c, afterDelete), 0) },
   ]);
 }
+// The sizes to export in, from the app (the same list it makes them with)
+let EXPORT_PRESETS = null;
+async function exportMenu(c, range) {
+  try { EXPORT_PRESETS ||= await api('/api/album/presets'); } catch (e) { return toast(/404/.test(e.message) ? 'This needs the latest frontend update.' : e.message); }
+  const list = EXPORT_PRESETS[c.kind === 'video' ? 'video' : 'screenshot'];
+  sysMenu(range ? `Export ${fmtClock(range.end - range.start)} clip` : 'Export as', list.map(p => ({ label: p.label, ic: icon(c.kind === 'video' ? 'album' : 'image'), run: () => setTimeout(() => exportCapture(c, p, range), 0) })));
+}
+async function exportCapture(c, preset, range) {
+  toast(c.kind === 'video' ? 'Exporting the video… this can take a minute' : 'Exporting…', 60000);
+  let r;
+  try { r = await api('/api/album/export', { id: c.id, preset: preset.id, ...(range || {}) }); } catch (e) { return toast(e.message, 5000); }
+  toast(`Saved: ${r.name}`, 3500);
+  const mb = r.size / 1048576;
+  sysMenu(`Saved · ${mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.max(1, Math.round(r.size / 1024))} KB`}`, [
+    { label: 'Done', ic: icon('back'), run: () => {} },
+    { label: 'Show in folder', ic: icon('folder'), run: () => api('/api/album/reveal', { path: r.path }).catch(e => toast(e.message)) },
+    { label: 'Export another size', ic: icon('download'), run: () => setTimeout(() => exportMenu(c, range), 0) },
+  ]);
+}
+// ---------- trimming a video, all with the controller ----------
+// Left and right move the start or the end (held, it moves faster), up and down choose which, LB and RB jump five
+// seconds, A plays the part kept, Y exports it, B goes back.
+const TR = { open: false, c: null, dur: 0, start: 0, end: 0, which: 'start', held: 0 };
+function openTrim(c) {
+  TR.open = true; TR.c = c; TR.which = 'start'; TR.start = 0; TR.dur = c.duration || 0; TR.end = TR.dur;
+  const box = $('#trimmer');
+  box.innerHTML = `<div class="tr-head"><h2>Trim</h2><span>${esc(c.title)}</span></div>
+    <video class="tr-video" src="/api/album/file?id=${encodeURIComponent(c.id)}" preload="auto" playsinline></video>
+    <div class="tr-bar"><div class="tr-keep"></div><i class="tr-mark s"></i><i class="tr-mark e"></i><b class="tr-now"></b></div>
+    <div class="tr-times"><span class="tr-s"></span><span class="tr-len"></span><span class="tr-e"></span></div>
+    <div class="tr-hint">Left and right move it · Up: start, Down: end · LB and RB: 5 seconds · A plays · Y exports · B goes back</div>
+    <div class="tr-btns"><button class="tr-b" data-a="play">Play</button><button class="tr-b" data-a="export">Export</button><button class="tr-b" data-a="back">Back</button></div>`;
+  const v = box.querySelector('video');
+  v.addEventListener('loadedmetadata', () => { if (isFinite(v.duration) && v.duration > 0) { TR.dur = v.duration; if (!TR.end || TR.end > TR.dur) TR.end = TR.dur; trimDraw(); } });
+  v.addEventListener('timeupdate', () => { if (!v.paused && v.currentTime >= TR.end) v.pause(); trimDraw(); });
+  document.body.classList.add('trim-open'); tick(600, .07); trimDraw();
+}
+function closeTrim() { $('#trimmer video')?.pause(); TR.open = false; document.body.classList.remove('trim-open'); tick(420, .06); }
+function trimDraw() {
+  const box = $('#trimmer'), d = TR.dur || 1, pct = t => `${(t / d) * 100}%`, v = box.querySelector('video');
+  box.querySelector('.tr-keep').style.cssText = `left:${pct(TR.start)};width:${pct(TR.end - TR.start)}`;
+  box.querySelector('.tr-mark.s').style.left = pct(TR.start); box.querySelector('.tr-mark.e').style.left = pct(TR.end);
+  box.querySelector('.tr-mark.s').classList.toggle('on', TR.which === 'start'); box.querySelector('.tr-mark.e').classList.toggle('on', TR.which === 'end');
+  box.querySelector('.tr-now').style.left = pct(v?.currentTime || 0);
+  const f = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`;
+  box.querySelector('.tr-s').textContent = `Start ${f(TR.start)}`; box.querySelector('.tr-e').textContent = `End ${f(TR.end)}`;
+  box.querySelector('.tr-len').textContent = `${f(TR.end - TR.start)} kept`;
+  box.querySelector('.tr-s').classList.toggle('on', TR.which === 'start'); box.querySelector('.tr-e').classList.toggle('on', TR.which === 'end');
+}
+function trimMove(sec) {
+  const now = performance.now(), fast = now - TR.held < 250; TR.held = now;  // repeats while held go faster
+  const by = sec * (fast ? 3 : 1), v = $('#trimmer video');
+  if (TR.which === 'start') TR.start = clamp(+(TR.start + by).toFixed(2), 0, Math.max(0, TR.end - .5));
+  else TR.end = clamp(+(TR.end + by).toFixed(2), Math.min(TR.dur, TR.start + .5), TR.dur);
+  if (v) { v.pause(); v.currentTime = TR.which === 'start' ? TR.start : Math.max(0, TR.end - .05); }  // shows the frame there
+  tick(700, .03); trimDraw();
+}
+function trimWhich(w) { if (TR.which !== w) { TR.which = w; tick(760, .04); trimDraw(); } }
+function trimPlay() { const v = $('#trimmer video'); if (!v) return; if (!v.paused) return v.pause(); if (v.currentTime < TR.start || v.currentTime >= TR.end - .05) v.currentTime = TR.start; v.play().catch(() => {}); }
+function trimExport() { $('#trimmer video')?.pause(); exportMenu(TR.c, { start: TR.start, end: TR.end }); }
+$('#trimmer').addEventListener('click', e => {
+  const b = e.target.closest('.tr-b'); if (b) return ({ play: trimPlay, export: trimExport, back: closeTrim })[b.dataset.a]();
+  const bar = e.target.closest('.tr-bar'); if (!bar) return;
+  const r = bar.getBoundingClientRect(), t = clamp((e.clientX - r.left) / r.width, 0, 1) * TR.dur;  // a click moves the nearer end there
+  if (Math.abs(t - TR.start) < Math.abs(t - TR.end)) { TR.which = 'start'; TR.start = Math.min(t, TR.end - .5); } else { TR.which = 'end'; TR.end = Math.max(t, TR.start + .5); }
+  $('#trimmer video').currentTime = TR.which === 'start' ? TR.start : TR.end; trimDraw();
+});
 function albumDelete(c = albumItems()[AL.i], after) {
   if (!c) return;
   const what = c.kind === 'video' ? 'video' : 'screenshot';
@@ -1908,7 +1981,7 @@ function viewerMore() {
   if (!m?.capture) return;
   const c = AL.all.find(x => x.id === m.capture);
   if (!c) return;
-  albumDelete(c, () => {
+  captureMenu(c, null, () => {
     V.items = V.items.filter(x => x.capture !== c.id);
     if (!V.items.length) return closeViewer();
     openViewer(Math.min(V.i, V.items.length - 1), V.items);
@@ -3528,6 +3601,9 @@ function input(action) {
     ? { up: () => panelMove(-1), down: () => panelMove(1), left: () => panelMoveX(-1), right: () => panelMoveX(1), ok: panelActivate, back: panelBack }
     : Q.open
       ? { up: () => quickMove(-1), down: () => quickMove(1), ok: quickActivate, back: closeQuick, options: closeQuick }
+    : TR.open
+      ? { left: () => trimMove(-.5), right: () => trimMove(.5), up: () => trimWhich('start'), down: () => trimWhich('end'), prevTab: () => trimMove(-5), nextTab: () => trimMove(5),
+          ok: trimPlay, options: trimExport, back: closeTrim }
     : V.open
       ? { left: () => showMedia(V.i - 1), right: () => showMedia(V.i + 1), ok: viewerToggle, back: closeViewer, prevTab: () => showMedia(V.i - 1), nextTab: () => showMedia(V.i + 1), options: viewerMore }
     : R.open

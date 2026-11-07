@@ -4103,6 +4103,94 @@ def album_thumb(capture_id):
     return out
 
 
+# ---------------------------------------------------------------- exporting captures: trimmed, resized, for sharing
+# Exports go to the person's own Pictures and Videos folders (in "Ultra Front End"), so they're easy to find and post.
+# Screenshot sizes fill the frame (cropped from the middle), as the sites show them. Videos are made with ffmpeg in
+# H.264 and AAC, which every site and phone plays; "for the web" ones are smaller and lighter.
+SHOT_PRESETS = {
+    "original": ("Full size PNG", None, "png"),
+    "jpg": ("Full size JPG (smaller)", None, "jpg"),
+    "square": ("Square 1080 × 1080 (Instagram post)", (1080, 1080), "jpg"),
+    "portrait": ("Portrait 1080 × 1350 (Instagram)", (1080, 1350), "jpg"),
+    "story": ("Story 1080 × 1920 (Instagram, TikTok)", (1080, 1920), "jpg"),
+    "wide": ("Wide 1600 × 900 (X, Bluesky)", (1600, 900), "jpg"),
+    "thumb": ("Thumbnail 1280 × 720 (YouTube)", (1280, 720), "jpg"),
+}
+VIDEO_PRESETS = {
+    "original": ("Full quality", None, 20),
+    "web1080": ("For the web, 1080p (smaller)", (1920, 1080), 26),
+    "web720": ("For the web, 720p (smallest)", (1280, 720), 30),
+    "vertical": ("Vertical 1080 × 1920 (TikTok, Shorts, Reels)", (1080, 1920), 24),
+    "square": ("Square 1080 × 1080", (1080, 1080), 24),
+}
+
+
+def export_dir(video):
+    base = os.path.join(os.path.expanduser("~"), "Videos" if video else "Pictures", "Ultra Front End")
+    os.makedirs(base, exist_ok=True)
+    return base
+
+
+def export_name(capture_id, preset, ext):
+    entry = next((c for c in album() if c["id"] == capture_id), None)
+    title = re.sub(r'[<>:"/\\|?*]+', "", (entry or {}).get("title") or "Capture").strip() or "Capture"
+    stamp = time.strftime("%Y-%m-%d %H.%M.%S", time.localtime((entry or {}).get("created") or time.time()))
+    name, n = f"{title} {stamp} {preset}", 2
+    folder = export_dir(ext == "mp4")
+    while os.path.exists(os.path.join(folder, f"{name}.{ext}" if n == 2 else f"{name} ({n - 1}).{ext}")):
+        n += 1  # a second clip of the same capture doesn't replace the first
+    return f"{name}.{ext}" if n == 2 else f"{name} ({n - 1}).{ext}"
+
+
+def export_capture(capture_id, preset="original", start=None, end=None):
+    """Writes one export and returns its path. start and end (seconds) trim a video."""
+    src = album_file(capture_id)
+    if not src:
+        raise ValueError("That capture isn't there any more")
+    if not src.lower().endswith(VIDEO_EXT):
+        from PIL import Image
+        label, size, ext = SHOT_PRESETS.get(preset) or SHOT_PRESETS["original"]
+        out = os.path.join(export_dir(False), export_name(capture_id, preset, ext))
+        with Image.open(src) as im:
+            im = im.convert("RGB")
+            if size:
+                w, h = size
+                scale = max(w / im.width, h / im.height)
+                im = im.resize((max(w, round(im.width * scale)), max(h, round(im.height * scale))), Image.LANCZOS)
+                left, top = (im.width - w) // 2, (im.height - h) // 2
+                im = im.crop((left, top, left + w, top + h))
+            im.save(out, "PNG" if ext == "png" else "JPEG", **({} if ext == "png" else {"quality": 90}))
+        return out
+    ffmpeg = ffmpeg_path()
+    if not ffmpeg:
+        raise ValueError("Exporting videos needs the video recorder: Settings › General › Video recording")
+    label, size, crf = VIDEO_PRESETS.get(preset) or VIDEO_PRESETS["original"]
+    out = os.path.join(export_dir(True), export_name(capture_id, preset, "mp4"))
+    cmd = [ffmpeg, "-y", "-loglevel", "error"]
+    if start:
+        cmd += ["-ss", f"{max(0.0, float(start)):.3f}"]
+    cmd += ["-i", src]
+    if end is not None and float(end) > float(start or 0):
+        cmd += ["-t", f"{float(end) - float(start or 0):.3f}"]
+    if size:
+        w, h = size
+        vf = (f"scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos" if preset.startswith("web")
+              else f"scale={w}:{h}:force_original_aspect_ratio=increase:flags=lanczos,crop={w}:{h}")
+        cmd += ["-vf", vf + ",format=yuv420p"]
+    else:
+        cmd += ["-vf", "format=yuv420p"]
+    cmd += ["-c:v", "libx264", "-preset", "medium", "-crf", str(crf), "-c:a", "aac", "-b:a", "160k" if crf < 26 else "128k",
+            "-movflags", "+faststart", out]
+    r = subprocess.run(cmd, capture_output=True, timeout=1800, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    if r.returncode or not os.path.isfile(out):
+        raise ValueError("The video couldn't be exported: " + (r.stderr.decode("utf-8", "replace").strip().splitlines() or ["ffmpeg failed"])[-1][:200])
+    return out
+
+
+def export_view(path):
+    return {"path": path, "name": os.path.basename(path), "folder": os.path.dirname(path), "size": os.path.getsize(path)}
+
+
 XINPUT_START, XINPUT_BACK, XINPUT_LB, XINPUT_RB, XINPUT_GUIDE = 0x0010, 0x0020, 0x0100, 0x0200, 0x0400
 
 
@@ -9675,6 +9763,9 @@ class Handler(SimpleHTTPRequestHandler):
             if not g:
                 return self.reply({"error": "Game not found"}, 404)
             return self.reply(game_details(g))
+        if path == "/api/album/presets":
+            return self.reply({"screenshot": [{"id": k, "label": v[0]} for k, v in SHOT_PRESETS.items()],
+                               "video": [{"id": k, "label": v[0]} for k, v in VIDEO_PRESETS.items()]})
         if path == "/api/album":
             return self.reply({"captures": album(), "still": True})
         if path in ("/api/album/file", "/api/album/thumb"):
@@ -9889,6 +9980,14 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.reply(settings_view())
             if path == "/api/album/delete":
                 delete_capture(body.get("id"))
+                return self.reply({"ok": True})
+            if path == "/api/album/export":  # {id, preset, start?, end?}: a trimmed or resized copy for sharing
+                return self.reply(export_view(export_capture(body.get("id"), str(body.get("preset") or "original"), body.get("start"), body.get("end"))))
+            if path == "/api/album/reveal":  # shows an export in its folder
+                target = os.path.realpath(str(body.get("path") or ""))
+                if not any(target.startswith(os.path.realpath(export_dir(v)) + os.sep) for v in (False, True)) or not os.path.isfile(target):
+                    raise ValueError("Not an export")
+                subprocess.Popen(["explorer.exe", "/select,", target])
                 return self.reply({"ok": True})
             if path in ("/api/running/resume", "/api/running/close"):
                 if body.get("id") not in STATE["byId"]:

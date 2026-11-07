@@ -1274,3 +1274,23 @@ body.zone-2 #tabs, body.tabs-peek #tabs { pointer-events: auto; }
 body:is(.sys-open, .panel-open, .details-open, .hub-open, .lib-open, .news-open, .reader-open, .search-open, .album-open, .viewer-open, .ach-open) .addon-home, body:is(.sys-open, .panel-open, .details-open, .hub-open, .lib-open, .news-open, .reader-open, .search-open, .album-open, .viewer-open, .ach-open) .addon-home > * { opacity: 0; pointer-events: none; }  /* only on the home screen */
 [data-addon-slot="quickaccess"]:empty { display: none; }
 [data-addon-slot="quickaccess"] { margin: 0 3.6vh 1.4vh; }
+/* trimming a video */
+#trimmer { position: fixed; inset: 0; z-index: 9; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2.2vh; padding: 5vh 8vw;
+  background: rgba(2, 4, 10, .96); backdrop-filter: blur(20px); opacity: 0; pointer-events: none; transition: opacity .3s ease; }
+body.trim-open #trimmer { opacity: 1; pointer-events: auto; }
+body.trim-open.quick-open #quick { z-index: 10; }
+.tr-head { align-self: stretch; display: flex; align-items: baseline; gap: 2vh; }
+.tr-head h2 { margin: 0; font-size: 4vh; font-weight: 600; }
+.tr-head span { color: var(--quiet); font-size: 2.2vh; }
+.tr-video { width: 100%; max-height: 58vh; border-radius: 1.6vh; background: #000; }
+.tr-bar { position: relative; align-self: stretch; height: 5vh; border-radius: 1vh; background: rgba(255, 255, 255, .12); cursor: pointer; }
+.tr-keep { position: absolute; top: 0; bottom: 0; border-radius: 1vh; background: rgba(255, 255, 255, .32); }
+.tr-mark { position: absolute; top: -.8vh; bottom: -.8vh; width: .8vh; margin-left: -.4vh; border-radius: .4vh; background: rgba(255, 255, 255, .55); transition: background .15s, transform .15s; }
+.tr-mark.on { background: #fff; transform: scaleX(1.5); box-shadow: 0 0 1.4vh rgba(255, 255, 255, .7); }
+.tr-now { position: absolute; top: 0; bottom: 0; width: 2px; background: #ff4fb8; }
+.tr-times { align-self: stretch; display: flex; justify-content: space-between; font-size: 2.2vh; color: var(--quiet); }
+.tr-times .on { color: var(--text); font-weight: 600; }
+.tr-hint { font-size: 1.8vh; color: var(--quiet); }
+.tr-btns { display: flex; gap: 1.4vh; }
+.tr-b { font: inherit; font-size: 2vh; padding: 1.1vh 2.6vh; border: 0; border-radius: 99px; background: rgba(255, 255, 255, .12); color: var(--text); cursor: pointer; }
+.tr-b:hover { background: #fff; color: var(--menu-ink); }
