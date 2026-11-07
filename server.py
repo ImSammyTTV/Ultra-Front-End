@@ -9316,7 +9316,7 @@ def job_info(job):
 
 
 def queue_view():
-    return {"jobs": [{"emulator": j["emulator"], "systems": j["systems"], **job_info(j)} for j in QUEUE["jobs"]],
+    return {"jobs": [{"emulator": j["emulator"], "systems": j["systems"], "update": j.get("update") or "", **job_info(j)} for j in QUEUE["jobs"]],
             "busy": any(j["state"] in ("waiting", "installing") for j in QUEUE["jobs"]), "batch": QUEUE["batch"]}
 
 

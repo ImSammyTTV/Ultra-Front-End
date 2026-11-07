@@ -3245,11 +3245,23 @@ function emuUpdateRows(d) {
   if (ON_MAC || ON_ANDROID || !d.emuUpdates) return [];
   const list = d.emuUpdates.list || [], run = name => api('/api/emulators/update', name ? { name } : {})
     .then(r => { P.data = r; renderPanel(); watchQueue(); toast(name ? `Updating ${name}…` : 'Updating your emulators…', 3000); }, e => toast(e.message));
+  // each update's own job in the install queue: how far it's got while it runs, and Updated or Failed once it's done
+  const jobs = (d.queue?.jobs || []).filter(j => j.update), jobOf = name => [...jobs].reverse().find(j => j.emulator === name);
+  const busy = jobs.filter(j => j.state === 'waiting' || j.state === 'installing'), now = jobs.find(j => j.state === 'installing');
+  const done = jobs.filter(j => (j.state === 'ready' || j.state === 'failed') && !list.some(u => u.name === j.emulator));
   return [
     { kind: 'head', label: 'Emulator updates' },
-    ...list.map(u => ({ kind: 'row', key: 'emu-up-' + u.name, ic: icon('download'), label: `Update ${u.name}`, value: 'Update',
-      sub: [u.to && `New: ${u.to}`, u.systems.join(', '), u.installer && 'Its installer may ask Windows for permission'].filter(Boolean).join(' · '), act: () => run(u.name) })),
-    ...(list.length > 1 ? [{ kind: 'row', key: 'emu-up-all', label: 'Update all', value: `${list.length}`, sub: 'One after another, with one Windows prompt for the installers', act: () => run() }] : []),
+    ...list.map(u => { const j = jobOf(u.name), on = j && (j.state === 'waiting' || j.state === 'installing');
+      return { kind: on ? 'info' : 'row', key: 'emu-up-' + u.name, ic: icon('download'), label: on ? `Updating ${u.name}` : `Update ${u.name}`,
+        value: on ? jobValue(j) : j?.state === 'failed' ? 'Try again' : 'Update',
+        sub: on ? (j.state === 'waiting' ? 'Waiting its turn' : j.stage ? progressText(j) : 'Starting…') : j?.state === 'failed' ? `Didn't update: ${j.error}`
+          : [u.to && `New: ${u.to}`, u.systems.join(', '), u.installer && 'Its installer may ask Windows for permission'].filter(Boolean).join(' · '),
+        ...(j?.state === 'installing' ? { bar: j.progress ?? 'busy' } : {}), act: on ? null : () => run(u.name) }; }),
+    ...done.map(j => ({ kind: 'info', key: 'emu-done-' + j.emulator, ic: icon(j.state === 'ready' ? 'star' : 'close'), label: j.state === 'ready' ? `${j.emulator} is up to date` : `${j.emulator} didn't update`,
+      value: j.state === 'ready' ? 'Updated' : 'Failed', sub: j.state === 'ready' ? 'Updated just now' : j.error })),
+    ...(list.length > 1 && !busy.length ? [{ kind: 'row', key: 'emu-up-all', label: 'Update all', value: `${list.length}`, sub: 'One after another, with one Windows prompt for the installers', act: () => run() }] : []),
+    ...(busy.length && jobs.length > 1 ? [{ kind: 'info', key: 'emu-up-progress', label: `Updating ${jobs.length - busy.length + 1} of ${jobs.length}${now ? ` · ${now.emulator}` : ''}`,
+      sub: now?.stage ? progressText(now) : 'Starting…', bar: now?.progress ?? 'busy' }] : []),
     { kind: 'row', key: 'emu-up-check', label: 'Check for emulator updates',
       sub: d.emuUpdates.checked ? `Checked ${fmtDate(d.emuUpdates.checked)}${list.length ? '' : ': all up to date'}. Checked every day; downloaded emulators update by themselves` : 'Checked every day; downloaded emulators update by themselves',
       act: () => work(api('/api/emulators/update', { check: true })).then(r => r && toast(r.emuUpdates?.list?.length ? `${r.emuUpdates.list.length} update${r.emuUpdates.list.length === 1 ? '' : 's'} found` : 'Your emulators are up to date', 3000)) },
