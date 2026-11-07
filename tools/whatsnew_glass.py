@@ -19,6 +19,8 @@ base = Image.fromarray(np.clip(bg, 0, 255).astype("uint8"))
 ys, xs = np.where(a.max(2) > 40)
 pad = 34
 box = (xs.min() - pad, ys.min() - pad, xs.max() + pad, ys.max() + pad)
+if len(sys.argv) > 3:  # a fixed box (x0,y0,x1,y1), the same on every card
+    box = tuple(int(v) for v in sys.argv[3].split(","))
 R = 32  # corner radius
 x0, y0, x1, y1 = box
 mask = Image.new("L", (W, H)); ImageDraw.Draw(mask).rounded_rectangle(box, R, fill=255)
