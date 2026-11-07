@@ -1,18 +1,28 @@
 <!doctype html>
 <html><head><meta charset="utf-8">
 <style>
-  /* sized to the screen, not this small window: 1rem is 1% of the screen's height */
-  html { font-size: calc(100vw / 26); }
-  html, body { margin: 0; background: #141518; color: #f2f3f5; font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif; overflow: hidden; user-select: none; cursor: none; }
-  #cards { padding: 1.4rem 0; }
-  .card { display: flex; align-items: center; gap: 1.6rem; padding: 1.2rem 2rem; }
+  /* glass: a soft frosted panel with a light edge and glow (the window itself is a little see-through too) */
+  html, body { margin: 0; color: #f4f5f7; font-family: "Segoe UI Variable Display", "Segoe UI", sans-serif; overflow: hidden; user-select: none; cursor: none; }
+  body { background: radial-gradient(120% 140% at 0% 0%, rgba(120, 160, 255, .22), transparent 55%), radial-gradient(120% 140% at 100% 100%, rgba(80, 255, 190, .14), transparent 60%), linear-gradient(160deg, #2a2d36, #16181d 70%); }
+  body::before { content: ''; position: fixed; inset: 0; border-radius: 1.6rem; pointer-events: none;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), inset 0 0 0 1px rgba(255, 255, 255, .1); }
+  body::after { content: ''; position: fixed; left: 0; right: 0; top: 0; height: 45%; pointer-events: none; background: linear-gradient(rgba(255, 255, 255, .09), transparent); }
+  #cards { position: relative; padding: 1.2rem 0; }
+  .card { display: flex; align-items: center; gap: 1.6rem; padding: 1.2rem 2.2rem; animation: in .45s cubic-bezier(.2, .8, .2, 1) backwards; }
   .card + .card { border-top: 1px solid rgba(255, 255, 255, .08); }
-  .card svg { width: 3.4rem; height: 3.4rem; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  @keyframes in { from { opacity: 0; transform: translateY(-.6rem); } }
+  .card svg { width: 3.2rem; height: 3.2rem; padding: .8rem; flex: none; border-radius: 1.2rem; background: rgba(255, 255, 255, .1); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2);
+    fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
   .text { flex: 1; min-width: 0; }
-  .text div { font-size: 2.3rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .text small { display: block; font-size: 1.8rem; color: rgba(255, 255, 255, .62); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .bar { height: .5rem; margin-top: .8rem; border-radius: .25rem; background: rgba(255, 255, 255, .18); overflow: hidden; }
-  .bar i { display: block; height: 100%; background: #fff; border-radius: inherit; transition: width .6s ease; }
+  .text div { font-size: 2.3rem; font-weight: 600; letter-spacing: .01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .text small { display: block; margin-top: .2rem; font-size: 1.7rem; color: rgba(255, 255, 255, .66); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+  /* the progress bar: it grows smoothly, and a light sweeps along it while it's going */
+  .bar { position: relative; height: .7rem; margin-top: 1rem; border-radius: .35rem; background: rgba(255, 255, 255, .14); overflow: hidden; box-shadow: inset 0 1px 1px rgba(0, 0, 0, .3); }
+  .bar i { position: relative; display: block; height: 100%; border-radius: inherit; overflow: hidden; transition: width 1.2s cubic-bezier(.2, .8, .2, 1);
+    background: linear-gradient(90deg, #7fb2ff, #7ff0c8); box-shadow: 0 0 1rem rgba(127, 220, 255, .6); }
+  .bar i::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .7), transparent); transform: translateX(-100%); animation: sweep 2.2s ease-in-out infinite; }
+  .bar.full i::after { animation: none; }
+  @keyframes sweep { to { transform: translateX(100%); } }
 </style></head>
 <body><div id="cards"></div>
 <script>
@@ -30,12 +40,22 @@ async function tick() {
   try {
     const r = await (await fetch('/api/addon-hud', { cache: 'no-store' })).json();
     if (r.quit) return window.pywebview?.api?.quit();
-    const html = r.hidden ? '' : r.items.map(it => `<div class="card"><svg viewBox="0 0 24 24">${ICON[it.icon] || ICON.bolt}</svg><div class="text"><div>${esc(it.text)}</div>${it.sub ? `<small>${esc(it.sub)}</small>` : ''}${it.progress != null ? `<div class="bar"><i style="width:${it.progress}%"></i></div>` : ''}</div></div>`).join('');
-    if (html !== last) {
-      last = html;
+    const html = r.hidden ? '' : r.items.map(it => `<div class="card"><svg viewBox="0 0 24 24">${ICON[it.icon] || ICON.bolt}</svg><div class="text"><div>${esc(it.text)}</div>${it.sub ? `<small>${esc(it.sub)}</small>` : ''}${it.progress != null ? `<div class="bar${it.progress >= 100 ? ' full' : ''}" data-p="${it.progress}"><i></i></div>` : ''}</div></div>`).join('');
+    const shape = html.replace(/data-p="[^"]*"/g, '').replace(/<small>.*?<\/small>/g, '');
+    if (shape !== last) {  // a new card or a new title: drawn again; otherwise only its words and bar change
+      last = shape;
       document.getElementById('cards').innerHTML = html;
       document.getElementById('cards').style.display = html ? '' : 'none';
       // measured once it's laid out, with room to spare, so nothing is cut off at the bottom
+    } else {
+      const now = new DOMParser().parseFromString(`<div>${html}</div>`, 'text/html').body.firstChild.children;
+      [...document.querySelectorAll('.card')].forEach((c, i) => { const n = now[i]; if (!n) return;
+        const sm = c.querySelector('small'), ns = n.querySelector('small'); if (sm && ns) sm.textContent = ns.textContent;
+        const b = c.querySelector('.bar'), nb = n.querySelector('.bar'); if (b && nb) { b.dataset.p = nb.dataset.p; b.className = nb.className; } });
+    }
+    document.querySelectorAll('.bar').forEach(b => { b.querySelector('i').style.width = `${b.dataset.p}%`; });
+    if (html !== window.lastHtml) {
+      window.lastHtml = html;
       requestAnimationFrame(() => window.pywebview?.api?.size(html ? Math.ceil(document.getElementById('cards').getBoundingClientRect().height) + 4 : 1));
     }
   } catch {}

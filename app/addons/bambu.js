@@ -33,11 +33,14 @@ UFE.addon({
     api.every(10000, check);
     // over the game: a card in the corner while it prints, and for a few minutes after it's done
     let doneAt = 0;
+    // the file name as a title: no underscores or .3mf, only Latin letters and numbers ("X2D_&_P2S_全覆盖外排气接口" -> "X2D & P2S")
+    const nice = n => (n || '').replace(/\.(gcode\.)?3mf$|\.gcode$/i, '').replace(/[_]+/g, ' ').replace(/[^\p{Script=Latin}\d\s&+\-().,']/gu, ' ')
+      .replace(/\s+/g, ' ').replace(/^[\s&+\-.,]+|[\s&+\-.,]+$/g, '').trim() || '3D print';
     const card = () => {
       if (!p?.connected) return api.hud(null);
       if (active(was) || p.state === 'RUNNING') doneAt = 0;
       if (p.state === 'FINISH' || p.state === 'FAILED') doneAt ||= Date.now();
-      const name = p.name || 'Print';
+      const name = nice(p.name);
       if (active(p.state)) return api.hud({ icon: 'printer', text: name, progress: p.percent,
         sub: [p.state === 'PAUSE' ? 'Paused' : p.state === 'PREPARE' ? 'Getting ready' : `${p.percent ?? 0}%`, p.remaining ? `${left(p.remaining)} left` : '', p.layers ? `layer ${p.layer} of ${p.layers}` : ''].filter(Boolean).join(' · ') });
       if (doneAt && Date.now() - doneAt < 5 * 60000) return api.hud({ icon: 'printer', text: name, sub: p.state === 'FINISH' ? 'Print finished' : 'Print stopped', progress: p.state === 'FINISH' ? 100 : null });

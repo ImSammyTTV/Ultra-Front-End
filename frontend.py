@@ -578,7 +578,9 @@ def hud():
         GWL_EXSTYLE = -20
         ex = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
         user32.SetWindowLongW(hwnd, GWL_EXSTYLE, ex | 0x20 | 0x80000 | 0x8000000 | 0x80)  # transparent, layered, no-activate, tool window
-        user32.SetLayeredWindowAttributes(hwnd, 0, 235, 2)  # LWA_ALPHA: a touch see-through
+        user32.SetLayeredWindowAttributes(hwnd, 0, 222, 2)  # LWA_ALPHA: a little see-through, like glass
+        round = ctypes.c_int(2)  # DWMWCP_ROUND: Windows 11's rounded corners
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 33, ctypes.byref(round), ctypes.sizeof(round))
         no_border = ctypes.c_uint(0xFFFFFFFE)
         ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(no_border), ctypes.sizeof(no_border))
         try:  # shown through WinForms so the page draws (a window shown by Windows alone stays blank); with no-activate set
