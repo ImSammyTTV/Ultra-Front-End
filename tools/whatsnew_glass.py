@@ -17,9 +17,9 @@ bg += 10  # a faded black, only a hint of the colour
 base = Image.fromarray(np.clip(bg, 0, 255).astype("uint8"))
 # glass panel around the content
 ys, xs = np.where(a.max(2) > 40)
-pad = 44
+pad = 34
 box = (xs.min() - pad, ys.min() - pad, xs.max() + pad, ys.max() + pad)
-R = 40  # corner radius
+R = 32  # corner radius
 x0, y0, x1, y1 = box
 mask = Image.new("L", (W, H)); ImageDraw.Draw(mask).rounded_rectangle(box, R, fill=255)
 inside = np.asarray(mask).astype(float) / 255
