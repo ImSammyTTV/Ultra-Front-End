@@ -2111,8 +2111,8 @@ function sysRows() {
   const back = { ic: 'back', label: 'Back', run: () => sysView('') };
   if (SP.view === 'output') return [{ head: 'Sound output' }, ...(SP.qa?.outputs || []).map(o => ({ ic: /head|ear|airpod|buds|bose|qc/i.test(o.name) ? 'headset' : 'speaker',
     label: shortDev(o.name), value: o.on ? '✓' : '', run: () => o.on ? sysView('') : qaDo({ action: 'output', id: o.id }).then(() => toast(`Sound plays on ${shortDev(o.name)}`, 2500)) })), back];
-  if (SP.view === 'bt') return [{ head: 'Bluetooth audio' }, ...(SP.qa?.bt || []).map(d => ({ ic: d.kind === 'speaker' ? 'speaker' : 'headset', label: d.name, value: d.connected ? 'Connected' : '',
-    sub: d.connected ? 'A disconnects it' : 'A connects it', run: () => btToggle(d) })),
+  if (SP.view === 'bt') return [{ head: 'Bluetooth audio · paired devices' }, ...(SP.qa?.bt || []).map(d => ({ ic: d.kind === 'speaker' ? 'speaker' : 'headset', label: d.name, value: d.connected ? 'Connected' : '',
+    sub: d.connected ? 'Paired and connected · A disconnects it' : 'Paired · A connects it', run: () => btToggle(d) })),
     ...(SP.btFound === undefined ? [] : SP.btFound === null ? [{ ic: 'search', label: 'Searching for devices…', sub: 'Put it in pairing mode now' }]
       : SP.btFound.length ? SP.btFound.map(d => ({ ic: d.kind === 'speaker' ? 'speaker' : 'headset', over: 'New', label: d.name, sub: 'A pairs and connects it', run: () => btPair(d) }))
       : [{ ic: 'headset', label: 'Nothing new found', sub: 'Check it’s in pairing mode, then search again' }]),
