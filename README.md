@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <b>Ultra Front End</b> is a fullscreen, controller-first game launcher for Windows. Your PC games, emulators and ROMs<br>
-  on one console-style home screen, with an in-game menu you can open over any game.
+  <b>Ultra Front End</b> is a fullscreen, controller-first game launcher for Windows.<br>
+  Your PC games, emulators and ROMs on one console-style home screen, with a menu you can open over any game.
 </p>
 
 <p align="center">
@@ -19,7 +19,6 @@
   <a href="#-quick-start"><b>🚀 Quick start</b></a> ·
   <a href="#-controls"><b>🎮 Controls</b></a> ·
   <a href="#%EF%B8%8F-roms-and-bios"><b>🗂️ ROMs and BIOS</b></a> ·
-  <a href="#%EF%B8%8F-artwork"><b>🖼️ Artwork</b></a> ·
   <a href="#-help"><b>❓ Help</b></a> ·
   <a href="https://github.com/ImSammyTTV/Ultra-Front-End/issues/new"><b>🐛 Report a bug</b></a>
 </p>
@@ -33,15 +32,15 @@
 <td width="50%" valign="top">
 
 ### 🕹️ Every game in one place
-**Steam, Epic Games, EA app, Ubisoft Connect, GOG, Rockstar Games and Battle.net**, plus your own games folders and ROMs.
-Store games start through their own launcher, so sign-in, updates and cloud saves still work. Missing a launcher? Setup can install it.
+**Steam, Epic Games, EA app, Ubisoft Connect, GOG, Rockstar Games and Battle.net**, plus your own games folders and
+ROMs. Store games start through their own launcher, so sign-in, updates and cloud saves still work.
 
 </td>
 <td width="50%" valign="top">
 
 ### 🧰 Emulators set up for you
-Your emulators are **set up for you**: pick the consoles you play and they're ready to go. You can **add new ones** any
-time in Settings › Systems.
+Pick the consoles you play and their emulators are set up for you. You can add new ones any time in
+**Settings › Systems**.
 
 </td>
 </tr>
@@ -49,47 +48,31 @@ time in Settings › Systems.
 <td valign="top">
 
 ### 🎛️ In-game menu
-Open it over any game for **volume, music controls, screenshots, recording** and **Close game**. While it's open,
-your controller works the menu, not the game.
+Open it over any game for **volume, music, screenshots, recording** and **Close game**. While it's open, your
+controller works the menu, not the game.
 
 </td>
 <td valign="top">
 
-### 🖼️ Artwork without an account
-Covers come from Steam and from libretro automatically. Connect **SteamGridDB** (optional, free) to choose any game's
-cover, background and logo, **animated ones too**.
+### 🖼️ Artwork
+Covers come from Steam and libretro automatically. Connect **SteamGridDB** (free, optional) to pick any game's cover,
+background and logo, **animated ones too**.
 
 </td>
 </tr>
 <tr>
-<td valign="top">
-
-### 🗂️ BIOS and keys made simple
-Each console that needs BIOS or firmware files gets a `BIOS` folder inside its ROMs folder, with a note saying
-exactly which files go there.
-
-</td>
 <td valign="top">
 
 ### 📊 Extras
-A **performance overlay** (frame rate and more) you can add during setup, a **controller tester**, achievements,
-game news and a screenshot **album**.
-
-</td>
-</tr>
-<tr>
-<td valign="top">
-
-### ⬆️ Updates itself
-New versions download by themselves and install when you're **not playing**. Can start with Windows, quietly in the
-tray, so it's ready when you press the Xbox button.
+A **performance overlay**, a **controller tester**, achievements, game news and an **album** of your screenshots and
+videos.
 
 </td>
 <td valign="top">
 
-### 📺 Any screen
-Built for TVs and ultrawides as well as handhelds: 16:9, 16:10, 21:9, 4:3 and portrait screens, with touch support
-and a UI scale setting.
+### ⬆️ Keeps itself up to date
+Updates install by themselves when you're **not playing**. Choose **Main** or **Nightly** in **Settings › About**.
+It can start with Windows, ready for the Xbox button.
 
 </td>
 </tr>
@@ -99,48 +82,44 @@ and a UI scale setting.
 
 ## 🚀 Quick start
 
-1. **Download** `UltraFrontEnd-Setup.exe` from the [latest release](https://github.com/ImSammyTTV/Ultra-Front-End/releases/latest) and run it.
-   It installs into `C:\Ultra-Front-End` (no administrator prompt), with the app in `App` and your `ROMs` and `Emulators`
-   beside it, and adds Start menu and desktop shortcuts.
-   Prefer a portable copy? Download `UltraFrontEnd.exe` instead and put it in a folder of its own: its settings live in a `data` folder beside it.
-2. **Follow the setup guide.** It asks for your name and time zone, your ROMs folder (`C:\Ultra-Front-End\ROMs` unless you choose another),
-   the consoles you play, and whether it should start with Windows.
-3. **Play.** Your installed Steam games are already there. Connect your store accounts in **Settings → Accounts** to add the rest.
-
-> [!NOTE]
-> **Windows is the main platform for now.** It's early days: versions for Mac, Android and Linux (including Steam Deck)
-> are in development and will come later.
+1. **Download** `UltraFrontEnd-Setup.exe` from the [latest release](https://github.com/ImSammyTTV/Ultra-Front-End/releases/latest)
+   and run it. Everything goes in `C:\Ultra-Front-End`: the app in `App`, with your `ROMs` and `Emulators` beside it.
+   No administrator prompt is needed.
+2. **Follow the setup guide.** Pick your consoles and whether it starts with Windows.
+3. **Play.** Installed games are found by themselves. Connect store accounts in **Settings › Accounts** for the rest.
 
 > [!TIP]
-> **Windows says it "protected your PC"?** The app isn't signed yet, so SmartScreen warns about it. Click **More info → Run anyway**.
+> **Windows says it "protected your PC"?** The app isn't signed yet. Click **More info › Run anyway**.
+
+> [!NOTE]
+> Windows is the only platform for now.
 
 ---
 
 ## 🎮 Controls
 
-| Button | On the home screen | In a game |
+| Button | Home screen | In a game |
 |---|---|---|
-| **A** | Select | |
-| **B** | Back | |
-| **Y** or **Start** | Game menu (details, favourites, artwork, hide…) | |
+| **A** / **B** | Select / Back | |
+| **Y** or **Start** | Game menu | |
 | **View** | Quick Access | |
-| **LB / RB** | Change tab | |
-| **Xbox button**, **Steam button** or **View + Start** | Open the frontend | In-game menu |
+| **LB** / **RB** | Change tab | |
+| **Xbox**, **Steam** or **View + Start** | Open the frontend | In-game menu |
 | **View + RB** | | Screenshot |
 | **View + LB** | | Start or stop recording |
 
-On a keyboard: arrow keys, **Enter** and **Esc**. A mouse and touch screens work too.
+A keyboard (arrow keys, **Enter**, **Esc**), a mouse and touch screens work too.
 
 ---
 
 ## 🗂️ ROMs and BIOS
 
-Setup makes one folder per console inside your ROMs folder. Drop your games into the right one:
+Setup makes a folder for each console. Drop your games into the right one:
 
 ```
 C:\Ultra-Front-End\ROMs
 ├── PS2
-│   ├── BIOS          ← the console's BIOS files, see the README.txt inside
+│   ├── BIOS          ← the console's BIOS files (see the README.txt inside)
 │   └── My Game.iso
 ├── GameCube
 │   └── …
@@ -149,27 +128,13 @@ C:\Ultra-Front-End\ROMs
     └── …
 ```
 
-Each `BIOS` folder has a `README.txt` listing the files that console needs, and the frontend copies them to the emulator
-for you. Zipped games are unpacked when you play them.
+Each `BIOS` folder's `README.txt` lists the files that console needs, and they're copied to the emulator for you.
+Zipped games are unpacked when you play them.
 
 > [!IMPORTANT]
-> **Ultra Front End doesn't come with any games, ROMs, BIOS files or console keys, and never downloads them.** Use only
-> games and system files you own and have copied (dumped) from your own consoles and discs yourself. Downloading them
-> from elsewhere is against the law in most countries. The emulators it installs are separate projects, each with its own
-> license.
-
----
-
-## 🖼️ Artwork
-
-Steam games get their covers from Steam, and emulated games from [libretro](https://github.com/libretro-thumbnails/libretro-thumbnails),
-with no account. To choose your own, including **animated covers and backgrounds**, connect SteamGridDB:
-
-1. Go to **Settings → Accounts → SteamGridDB** and choose **Open SteamGridDB**.
-2. Sign in there, or make a free account.
-3. Choose **Generate API Key**, copy it, and paste it back into the frontend.
-
-Then press **Y** (or **Start**) on any game and choose **Artwork**.
+> **Ultra Front End doesn't come with any games, ROMs, BIOS files or console keys, and never downloads them.** Use
+> only games and system files you've copied from your own consoles and discs. Downloading them from elsewhere is
+> against the law in most countries. The emulators it installs are separate projects, each with its own license.
 
 ---
 
@@ -178,41 +143,41 @@ Then press **Y** (or **Start**) on any game and choose **Artwork**.
 <details>
 <summary><b>A game is missing</b></summary>
 
-Installed Steam, EA app, Ubisoft Connect, GOG, Rockstar Games and Battle.net games are found by themselves. For Steam games you own but haven't
-installed, and for Epic, connect the account in **Settings → Accounts**. For anything else, add its folder in
-**Settings → Libraries**, or add a single game there.
+Installed games from the supported stores are found by themselves. For Steam games you haven't installed, and for
+Epic, connect the account in **Settings › Accounts**. For anything else, add its folder (or a single game) in
+**Settings › Libraries**.
 </details>
 
 <details>
 <summary><b>An emulated game won't start</b></summary>
 
-Open **Emulators**, choose the console, and check that its emulator is installed and its BIOS files are in place: the console's
-page says what's missing. Some consoles (PS1, PS2, Saturn and others) can't start any game without them.
+Open **Settings › Systems** and choose the console. Its page says whether the emulator is installed and which BIOS files
+are missing. Some consoles (PS1, PS2, Saturn and others) can't start any game without them.
 </details>
 
 <details>
 <summary><b>The in-game menu doesn't open</b></summary>
 
-It opens over games you started from the frontend (or that it recognises as yours). Check **Settings → General → Open with the
-Xbox button** is on. With a Steam Controller, press the Steam button once while in a game.
+It opens over games started from the frontend. Check that **Settings › General › Open with the Xbox button** is on.
+With a Steam Controller, press the Steam button once in the game.
 </details>
 
 <details>
-<summary><b>How do I update?</b></summary>
+<summary><b>Custom artwork</b></summary>
 
-You don't have to: new versions download by themselves and install when you're not playing. **Settings → About** shows your version.
+Go to **Settings › Accounts › SteamGridDB**, choose **Open SteamGridDB**, sign in (or make a free account), choose
+**Generate API Key** and paste it into the frontend. Then press **Y** on any game and choose **Artwork**.
 </details>
 
 <details>
 <summary><b>Where are my settings and logs?</b></summary>
 
-In the `data` folder beside `UltraFrontEnd.exe`: `C:\Ultra-Front-End\App\data` when installed with Setup (or
-`%LocalAppData%\Ultra Front End\data` if that folder can't be written to). `errors.log` holds any errors, `window.log` how
-it started, and `emulator-install.log` any install that failed. Updating never removes them.
+In `C:\Ultra-Front-End\App\data`. `errors.log` holds any errors and `emulator-install.log` any emulator install that
+failed. Updating never removes them.
 </details>
 
-🐛 **Found a bug or have an idea?** [Open an issue](https://github.com/ImSammyTTV/Ultra-Front-End/issues/new). For bugs, say what you
-expected and what happened instead, and attach `errors.log` from the `data` folder if there is one. Ideas are welcome too.
+🐛 **Found a bug or have an idea?** [Open an issue](https://github.com/ImSammyTTV/Ultra-Front-End/issues/new). Say what
+you expected and what happened, and attach `errors.log` if there is one.
 
 ---
 
@@ -221,5 +186,5 @@ expected and what happened instead, and attach `errors.log` from the `data` fold
 [MIT](LICENSE) © ImSammyTTV. Third-party software and artwork: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 The code is free to use under the MIT license, but the **Ultra Front End logo belongs to ImSammyTTV**: a copy or fork
-can use the code, but not the logo. The official download is only on this project's
+can use the code, but not the logo. The official download is only on the
 [Releases page](https://github.com/ImSammyTTV/Ultra-Front-End/releases).
