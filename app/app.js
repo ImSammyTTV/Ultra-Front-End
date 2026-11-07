@@ -2129,6 +2129,8 @@ function sysRows() {
   if (SP.view === 'friends') return [{ head: `Friends · ${(SP.friendItems || []).filter(f => f.online).length} online` },
     ...(SP.friendItems || []).map(f => ({ face: f.avatar, ic: 'user', label: f.name, sub: f.status, dim: !f.online, run: () => messageFriend(f) })),
     { ic: 'back', label: 'Back', run: () => sysView('') }];
+  const fold = v => { if (SP.fold !== v) return []; SP.view = v; const r = sysRows(); SP.view = ''; return r.slice(1, -1).map(x => ({ ...x, fold: true })); };
+  const chev = v => SP.fold === v ? '▴' : '▾';
   const now = LIB.find(g => RUN.has(g.id));
   // grouped like a console's quick menu: a heading over each set, skipped when moving
   const group = (head, rows) => rows.length ? [{ head }, ...rows] : [];
@@ -2146,9 +2148,9 @@ function sysRows() {
       { id: 'mix-ui', mix: 'ui', label: 'UI Volume', run: () => { S.sound = !S.sound; save(); if (S.sound) tick(760, .08); renderSys(); } }]),
     // where the sound plays: A opens the list of speakers, headsets and TVs (left and right still step through them)
     ...(SP.qa?.outputs?.length ? [{ id: 'output', ic: /head|ear|airpod|buds|bose|qc/i.test(SP.qa.outputs.find(o => o.on)?.name || '') ? 'headset' : 'speaker', label: 'Sound output',
-      sub: shortDev(SP.qa.outputs.find(o => o.on)?.name || 'Choose one'), value: '›', run: () => sysView('output') }] : []),
+      id: 'fold-output', sub: shortDev(SP.qa.outputs.find(o => o.on)?.name || 'Choose one'), value: chev('output'), run: () => sysView('output') }, ...fold('output')] : []),
     // paired Bluetooth headphones and speakers: A opens them, and A on one connects or disconnects it
-    ...(SP.qa?.bt ? [{ ic: 'headset', label: 'Bluetooth audio', sub: devName(SP.qa.bt.find(d => d.connected)?.name) || (SP.qa.bt.length ? `${SP.qa.bt.length} paired` : 'Nothing paired yet'), value: '›', run: () => sysView('bt') }] : []),
+    ...(SP.qa?.bt ? [{ ic: 'headset', label: 'Bluetooth audio', sub: devName(SP.qa.bt.find(d => d.connected)?.name) || (SP.qa.bt.length ? `${SP.qa.bt.length} paired` : 'Nothing paired yet'), id: 'fold-bt', value: chev('bt'), run: () => sysView('bt') }, ...fold('bt')] : []),
     ]),
     ...group('Batteries', [
     // each controller's battery; a wireless Xbox-style one can be turned off from here
@@ -2163,14 +2165,14 @@ function sysRows() {
     ...(SP.qa?.batteries || []).map(b => ({ ic: /controller|gamepad|pad/i.test(b.name) ? 'pad' : 'headset', label: devName(b.name), value: `${b.level}%`, sub: 'Battery' })),
     ]),
     ...group('Network and display', [
-    ...(SP.qa?.wifi ? [{ ic: 'wifi', label: 'Wi-Fi', value: SP.qa.wifi.off ? 'Off' : '›',
+    ...(SP.qa?.wifi ? [{ ic: 'wifi', id: 'fold-wifi', label: 'Wi-Fi', value: SP.qa.wifi.off ? 'Off' : chev('wifi'),
       sub: SP.qa.wifi.off ? 'A turns it on' : SP.qa.wifi.connected ? `${SP.qa.wifi.name}${SP.qa.wifi.signal != null ? ` · ${SP.qa.wifi.signal}% signal` : ''}` : 'Not connected · A shows networks',
-      run: () => { sysView('wifi'); qaDo(SP.qa.wifi.off ? { action: 'wifiradio', on: true } : { action: 'wifiscan' }); } }] : []),
+      run: () => { sysView('wifi'); if (SP.fold === 'wifi') qaDo(SP.qa.wifi.off ? { action: 'wifiradio', on: true } : { action: 'wifiscan' }); } }, ...fold('wifi')] : []),
     { ic: SP.qa?.dnd ? 'bellOff' : 'bell', label: 'Do not disturb', value: SP.qa?.dnd ? 'On' : 'Off', sub: 'Hides Windows’ notification pop-ups while you play', run: () => qaDo({ action: 'dnd', on: !SP.qa?.dnd }) },
     ...(SP.qa?.brightness != null ? [{ id: 'bright', ic: 'sun', label: 'Brightness', value: `${SP.qa.brightness}%`, sub: 'Left and right change it', run: () => {} }] : []),
     ]),
     ...group('More', [
-    { ic: 'friends', label: 'Friends', sub: SP.friends || '', value: SP.friendItems?.length ? '›' : '', run: () => SP.friendItems?.length ? sysView('friends') : (closeSys(), closePages(), openHub('friends')) },
+    { ic: 'friends', id: 'fold-friends', label: 'Friends', sub: SP.friends || '', value: SP.friendItems?.length ? chev('friends') : '', run: () => SP.friendItems?.length ? sysView('friends') : (closeSys(), closePages(), openHub('friends')) }, ...fold('friends'),
     { ic: 'settings', label: 'Settings', run: () => { closeSys(); closePages(); openPanel(); } },
 
     ]),
@@ -2204,12 +2206,12 @@ function renderSys() {
       + `<div class="sp-mbtns">${[MEDIA_ICONS[0], MEDIA_ICONS[1][SP.song.playing === false ? 0 : 1], MEDIA_ICONS[2]].map((svg, j) => `<span class="sp-mb${j === SP.m ? ' on' : ''}" data-j="${j}">${svg}</span>`).join('')}</div></div>`
     : r.id === 'power'
     ? `<div class="sp-row sp-power" data-i="${i}">${powerChoices().map((p, j) => `<div class="sp-pw${j === SP.p ? ' on' : ''}${SP.confirm === p.id ? ' warn' : ''}" data-j="${j}">${icon(p.ic)}<span>${SP.confirm === p.id ? 'Press A again' : p.label}</span></div>`).join('')}</div>`
-    : `<div class="sp-row${r.run ? '' : ' info'}${r.cover ? ' sp-game' : ''}${r.face ? ' sp-friend' : ''}${r.dim ? ' off' : ''}" data-i="${i}">${r.cover || r.face ? `<img class="sp-art" src="${esc(r.cover || r.face)}" alt="">` : icon(r.ic)}<div class="sp-text">${r.over ? `<small>${esc(r.over)}</small>` : ''}<div>${esc(r.label)}</div>${r.sub ? `<small>${esc(r.sub)}</small>` : ''}</div>${r.value ? `<b class="sp-value">${esc(r.value)}</b>` : ''}</div>`).join('');
+    : `<div class="sp-row${r.fold ? ' sp-fold' + (SP.foldFresh ? ' fresh' : '') : ''}${r.run ? '' : ' info'}${r.cover ? ' sp-game' : ''}${r.face ? ' sp-friend' : ''}${r.dim ? ' off' : ''}" data-i="${i}">${r.cover || r.face ? `<img class="sp-art" src="${esc(r.cover || r.face)}" alt="">` : icon(r.ic)}<div class="sp-text">${r.over ? `<small>${esc(r.over)}</small>` : ''}<div>${esc(r.label)}</div>${r.sub ? `<small>${esc(r.sub)}</small>` : ''}</div>${r.value ? `<b class="sp-value">${esc(r.value)}</b>` : ''}</div>`).join('');
   sysFocus();
 }
 function sysFocus() { document.querySelectorAll('#syspanel .sp-row').forEach(e => e.classList.toggle('sel', +e.dataset.i === SP.i)); $('#syspanel .sp-row.sel')?.scrollIntoView({ block: 'nearest' }); }
 async function openSys() {
-  SP.open = true; SP.i = 0; SP.p = 0; SP.confirm = null; SP.view = ''; SP.mixOpen = false;
+  SP.open = true; SP.i = 0; SP.p = 0; SP.confirm = null; SP.view = ''; SP.fold = ''; SP.mixOpen = false;
   document.body.classList.add('sys-open'); tick(600, .07); renderSys();
   api('/api/padraw').then(r => { SP.battery = r.battery; if (SP.open) renderSys(); }).catch(() => {});
   api('/api/qa').then(r => { SP.qa = r; if (SP.open) renderSys(); }).catch(() => {});
@@ -2262,7 +2264,12 @@ function sysSide(dir) {
   const n = clamp(SP.p + dir, 0, powerChoices().length - 1);
   if (n !== SP.p) { SP.p = n; SP.confirm = null; tick(700, .03); renderSys(); }
 }
-function sysView(v) { SP.view = v; SP.i = 0; if (v === 'wifi') SP.networks = null; if (v === 'bt') SP.btFound = undefined; tick(700, .05); renderSys(); }
+// Sound output, Bluetooth, Wi-Fi and Friends fold open under their row, like Volume, instead of a page of their own
+function sysView(v) {
+  { const was = SP.fold; SP.fold = v && SP.fold !== v ? v : ''; SP.view = '';
+    if (!SP.fold) { const k = SP.rows.findIndex(r => r.id === 'fold-' + was); if (k >= 0) SP.i = k; } else SP.i = SP.rows.findIndex(r => r.id === 'fold-' + v);
+    if (SP.fold === 'wifi') SP.networks = null; if (SP.fold === 'bt') SP.btFound = undefined; SP.foldFresh = !!SP.fold; tick(700, .04); renderSys(); SP.foldFresh = false; return; }
+  SP.view = v; SP.i = 0; if (v === 'wifi') SP.networks = null; if (v === 'bt') SP.btFound = undefined; tick(700, .05); renderSys(); }
 // A device's own name, tidied: "Sam’s AirPods Pro - Find My" -> "AirPods Pro" (no owner, no Find My)
 const devName = n => (n || '').replace(/\s*-\s*Find My\s*$/i, '').replace(/^[^’'\s]+[’']s\s+/, '').trim() || n;
 const shortDev = n => {  // "Speakers (EDIFIER QR65)" -> "EDIFIER QR65"; "2 - LG TV (AMD High Definition Audio Device)" -> "LG TV"
@@ -3478,7 +3485,7 @@ function input(action) {
   // The launch screen is over everything: B takes it down; nothing else may reach the menus hidden under it
   if (S.busy) return action === 'back' ? cancelLaunch() : undefined;
   if (PT.open) return action === 'back' && !PT.live ? closePadTester() : undefined;  // a controller in use is being tested: its B is held 2 s instead
-  if (SP.open) return ({ up: () => sysMove(-1), down: () => sysMove(1), left: () => sysSide(-1), right: () => sysSide(1), ok: sysOk, back: () => SP.view ? sysView('') : closeSys(), system: closeSys, options: () => SP.rows[SP.i]?.opt?.() })[action]?.();
+  if (SP.open) return ({ up: () => sysMove(-1), down: () => sysMove(1), left: () => sysSide(-1), right: () => sysSide(1), ok: sysOk, back: () => SP.view || SP.fold ? sysView('') : closeSys(), system: closeSys, options: () => SP.rows[SP.i]?.opt?.() })[action]?.();
   if (action === 'system') return Q.open || V.open || P.open ? undefined : openSys();
   const kb = { up: () => searchMove(0, -1), down: () => searchMove(0, 1), left: () => searchMove(-1, 0), right: () => searchMove(1, 0), ok: searchEnter, back: closeSearch,
     options: () => searchType('Delete') };

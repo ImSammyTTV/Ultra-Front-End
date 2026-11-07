@@ -1238,7 +1238,9 @@ body.zone-2 #tabs, body.tabs-peek #tabs { pointer-events: auto; }
 .pgroup > .prow:only-child, .pgroup > .prow:last-child { border-bottom-left-radius: 1.3vh; border-bottom-right-radius: 1.3vh; }
 .pgroup > .prow.sel::before, .pgroup > .prow.sel + .prow::before { opacity: 0; }
 /* Quick Access: the game, music and app volumes fold down under Volume */
-.sp-row.sp-mix { margin-left: 3vh; }
+.sp-row.sp-mix, .sp-row.sp-fold { margin-left: 3vh; }
+.sp-row.sp-fold.fresh { animation: spMixIn .35s var(--ease) backwards; }
+.sp-row.sp-music .sp-art { width: 8vh; height: 8vh; border-radius: 1.1vh; box-shadow: 0 .6vh 1.8vh rgba(0,0,0,.45); }
 .sp-row.sp-mix.fresh { animation: spMixIn .35s var(--ease) backwards; }  /* only as it opens, not on every volume step */
 @keyframes spMixIn { from { opacity: 0; transform: translateY(-1.2vh); } }
 .sp-chev { font-style: normal; font-size: 1.3vh; opacity: .6; margin-left: .8vh; }
