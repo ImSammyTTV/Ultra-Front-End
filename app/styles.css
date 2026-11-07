@@ -1246,7 +1246,8 @@ body.zone-2 #tabs, body.tabs-peek #tabs { pointer-events: auto; }
 .sp-toggle.on i { transform: translateX(1.6vh); }
 /* Add-ons: the icon on its row, and the weather next to the clock */
 .paddon { width: 4.4vh; height: 4.4vh; border-radius: 1vh; object-fit: cover; display: block; }
-.addon-weather { display: inline-flex; align-items: baseline; gap: .7vh; white-space: nowrap; }
-.addon-weather b { font-weight: 400; }
-.addon-weather small { opacity: .65; font-size: .8em; }
+.addon-weather { display: inline-flex; align-items: baseline; gap: .6vh; white-space: nowrap; font-size: 1em; line-height: 1;
+  margin-right: calc(1.4vh - clamp(3.8vh, 1.6vw, 3.9vh)); }  /* closer to the clock than the other status items */
+.addon-weather b { font-weight: 400; font-size: 1em; }
+.addon-weather small { opacity: .65; font-size: 1em; }
 .pic:has(.paddon) { width: 4.4vh; height: 4.4vh; }

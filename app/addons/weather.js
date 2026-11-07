@@ -9,7 +9,8 @@ UFE.addon({
     const el = document.createElement('span');
     el.id = 'addon-weather';
     el.className = 'addon-weather';
-    slot.prepend(el);
+    const clock = slot.querySelector('#clock');
+    clock ? clock.before(el) : slot.prepend(el);  // right next to the time
     const draw = async () => {
       const s = api.settings('weather'), unit = s.unit === 'f' ? 'fahrenheit' : 'celsius';
       try {
