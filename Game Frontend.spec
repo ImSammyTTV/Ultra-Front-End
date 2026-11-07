@@ -11,7 +11,7 @@ a = Analysis(
     ["frontend.py"],
     binaries=WGC,
     datas=[("app", "app"), ("metadata", "metadata"), ("THIRD_PARTY_NOTICES.md", "."), ("licenses", "licenses")],
-    hiddenimports=["server", "hud", "pystray._win32", "PIL.Image", "PIL.ImageDraw", "PIL.ImageFont", "PIL.ImageGrab"],
+    hiddenimports=["server", "hud", "hudcard", "PIL.ImageFilter", "PIL.ImageChops", "pystray._win32", "PIL.Image", "PIL.ImageDraw", "PIL.ImageFont", "PIL.ImageGrab"],
     # Optional imports the app never uses: PIL -> numpy/defusedxml/olefile, bottle -> jinja2/mako, pywebview's ssl mode ->
     # cryptography, cffi's compiler -> setuptools. Without these the exe holds only what THIRD_PARTY_NOTICES.md lists.
     excludes=[

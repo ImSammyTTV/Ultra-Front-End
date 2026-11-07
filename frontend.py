@@ -539,70 +539,10 @@ def overlay():
 
 
 def hud():
-    """The in-game display: a small topmost card in the top-left corner of the game's screen for add-ons (the
-    performance overlay has the top right). It's see-through to
-    clicks and never takes the focus (WS_EX_TRANSPARENT | WS_EX_NOACTIVATE), so the game keeps the controller and the
-    mouse; it isn't in the taskbar or Alt+Tab (WS_EX_TOOLWINDOW). The page sizes it to its cards, and closes it when
-    there's nothing to show or the game has ended."""
-    import ctypes
-    webview_args()
-    scale = ctypes.windll.user32.GetDpiForSystem() / 96 or 1
-    sx, sy, sw, sh = game_screen()
-    width = int(sh * .24)
-    HUD_WIN = {}
-    margin = int(sh * .025)
-
-    class HudApi:
-        def size(self, h, w=None, round_px=None, place="top-left"):
-            nonlocal width
-            try:
-                if w:
-                    width = max(20, int(float(w) * scale))
-                h = max(1, int(float(h) * scale))
-                window.resize(int(width / scale), int(h / scale))
-                # where the person chose (Settings › Add-ons): a corner, or the middle of the top or bottom edge
-                x = sx + margin if "left" in place else sx + sw - width - margin if "right" in place else sx + (sw - width) // 2
-                y = sy + sh - h - margin * 2 if place.startswith("bottom") else sy + margin
-                window.move(int(x / scale), int(y / scale))
-                if HUD_WIN.get("hwnd") and round_px:  # cut to the pill's rounded shape: only the pill shows over the game
-                    d = int(float(round_px) * scale)
-                    ctypes.windll.user32.SetWindowRgn(ctypes.c_void_p(HUD_WIN["hwnd"]), ctypes.windll.gdi32.CreateRoundRectRgn(0, 0, width + 1, h + 1, d, d), True)
-            except Exception:
-                pass
-
-        def quit(self):
-            os._exit(0)
-
-    window = webview.create_window("Ultra Front End HUD", URL + "/hud.html", x=int((sx + margin) / scale), y=int((sy + margin) / scale),
-                                   width=int(width / scale), height=int(sh * .1 / scale), on_top=True, frameless=True, easy_drag=False,
-                                   focus=False, background_color="#1b1d23", hidden=True, js_api=HudApi())
-
-    def styles():
-        window.events.loaded.wait(15)
-        try:
-            raw = int(window.native.Handle.ToInt64())
-        except Exception:
-            raw = server.frontend_window("Ultra Front End HUD")
-        hwnd = ctypes.c_void_p(raw)
-        HUD_WIN["hwnd"] = raw
-        user32 = ctypes.windll.user32
-        GWL_EXSTYLE = -20
-        ex = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-        user32.SetWindowLongW(hwnd, GWL_EXSTYLE, ex | 0x20 | 0x80000 | 0x8000000 | 0x80)  # transparent, layered, no-activate, tool window
-        user32.SetLayeredWindowAttributes(hwnd, 0, 235, 2)  # LWA_ALPHA: a little see-through, like glass (the page itself can't be: WebView2 draws it)
-        round = ctypes.c_int(1)  # DWMWCP_DONOTROUND: the window is cut to the pill's own shape instead
-        ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 33, ctypes.byref(round), ctypes.sizeof(round))
-        no_border = ctypes.c_uint(0xFFFFFFFE)
-        ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(no_border), ctypes.sizeof(no_border))
-        try:  # shown through WinForms so the page draws (a window shown by Windows alone stays blank); with no-activate set
-            from System import Func, Type  # above, it doesn't take the focus from the game
-            window.native.Invoke(Func[Type](lambda: window.native.Show()))
-        except Exception:
-            user32.ShowWindow(hwnd, 4)  # SW_SHOWNOACTIVATE
-        user32.SetWindowPos(hwnd, ctypes.c_void_p(-1), 0, 0, 0, 0, 0x0013)  # topmost, no move, no size, no activate
-        window.evaluate_js("drawn = ''")  # fitted again now the window is known, so its shape is cut too
-        window_log("hud: shown")
-    webview.start(styles, private_mode=True, storage_path=os.path.join(server.DATA, "webview-hud"))
+    """The card over the game for add-ons: drawn by hudcard.py as a picture with see-through pixels (no browser), so its
+    edges are smooth and its glass is see-through. It never takes the focus or the clicks."""
+    import hudcard
+    hudcard.run(URL, game_screen(), window_log)
     os._exit(0)
 
 
