@@ -177,7 +177,7 @@ function tabIcon(name) {
 }
 async function loadLibrary() {
   if (API) {
-    try { const r = await api('/api/library'); LIB = r.games; libStamp = r.scanned; } catch (e) { toast(e.message); }
+    try { const r = await api('/api/library'); LIB = r.games; libStamp = r.scanned; window.addonEmit?.('library', LIB.length); } catch (e) { toast(e.message); }
   } else {
     LIB = (window.LIBRARY || []).map(g => ({ ...g, group: g.source === 'Ports' ? 'PC Ports' : g.source, installed: true, lastPlayed: Date.now() / 1000 - g.lastPlayed * 86400 }));
   }
@@ -386,7 +386,9 @@ async function watchRunning() {
   try { r = await api('/api/running'); } catch { return; }
   const next = new Set(r.games), same = next.size === RUN.size && [...next].every(x => RUN.has(x));
   if (same) return;
+  for (const gid of RUN) if (!next.has(gid)) window.addonEmit?.('game:exit', { game: LIB.find(g => g.id === gid) || { id: gid } });
   RUN = next;
+  window.addonEmit?.('game:running', { games: [...RUN] });
   showRunning();
   if (LIB.length) buildRow(false);
   if (D.open) renderActions();
@@ -880,6 +882,7 @@ async function openEmulatorFor(g) {
 async function launchGame(g) {
   if (S.busy || !g) return;
   if (RUN.has(g.id)) return resumeGame(g);  // never a second copy
+  window.addonEmit?.('game:start', { game: { id: g.id, title: g.title, platform: g.platform, cover: g.cover } });
   // The game's own logo alone in the middle, over its art dimmed behind; its name in large type until (or unless) a
   // logo is found. Everything already looked up for the details screen is reused, so this is usually instant.
   const L = $('#launch'), bg = L.querySelector('.lbg'), logo = L.querySelector('.llogo'), title = L.querySelector('.lt');
@@ -2183,6 +2186,7 @@ function sysRows() {
       run: () => { sysView('wifi'); if (SP.fold === 'wifi') qaDo(SP.qa.wifi.off ? { action: 'wifiradio', on: true } : { action: 'wifiscan' }); } }, ...fold('wifi')] : []),
     ...(SP.qa?.brightness != null ? [{ id: 'bright', ic: 'sun', label: 'Brightness', value: `${SP.qa.brightness}%`, sub: 'Left and right change it', run: () => {} }] : []),
     ]),
+    ...(window.addonQaRows?.() || []),  // rows add-ons add
     // Friends and Settings on their own, outside the categories
     { ic: 'friends', id: 'fold-friends', label: 'Friends', sub: SP.friends || '', value: SP.friendItems?.length ? chev('friends') : '', run: () => SP.friendItems?.length ? sysView('friends') : (closeSys(), closePages(), openHub('friends')) }, ...fold('friends'),
     { ic: 'settings', label: 'Settings', run: () => { closeSys(); closePages(); openPanel(); } },
@@ -2236,6 +2240,7 @@ function renderSys() {
 function sysDnd() { const on = !SP.qa?.dnd; if (SP.qa) SP.qa.dnd = on; tick(700, .04); renderSys(); toast(on ? 'Do not disturb is on' : 'Do not disturb is off', 2000); qaDo({ action: 'dnd', on }); }
 function sysFocus() { $('#syspanel .sp-dnd')?.classList.toggle('sel', !!SP.bell); document.querySelectorAll('#syspanel .sp-row').forEach(e => e.classList.toggle('sel', !SP.bell && +e.dataset.i === SP.i)); $('#syspanel .sp-row.sel')?.scrollIntoView({ block: 'nearest' }); }
 async function openSys() {
+  window.addonEmit?.('quickaccess:open');
   SP.open = true; SP.i = 0; SP.p = 0; SP.confirm = null; SP.view = ''; SP.fold = ''; SP.bell = false; SP.mixOpen = false;
   document.body.classList.add('sys-open'); tick(600, .07); renderSys();
   api('/api/padraw').then(r => { SP.battery = r.battery; if (SP.open) renderSys(); }).catch(() => {});
@@ -2255,7 +2260,7 @@ async function openSys() {
   SP.active = dl?.items?.length || 0;
   renderSys();
 }
-function closeSys() { SP.open = false; document.body.classList.remove('sys-open'); tick(420, .06); }
+function closeSys() { if (SP.open) window.addonEmit?.('quickaccess:close'); SP.open = false; document.body.classList.remove('sys-open'); tick(420, .06); }
 function sysMove(dir) {
   // up from the first row reaches the Do not disturb bell by the time; down comes back
   if (SP.bell) { if (dir > 0) { SP.bell = false; tick(700, .03); sysFocus(); } return; }
@@ -3508,6 +3513,7 @@ async function padTesterTick() {
   PT.timer = setTimeout(padTesterTick, 40);
 }
 function input(action) {
+  if (window.addonEmit?.('input', action)) return;  // an add-on took this press
   if (action.startsWith('zoom') && !R.open) return;  // the right stick only zooms a post; elsewhere it does nothing
   if (INTRO.open) return endIntro(true);  // any button skips the intro
   // The launch screen is over everything: B takes it down; nothing else may reach the menus hidden under it

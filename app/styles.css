@@ -1269,3 +1269,8 @@ body.zone-2 #tabs, body.tabs-peek #tabs { pointer-events: auto; }
 .sp-dnd { width: 4.4vh; height: 4.4vh; margin-left: -.9vh; justify-content: center; border-radius: 50%; flex: none; }  /* a round button, centred on the bell */
 .sp-dnd small { display: none; }
 .sp-dnd.sel { opacity: 1; background: #fff; color: var(--menu-ink); }  /* the bell, reached by pressing up */
+.addon-home { position: fixed; inset: 0; z-index: 5; pointer-events: none; }  /* add-ons draw over the home screen here */
+.addon-home > * { pointer-events: auto; }
+body:is(.sys-open, .panel-open, .details-open, .hub-open, .lib-open, .news-open, .reader-open, .search-open, .album-open, .viewer-open, .ach-open) .addon-home, body:is(.sys-open, .panel-open, .details-open, .hub-open, .lib-open, .news-open, .reader-open, .search-open, .album-open, .viewer-open, .ach-open) .addon-home > * { opacity: 0; pointer-events: none; }  /* only on the home screen */
+[data-addon-slot="quickaccess"]:empty { display: none; }
+[data-addon-slot="quickaccess"] { margin: 0 3.6vh 1.4vh; }
