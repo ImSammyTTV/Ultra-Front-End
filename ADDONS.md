@@ -73,6 +73,18 @@ Your rows fold under one row of their own, like Sound and Batteries. Give it a t
 `api.quickAccess(rows, { title: '3D printer', icon: 'printer' })` (your add-on's title if you don't).
 `rows()` is asked for each time Quick Access is drawn. Rows without `run` are just information.
 
+### A card over the game
+
+```js
+api.hud({ icon: 'printer', text: 'Benchy', sub: '42% · 1 h 10 min left', progress: 42 });
+api.hud(null);  // takes it away
+```
+
+A small card in the top-right corner over the game you're playing. It never takes the focus or the clicks, so the
+game keeps the controller. It's only there while a game is running, and hides while the in-game menu is open. Send
+it again at least every two minutes (an `api.every` does it), or it's taken away. Icons: `printer`, `bolt`, `music`,
+`clock`, `pad`, `bell`, `star`. The Bambu Lab add-on (`app/addons/bambu.js`) is a full example.
+
 ### Events
 
 ```js

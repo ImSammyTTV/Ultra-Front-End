@@ -538,6 +538,55 @@ def overlay():
     os._exit(0)
 
 
+def hud():
+    """The in-game display: a small topmost card in the corner of the game's screen for add-ons. It's see-through to
+    clicks and never takes the focus (WS_EX_TRANSPARENT | WS_EX_NOACTIVATE), so the game keeps the controller and the
+    mouse; it isn't in the taskbar or Alt+Tab (WS_EX_TOOLWINDOW). The page sizes it to its cards, and closes it when
+    there's nothing to show or the game has ended."""
+    import ctypes
+    webview_args()
+    scale = ctypes.windll.user32.GetDpiForSystem() / 96 or 1
+    sx, sy, sw, sh = game_screen()
+    width = int(sh * .26)
+    margin = int(sh * .025)
+
+    class HudApi:
+        def size(self, h):
+            try:
+                h = max(1, int(float(h) * scale))
+                window.resize(int(width / scale), int(h / scale))
+                window.move(int((sx + sw - width - margin) / scale), int((sy + margin) / scale))
+            except Exception:
+                pass
+
+        def quit(self):
+            os._exit(0)
+
+    window = webview.create_window("Ultra Front End HUD", URL + "/hud.html", x=int((sx + sw - width - margin) / scale), y=int((sy + margin) / scale),
+                                   width=int(width / scale), height=int(sh * .1 / scale), on_top=True, frameless=True, easy_drag=False,
+                                   focus=False, background_color="#141518", hidden=True, js_api=HudApi())
+
+    def styles():
+        window.events.loaded.wait(15)
+        try:
+            raw = int(window.native.Handle.ToInt64())
+        except Exception:
+            raw = server.frontend_window("Ultra Front End HUD")
+        hwnd = ctypes.c_void_p(raw)
+        user32 = ctypes.windll.user32
+        GWL_EXSTYLE = -20
+        ex = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+        user32.SetWindowLongW(hwnd, GWL_EXSTYLE, ex | 0x20 | 0x80000 | 0x8000000 | 0x80)  # transparent, layered, no-activate, tool window
+        user32.SetLayeredWindowAttributes(hwnd, 0, 235, 2)  # LWA_ALPHA: a touch see-through
+        no_border = ctypes.c_uint(0xFFFFFFFE)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(no_border), ctypes.sizeof(no_border))
+        user32.ShowWindow(hwnd, 4)  # SW_SHOWNOACTIVATE: shown without taking the focus from the game
+        user32.SetWindowPos(hwnd, ctypes.c_void_p(-1), 0, 0, 0, 0, 0x0013)  # topmost, no move, no size, no activate
+        window_log("hud: shown")
+    webview.start(styles, private_mode=True, storage_path=os.path.join(server.DATA, "webview-hud"))
+    os._exit(0)
+
+
 def wait_for_wake(want):
     """The overlay waits here for the helper: True when the menu is asked for ("open") or put away ("hide"), False when
     the game has ended (or the helper has gone)."""
@@ -933,6 +982,8 @@ def main():
     window_log(f"start {' '.join(sys.argv[1:]) or '(window)'} from parent {os.getppid()}")
     if "--overlay" in sys.argv:
         return overlay()
+    if "--hud" in sys.argv:
+        return hud()
     if "--install-broker" in sys.argv:  # the elevated install helper for setup (one administrator prompt): no window, no tray
         i = sys.argv.index("--install-broker")
         return server.install_broker(sys.argv[i + 1], sys.argv[i + 2])

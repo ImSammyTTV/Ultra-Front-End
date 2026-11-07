@@ -1,4 +1,5 @@
-// Bambu Lab: how your print is going, by the clock and in Quick Access, and a message when it's done.
+// Bambu Lab: how your print is going, by the clock and in a card over your game, and a message when it's done.
+// An example of api.hud: the card shows only while a game is running.
 // The app talks to the printer on your home network (LAN): its IP address, serial number and access code are on the
 // printer's screen (Settings › Network, or WLAN / LAN Only). Nothing goes through Bambu's cloud.
 UFE.addon({
@@ -25,23 +26,24 @@ UFE.addon({
       // a message when a print ends, whichever way
       if (active(was) && p.state === 'FINISH') { api.toast(`Print finished${p.name ? `: ${p.name}` : ''}`, 6000); api.sound(880, .08); }
       if (active(was) && p.state === 'FAILED') api.toast(`Print stopped${p.name ? `: ${p.name}` : ''}`, 6000);
+      draw(); card();
       was = p.state;
-      draw();
     };
     check();
     api.every(10000, check);
-    api.quickAccess(() => {
-      if (!p) return [];
-      if (!p.setup) return [{ icon: 'printer', label: '3D printer', sub: 'Set it up in Settings › Add-ons', run: () => api.openSettings() }];
-      if (!p.connected) return [{ icon: 'printer', label: '3D printer', sub: p.error ? `Can't reach it: ${p.error}` : 'Connecting…' }];
+    // over the game: a card in the corner while it prints, and for a few minutes after it's done
+    let doneAt = 0;
+    const card = () => {
+      if (!p?.connected) return api.hud(null);
+      if (active(was) || p.state === 'RUNNING') doneAt = 0;
+      if (p.state === 'FINISH' || p.state === 'FAILED') doneAt ||= Date.now();
       const name = p.name || 'Print';
-      const states = { RUNNING: 'Printing', PREPARE: 'Getting ready', PAUSE: 'Paused', FINISH: 'Finished', FAILED: 'Stopped', IDLE: 'Ready', SLICING: 'Slicing' };
-      return [
-        { icon: 'printer', label: active(p.state) || p.state === 'FINISH' ? name : '3D printer', value: active(p.state) && p.percent != null ? `${p.percent}%` : '',
-          sub: [states[p.state] || 'Ready', active(p.state) && p.remaining ? `${left(p.remaining)} left` : '', p.layers ? `layer ${p.layer} of ${p.layers}` : ''].filter(Boolean).join(' · ') },
-        ...(p.nozzle != null ? [{ icon: 'flame', label: 'Temperatures', sub: `Nozzle ${Math.round(p.nozzle)}°${p.nozzleTarget ? ` of ${Math.round(p.nozzleTarget)}°` : ''} · Bed ${Math.round(p.bed)}°${p.bedTarget ? ` of ${Math.round(p.bedTarget)}°` : ''}` }] : []),
-      ];
-    }, { title: '3D printer', icon: 'printer' });
+      if (active(p.state)) return api.hud({ icon: 'printer', text: name, progress: p.percent,
+        sub: [p.state === 'PAUSE' ? 'Paused' : p.state === 'PREPARE' ? 'Getting ready' : `${p.percent ?? 0}%`, p.remaining ? `${left(p.remaining)} left` : '', p.layers ? `layer ${p.layer} of ${p.layers}` : ''].filter(Boolean).join(' · ') });
+      if (doneAt && Date.now() - doneAt < 5 * 60000) return api.hud({ icon: 'printer', text: name, sub: p.state === 'FINISH' ? 'Print finished' : 'Print stopped', progress: p.state === 'FINISH' ? 100 : null });
+      api.hud(null);
+    };
+    api.every(10000, card);
   },
   options(api) {
     const set = patch => api.request('/api/bambu', patch).then(() => { api.toast('Saved'); renderPanel(); }).catch(e => api.toast(e.message));

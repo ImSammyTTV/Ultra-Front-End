@@ -3766,6 +3766,7 @@ def session_start(game_id):
         sessions.append({"game": game_id, "start": now, "end": None})
         store("sessions.json", sessions[-3000:])
     threading.Timer(0.3, warm_overlay).start()  # the in-game menu, ready before the game's window is up
+    threading.Timer(8, hud_start).start()  # an add-on's card, once the game is up
 
 
 def session_end(game_id=None, min_age=0):
@@ -5091,6 +5092,51 @@ def focus_process(pid, timeout=120):
                 settled = time.time() + 20  # a launcher's window, or a slow emulator's, may give way to the game's: keep watching
             shown.add(hwnd)
     threading.Thread(target=run, daemon=True).start()
+
+
+# ---------- in-game display (add-ons) ----------
+# A small card in the top-right corner over the game, for add-ons: a print's progress, a timer. It never takes the
+# focus or the clicks (the game keeps both), and it's only there while a game is running and an add-on has something
+# to show. A third copy of the program with --hud shows app/hud.html, which asks here every two seconds.
+HUD = {"items": {}, "proc": None}
+HUD_LOCK = threading.Lock()
+
+
+def hud_alive():
+    return HUD["proc"] is not None and HUD["proc"].poll() is None
+
+
+def hud_set(addon_id, item):
+    """One add-on's card: {icon, text, sub, progress 0-100}, or None to take it away."""
+    addon_id = str(addon_id or "")[:40]
+    if not item:
+        HUD["items"].pop(addon_id, None)
+    else:
+        prog = item.get("progress")
+        HUD["items"][addon_id] = {"icon": str(item.get("icon") or "")[:20], "text": str(item.get("text") or "")[:80],
+                                  "sub": str(item.get("sub") or "")[:100], "t": time.time(),
+                                  "progress": max(0, min(100, float(prog))) if isinstance(prog, (int, float)) else None}
+    hud_start()
+
+
+def hud_items():
+    now = time.time()
+    for k in [k for k, v in HUD["items"].items() if now - v["t"] > 120]:  # an add-on that stopped telling: its card goes
+        HUD["items"].pop(k, None)
+    return [{k: v for k, v in it.items() if k != "t"} for it in HUD["items"].values()]
+
+
+def hud_start():
+    if not (WIN and not MAC and getattr(sys, "frozen", False) and open_session() and hud_items()):
+        return
+    with HUD_LOCK:
+        if not hud_alive():
+            HUD["proc"] = subprocess.Popen([frontend_exe(), "--hud"], cwd=os.path.dirname(frontend_exe()))
+
+
+def hud_view():
+    items = hud_items()
+    return {"items": items, "quit": not open_session() or not items, "hidden": overlay_open()}
 
 
 # ---------- in-game overlay ----------
@@ -9930,6 +9976,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self.reply(game_details(g))
         if path == "/api/bambu":
             return self.reply(bambu_view())
+        if path == "/api/hud":
+            return self.reply(hud_view())
         if path == "/api/addons":
             return self.reply({"addons": user_addons(), "folder": USER_ADDONS})
         if path == "/api/addons/file":
@@ -10153,6 +10201,9 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.reply(settings_view())
             if path == "/api/album/delete":
                 delete_capture(body.get("id"))
+                return self.reply({"ok": True})
+            if path == "/api/hud":  # {id, item}: an add-on's card over the game (item null takes it away)
+                hud_set(body.get("id"), body.get("item"))
                 return self.reply({"ok": True})
             if path == "/api/addons/open":  # the folder, to drop an add-on into
                 os.makedirs(USER_ADDONS, exist_ok=True)
