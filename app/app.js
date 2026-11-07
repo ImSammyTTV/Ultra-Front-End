@@ -2139,7 +2139,7 @@ function sysRows() {
   const group = (head, rows) => !rows.length ? [] : head === 'Games' ? rows : [
     { id: 'cat-' + head, ic: CAT_IC[head] || 'settings', label: head, value: SP.cats[head] ? '▴' : '▾',
       run: () => { SP.cats[head] = !SP.cats[head]; SP.foldFresh = SP.cats[head]; tick(700, .04); renderSys(); SP.foldFresh = false; } },
-    ...(SP.cats[head] ? rows.map(r => ({ ...r, fold: true })) : [])];
+    ...(SP.cats[head] ? rows : [])];  // in line with Volume, which isn't indented
   return [
     ...group('Games', [
     ...(now ? [{ ic: 'pad', label: now.title, sub: 'Running · A resumes', run: () => { closeSys(); resumeGame(now); } }] : []),
