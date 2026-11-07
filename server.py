@@ -5785,6 +5785,8 @@ def wifi_status():
             info.setdefault(k.strip().lower(), v.strip())
     if "state" not in info:
         return None  # no Wi-Fi adapter
+    if "software off" in r.stdout.lower() or "hardware off" in r.stdout.lower():
+        return {"connected": False, "name": "", "signal": None, "off": True}
     connected = info.get("state", "").lower() == "connected"
     sig = re.sub(r"\D", "", info.get("signal", ""))
     return {"connected": connected, "name": info.get("ssid", "") if connected else "", "signal": int(sig) if sig else None}
@@ -5815,6 +5817,7 @@ def wifi_networks():
         k, v = k.strip().lower(), v.strip()
         if k == "authentication":
             nets[cur]["secure"] = v.lower() != "open"
+            nets[cur]["auth"] = "wpa3" if "wpa3" in v.lower() and "wpa2" not in v.lower() else "wpa2"
         elif k == "signal":
             nets[cur]["signal"] = max(nets[cur]["signal"], int(re.sub(r"\D", "", v) or 0))
     return sorted(nets.values(), key=lambda n: (not n["on"], not n["saved"], -n["signal"]))
@@ -5826,8 +5829,7 @@ def wifi_connect(ssid):
     if not net:
         raise ValueError("That network isn't in range any more")
     if not net["saved"]:
-        open_target("ms-availablenetworks:")
-        return "windows"  # a new network needs its password typed in: Windows' own list asks for it
+        return "password" if net["secure"] else wifi_join_new(ssid, "")  # a new secured network: the page asks for its password
     r = subprocess.run(["netsh", "wlan", "connect", f"name={ssid}", f"ssid={ssid}"], capture_output=True, text=True, timeout=15, creationflags=0x08000000)
     if r.returncode:
         raise OSError("Windows couldn't join that network")
@@ -5899,6 +5901,109 @@ def bt_audio_connect(addr, connect=True):
         ok = bt.BluetoothSetServiceState(None, ctypes.byref(info), g, 1 if connect else 0) == 0 or ok
     if not ok:
         raise OSError("Windows couldn't reach it: check it's switched on and nearby")
+
+
+RADIO_PS1 = r"""param([string]$Kind = '', [string]$State = '')
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
+function Await($op, $type) { $t = $asTask.MakeGenericMethod($type).Invoke($null, @($op)); $t.Wait(-1) | Out-Null; $t.Result }
+[Windows.Devices.Radios.Radio, Windows.System.Devices, ContentType = WindowsRuntime] | Out-Null
+$null = Await ([Windows.Devices.Radios.Radio]::RequestAccessAsync()) ([Windows.Devices.Radios.RadioAccessStatus])
+$radios = Await ([Windows.Devices.Radios.Radio]::GetRadiosAsync()) ([System.Collections.Generic.IReadOnlyList[Windows.Devices.Radios.Radio]])
+if ($Kind -and $State) {
+  $r = $radios | Where-Object { "$($_.Kind)" -eq $Kind } | Select-Object -First 1
+  if ($r) { $null = Await ($r.SetStateAsync($State)) ([Windows.Devices.Radios.RadioAccessStatus]) }
+  Start-Sleep -Milliseconds 800
+  $radios = Await ([Windows.Devices.Radios.Radio]::GetRadiosAsync()) ([System.Collections.Generic.IReadOnlyList[Windows.Devices.Radios.Radio]])
+}
+$radios | ForEach-Object { "$($_.Kind)=$($_.State)" }
+"""
+
+
+def radios(kind=None, on=None):
+    """Windows' radios ({"WiFi": True, "Bluetooth": False}), switching one on or off first, as the taskbar's quick settings do."""
+    if not WIN:
+        return {}
+    import tempfile
+    path = os.path.join(tempfile.gettempdir(), "ufe-radio.ps1")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(RADIO_PS1)
+    args = ["-Kind", kind, "-State", "On" if on else "Off"] if kind else []
+    try:
+        r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", path, *args],
+                           capture_output=True, text=True, timeout=20, creationflags=0x08000000)
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    return {k: v == "On" for k, _, v in (l.strip().partition("=") for l in r.stdout.splitlines()) if v}
+
+
+def wifi_join_new(ssid, password):
+    """Joins a network this PC hasn't been on: a Windows Wi-Fi profile is made with the password typed in, then used."""
+    net = next((n for n in wifi_networks() if n["ssid"] == ssid), None)
+    if not net:
+        raise ValueError("That network isn't in range any more")
+    if net["secure"] and len(password) < 8:
+        raise ValueError("Wi-Fi passwords are at least 8 characters")
+    import tempfile
+    from xml.sax.saxutils import escape
+    auth = {"wpa3": "WPA3SAE"}.get(net.get("auth", ""), "WPA2PSK") if net["secure"] else "open"
+    security = (f"<authEncryption><authentication>{auth}</authentication><encryption>AES</encryption><useOneX>false</useOneX></authEncryption>"
+                f"<sharedKey><keyType>passPhrase</keyType><protected>false</protected><keyMaterial>{escape(password)}</keyMaterial></sharedKey>"
+                if net["secure"] else "<authEncryption><authentication>open</authentication><encryption>none</encryption><useOneX>false</useOneX></authEncryption>")
+    xml = (f'<?xml version="1.0"?><WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1"><name>{escape(ssid)}</name>'
+           f"<SSIDConfig><SSID><name>{escape(ssid)}</name></SSID></SSIDConfig><connectionType>ESS</connectionType><connectionMode>auto</connectionMode>"
+           f"<MSM><security>{security}</security></MSM></WLANProfile>")
+    fd, path = tempfile.mkstemp(suffix=".xml")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(xml)
+        r = subprocess.run(["netsh", "wlan", "add", "profile", f"filename={path}", "user=current"], capture_output=True, text=True, timeout=15, creationflags=0x08000000)
+    finally:
+        try:
+            os.remove(path)  # the password stays only in Windows' own Wi-Fi profile
+        except OSError:
+            pass
+    if r.returncode:
+        raise OSError("Windows wouldn't save that network")
+    subprocess.run(["netsh", "wlan", "connect", f"name={ssid}", f"ssid={ssid}"], capture_output=True, timeout=15, creationflags=0x08000000)
+    for _ in range(10):  # a wrong password just never connects: wait a little, then say so
+        time.sleep(1.5)
+        if (wifi_status() or {}).get("name") == ssid:
+            return "joined"
+    subprocess.run(["netsh", "wlan", "delete", "profile", f"name={ssid}"], capture_output=True, timeout=15, creationflags=0x08000000)
+    raise ValueError("Couldn't join: check the password and try again")
+
+
+def bt_scan():
+    """Bluetooth headphones and speakers nearby that aren't paired yet (they must be in pairing mode). Takes about 6 seconds."""
+    ctypes, W, bt, DEVINFO, SEARCH = _bt()
+    sp = SEARCH(ctypes.sizeof(SEARCH), 0, 0, 1, 0, 1, 5, None)  # look for new devices for 5 x 1.28 s
+    info = DEVINFO(); info.dwSize = ctypes.sizeof(DEVINFO)
+    h = bt.BluetoothFindFirstDevice(ctypes.byref(sp), ctypes.byref(info))
+    out = []
+    if not h:
+        return out
+    try:
+        while True:
+            if (info.ulClassofDevice >> 8) & 0x1F == 4 and not info.fRemembered and not info.fAuthenticated:
+                out.append({"addr": f"{info.Address:012x}", "name": info.szName or "Bluetooth audio device"})
+            info = DEVINFO(); info.dwSize = ctypes.sizeof(DEVINFO)
+            if not bt.BluetoothFindNextDevice(W.HANDLE(h), ctypes.byref(info)):
+                break
+    finally:
+        bt.BluetoothFindDeviceClose(W.HANDLE(h))
+    return out
+
+
+def bt_pair(addr):
+    """Pairs new Bluetooth headphones or a speaker, then connects it. Windows may show its own prompt to confirm."""
+    ctypes, W, bt, DEVINFO, SEARCH = _bt()
+    info = DEVINFO(); info.dwSize = ctypes.sizeof(DEVINFO); info.Address = int(addr, 16)
+    bt.BluetoothGetDeviceInfo(None, ctypes.byref(info))
+    err = bt.BluetoothAuthenticateDeviceEx(None, None, ctypes.byref(info), None, 0)  # MITM protection not required: headphones have no screen
+    if err not in (0, 183):  # 183: already paired
+        raise OSError("Pairing didn't finish: put it in pairing mode and try again")
+    bt_audio_connect(addr, True)
 
 
 DND_KEY = r"Software\Microsoft\Windows\CurrentVersion\Notifications\Settings"
@@ -9523,6 +9628,16 @@ class Handler(SimpleHTTPRequestHandler):
                     return self.reply({**qa_view(), "joined": wifi_connect(str(body.get("ssid") or ""))})
                 elif act == "wifiscan":
                     return self.reply({**qa_view(), "networks": wifi_networks()})
+                elif act == "wifiradio":
+                    radios("WiFi", bool(body.get("on")))
+                    time.sleep(3)  # it takes a moment to find networks after switching on
+                    return self.reply({**qa_view(), "networks": wifi_networks() if body.get("on") else []})
+                elif act == "wifinew":
+                    return self.reply({**qa_view(), "joined": wifi_join_new(str(body.get("ssid") or ""), str(body.get("password") or ""))})
+                elif act == "btscan":
+                    return self.reply({**qa_view(), "found": bt_scan()})
+                elif act == "btpair":
+                    bt_pair(str(body.get("addr") or ""))
                 elif act == "bt":
                     bt_audio_connect(str(body.get("addr") or ""), bool(body.get("connect", True)))
                 elif act in ("wifi", "nightlight", "bluetooth"):

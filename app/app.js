@@ -2113,10 +2113,18 @@ function sysRows() {
     label: shortDev(o.name), value: o.on ? '✓' : '', run: () => o.on ? sysView('') : qaDo({ action: 'output', id: o.id }).then(() => toast(`Sound plays on ${shortDev(o.name)}`, 2500)) })), back];
   if (SP.view === 'bt') return [{ head: 'Bluetooth audio' }, ...(SP.qa?.bt || []).map(d => ({ ic: 'headset', label: d.name, value: d.connected ? 'Connected' : '',
     sub: d.connected ? 'A disconnects it' : 'A connects it', run: () => btToggle(d) })),
-    { ic: 'settings', label: 'Pair a new device', sub: 'Opens Windows’ Bluetooth settings', run: () => qaDo({ action: 'bluetooth' }) }, back];
-  if (SP.view === 'wifi') return [{ head: 'Wi-Fi' }, ...(SP.networks == null ? [{ ic: 'wifi', label: 'Looking for networks…' }]
-    : SP.networks.length ? SP.networks.map(n => ({ ic: 'wifi', label: n.ssid, value: n.on ? '✓' : `${n.signal}%`, sub: n.on ? 'Connected' : n.saved ? 'Saved · A joins' : n.secure ? 'Needs a password · A opens Windows to type it' : 'Open · A joins',
-      run: () => n.on ? sysView('') : wifiJoin(n) })) : [{ ic: 'wifi', label: 'No networks in range' }]), back];
+    ...(SP.btFound === undefined ? [] : SP.btFound === null ? [{ ic: 'headset', label: 'Searching for devices…', sub: 'Put your headphones or speaker in pairing mode' }]
+      : SP.btFound.length ? SP.btFound.map(d => ({ ic: 'headset', over: 'New', label: d.name, sub: 'A pairs and connects it', run: () => btPair(d) }))
+      : [{ ic: 'headset', label: 'Nothing new found', sub: 'Check it’s in pairing mode, then search again' }]),
+    { ic: 'search', label: 'Search for new devices', sub: 'Pairs headphones and speakers right here', run: btScan }, back];
+  if (SP.view === 'wifi') return [{ head: 'Wi-Fi' },
+    { ic: 'wifi', label: SP.qa?.wifi?.off ? 'Wi-Fi is off' : 'Wi-Fi is on', value: SP.qa?.wifi?.off ? 'Off' : 'On', sub: SP.qa?.wifi?.off ? 'A turns it on' : 'A turns it off',
+      run: () => { SP.networks = SP.qa?.wifi?.off ? null : []; renderSys(); qaDo({ action: 'wifiradio', on: !!SP.qa?.wifi?.off }); } },
+    ...(SP.qa?.wifi?.off ? [] : SP.networks == null ? [{ ic: 'wifi', label: 'Looking for networks…' }]
+      : SP.networks.length ? SP.networks.map(n => ({ ic: 'wifi', label: n.ssid, value: n.on ? '✓' : `${n.signal}%`,
+          sub: n.on ? 'Connected' : n.saved ? 'Saved · A joins' : n.secure ? 'A joins: you type its password' : 'Open network · A joins', run: () => n.on ? sysView('') : wifiJoin(n) }))
+        .concat([{ ic: 'reset', label: 'Look again', run: () => { SP.networks = null; renderSys(); qaDo({ action: 'wifiscan' }); } }])
+      : [{ ic: 'wifi', label: 'No networks in range', sub: 'A looks again', run: () => { SP.networks = null; renderSys(); qaDo({ action: 'wifiscan' }); } }]), back];
   if (SP.view === 'friends') return [{ head: `Friends · ${(SP.friendItems || []).filter(f => f.online).length} online` },
     ...(SP.friendItems || []).map(f => ({ face: f.avatar, ic: 'user', label: f.name, sub: f.status, dim: !f.online, run: () => messageFriend(f) })),
     { ic: 'back', label: 'Back', run: () => sysView('') }];
@@ -2144,8 +2152,9 @@ function sysRows() {
     ...(SP.qa?.steamBattery != null ? [{ ic: 'pad', label: 'Steam Controller', value: `${SP.qa.steamBattery}%`, sub: 'Battery' }] : []),
     ]),
     ...group('Network and display', [
-    ...(SP.qa?.wifi ? [{ ic: 'wifi', label: 'Wi-Fi', sub: SP.qa.wifi.connected ? `${SP.qa.wifi.name}${SP.qa.wifi.signal != null ? ` · ${SP.qa.wifi.signal}% signal` : ''}` : 'Not connected',
-      value: '›', run: () => { sysView('wifi'); qaDo({ action: 'wifiscan' }); } }] : []),
+    ...(SP.qa?.wifi ? [{ ic: 'wifi', label: 'Wi-Fi', value: SP.qa.wifi.off ? 'Off' : '›',
+      sub: SP.qa.wifi.off ? 'A turns it on' : SP.qa.wifi.connected ? `${SP.qa.wifi.name}${SP.qa.wifi.signal != null ? ` · ${SP.qa.wifi.signal}% signal` : ''}` : 'Not connected · A shows networks',
+      run: () => { sysView('wifi'); qaDo(SP.qa.wifi.off ? { action: 'wifiradio', on: true } : { action: 'wifiscan' }); } }] : []),
     { ic: SP.qa?.dnd ? 'bellOff' : 'bell', label: 'Do not disturb', value: SP.qa?.dnd ? 'On' : 'Off', sub: 'Hides Windows’ notification pop-ups while you play', run: () => qaDo({ action: 'dnd', on: !SP.qa?.dnd }) },
     ...(SP.qa?.brightness != null ? [{ id: 'bright', ic: 'sun', label: 'Brightness', value: `${SP.qa.brightness}%`, sub: 'Left and right change it', run: () => {} }] : []),
     ]),
@@ -2223,7 +2232,7 @@ function sysSide(dir) {
   const n = clamp(SP.p + dir, 0, powerChoices().length - 1);
   if (n !== SP.p) { SP.p = n; SP.confirm = null; tick(700, .03); renderSys(); }
 }
-function sysView(v) { SP.view = v; SP.i = 0; if (v === 'wifi') SP.networks = null; tick(700, .05); renderSys(); }
+function sysView(v) { SP.view = v; SP.i = 0; if (v === 'wifi') SP.networks = null; if (v === 'bt') SP.btFound = undefined; tick(700, .05); renderSys(); }
 const shortDev = n => {  // "Speakers (EDIFIER QR65)" -> "EDIFIER QR65"; "2 - LG TV (AMD High Definition Audio Device)" -> "LG TV"
   const m = n.replace(/^\d+\s*-\s*/, '').match(/^(.*?)\s*\(([^)]*)\)\s*$/);
   return !m ? n : /^(speakers?|headphones?|headset( earphone)?|digital audio.*|realtek.*)$/i.test(m[1]) ? m[2].replace(/^\d+\s*-\s*/, '') : m[1];
@@ -2234,8 +2243,29 @@ async function btToggle(d) {
   setTimeout(() => api('/api/qa').then(r => { SP.qa = r; if (SP.open) renderSys(); }).catch(() => {}), 4000);  // its sound output appears once it's connected
 }
 async function wifiJoin(n) {
-  try { const r = await api('/api/qa', { action: 'wifijoin', ssid: n.ssid }); SP.qa = r; toast(r.joined === 'windows' ? 'Type the password in Windows’ Wi-Fi list' : `Joining ${n.ssid}…`, 3000); renderSys(); }
-  catch (e) { toast(e.message); }
+  const join = async body => {
+    toast(`Joining ${n.ssid}…`, 8000);
+    try { const r = await api('/api/qa', body); SP.qa = r; if (r.joined === 'password') return askWifiPassword(n); toast(`Connected to ${n.ssid}`, 3000); sysView(''); }
+    catch (e) { toast(e.message, 4000); }
+  };
+  if (!n.saved && n.secure) return askWifiPassword(n, join);
+  join({ action: 'wifijoin', ssid: n.ssid });
+}
+function askWifiPassword(n, join) {
+  closeSys();  // the keyboard takes the controller: Quick Access would hold on to it
+  openSearch(null, pw => (join || (b => api('/api/qa', b).then(r => { SP.qa = r; toast(`Connected to ${n.ssid}`, 3000); sysView(''); }, e => toast(e.message, 4000))))({ action: 'wifinew', ssid: n.ssid, password: pw }),
+    { id: 'wifipw', label: `Password for ${n.ssid}`, max: 63 });
+}
+async function btScan() {
+  SP.btFound = null; renderSys();
+  try { const r = await api('/api/qa', { action: 'btscan' }); SP.qa = r; SP.btFound = r.found || []; } catch (e) { SP.btFound = []; toast(e.message); }
+  if (SP.open) renderSys();
+}
+async function btPair(d) {
+  toast(`Pairing ${d.name}… Windows may ask you to confirm`, 6000);
+  await qaDo({ action: 'btpair', addr: d.addr });
+  SP.btFound = (SP.btFound || []).filter(x => x.addr !== d.addr);
+  setTimeout(() => api('/api/qa').then(r => { SP.qa = r; if (SP.open) renderSys(); }).catch(() => {}), 4000);
 }
 async function qaDo(body) {
   try { const r = await api('/api/qa', body); SP.qa = r; if (r.networks) SP.networks = r.networks; SP.confirm = null; tick(700, .03); renderSys(); } catch (e) { toast(e.message); }
@@ -2245,6 +2275,7 @@ function sysOutput(dir) {
   if (next) qaDo({ action: 'output', id: next.id }).then(() => toast(`Sound plays on ${next.name.replace(/\s*\([^)]*\)\s*$/, '')}`, 2500));
 }
 function sysOk() { const r = SP.rows[SP.i]; if (r?.run) { tick(880, .08); r.run(); } }
+$('#syspanel').addEventListener('wheel', e => { e.preventDefault(); const t = performance.now(); if (Math.abs(e.deltaY) > 4 && t - (SP.wheelAt || 0) > 90) { SP.wheelAt = t; sysMove(Math.sign(e.deltaY)); } }, { passive: false });  // the mouse wheel moves like up and down
 $('#syspanel').addEventListener('click', e => {
   const r = e.target.closest('.sp-row');
   const pw = e.target.closest('.sp-pw'), bar = e.target.closest('.sp-vol') && !e.target.closest('svg') && $('#syspanel .sp-vol .hub-bar').getBoundingClientRect();
