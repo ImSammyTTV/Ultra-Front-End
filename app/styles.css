@@ -1234,3 +1234,8 @@ body.zone-2 #tabs, body.tabs-peek #tabs { pointer-events: auto; }
 .pgroup > .prow + .prow::before { content: ""; position: absolute; left: 2vh; right: 2vh; top: 0; height: 1px; background: rgba(255, 255, 255, .08); }
 .pgroup > .prow.sel { background: rgba(56, 189, 248, .14); box-shadow: inset 0 0 0 .22vh var(--accent), 0 0 2vh rgba(56, 189, 248, .25); }
 .pgroup > .prow.sel::before, .pgroup > .prow.sel + .prow::before { opacity: 0; }
+/* Quick Access: the game, music and app volumes fold down under Volume */
+.sp-row.sp-mix { margin-left: 3vh; }
+.sp-row.sp-mix.fresh { animation: spMixIn .35s var(--ease) backwards; }  /* only as it opens, not on every volume step */
+@keyframes spMixIn { from { opacity: 0; transform: translateY(-1.2vh); } }
+.sp-chev { font-style: normal; font-size: 1.3vh; opacity: .6; margin-left: .8vh; }

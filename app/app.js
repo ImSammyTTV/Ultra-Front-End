@@ -2138,9 +2138,9 @@ function sysRows() {
     ]),
     ...group('Sound', [
     ...(SP.song ? [{ id: 'music', run: sysMedia }] : []),  // the song that's playing, then its volume
-    ...(SP.volume === null ? [] : [{ id: 'volume', run: () => setSound({ mute: !SP.muted }) }]),
+    ...(SP.volume === null ? [] : [{ id: 'volume', run: () => { SP.mixOpen = !SP.mixOpen; SP.mixFresh = SP.mixOpen; tick(700, .04); renderSys(); SP.mixFresh = false; } }]),  // A opens the game, music and app volumes under it
     // each kind of sound on its own, like a console's mixer: only the ones playing right now
-    ...[['game', 'Game'], ['media', 'Music and video'], ['ui', 'Ultra Front End sounds']].filter(([k]) => SP.qa?.mixer?.[k] != null)
+    ...[['game', 'Game'], ['media', 'Music and video'], ['ui', 'Ultra Front End sounds']].filter(([k]) => SP.mixOpen && SP.qa?.mixer?.[k] != null)
       .map(([k, label]) => ({ id: 'mix-' + k, mix: k, label, run: () => {} })),
     // where the sound plays: A opens the list of speakers, headsets and TVs (left and right still step through them)
     ...(SP.qa?.outputs?.length ? [{ id: 'output', ic: /head|ear|airpod|buds|bose|qc/i.test(SP.qa.outputs.find(o => o.on)?.name || '') ? 'headset' : 'speaker', label: 'Sound output',
@@ -2193,9 +2193,9 @@ function renderSys() {
   $('#syspanel .sp-time').innerHTML = `<b>${esc(timeIn(z))}</b><span>${esc(dateIn(z))}</span>`;
   SP.p = clamp(SP.p || 0, 0, powerChoices().length - 1);
   $('#syspanel .sp-list').innerHTML = SP.rows.map((r, i) => r.head ? `<div class="sp-head">${esc(r.head)}</div>` : r.mix
-    ? `<div class="sp-row sp-vol sp-mix" data-i="${i}" data-mix="${r.mix}">${icon(r.mix === 'game' ? 'pad' : r.mix === 'media' ? 'music' : 'volume')}<div class="sp-text"><div>${esc(r.label)}<b>${SP.qa.mixer[r.mix]}</b></div><div class="hub-bar"><i style="width:${SP.qa.mixer[r.mix]}%"></i></div></div></div>`
+    ? `<div class="sp-row sp-vol sp-mix${SP.mixFresh ? ' fresh' : ''}" data-i="${i}" data-mix="${r.mix}">${icon(r.mix === 'game' ? 'pad' : r.mix === 'media' ? 'music' : 'volume')}<div class="sp-text"><div>${esc(r.label)}<b>${SP.qa.mixer[r.mix]}</b></div><div class="hub-bar"><i style="width:${SP.qa.mixer[r.mix]}%"></i></div></div></div>`
     : r.id === 'volume'
-    ? `<div class="sp-row sp-vol" data-i="${i}">${icon(SP.muted ? 'mute' : 'volume')}<div class="sp-text"><div>Volume<b>${SP.muted ? 'Muted' : SP.volume}</b></div><div class="hub-bar"><i style="width:${SP.muted ? 0 : SP.volume}%"></i></div></div></div>`
+    ? `<div class="sp-row sp-vol${SP.mixOpen ? ' open' : ''}" data-i="${i}">${icon(SP.muted ? 'mute' : 'volume')}<div class="sp-text"><div>Volume<b>${SP.muted ? 'Muted' : SP.volume}${SP.qa?.mixer && Object.values(SP.qa.mixer).some(v => v != null) ? `<em class="sp-chev">${SP.mixOpen ? '▴' : '▾'}</em>` : ''}</b></div><div class="hub-bar"><i style="width:${SP.muted ? 0 : SP.volume}%"></i></div></div></div>`
     : r.id === 'music'
     ? `<div class="sp-row sp-music" data-i="${i}">${SP.song.art ? `<img class="sp-art" src="${esc(SP.song.art)}" alt="" onerror="this.replaceWith(document.createRange().createContextualFragment(ICON_MUSIC))">` : icon('music')}<div class="sp-text"><div>${esc(SP.song.title)}</div><small>${esc([SP.song.playing === false ? 'Paused' : 'Now playing', SP.song.artist].filter(Boolean).join(' · '))}</small></div>`
       + `<div class="sp-mbtns">${[MEDIA_ICONS[0], MEDIA_ICONS[1][SP.song.playing === false ? 0 : 1], MEDIA_ICONS[2]].map((svg, j) => `<span class="sp-mb${j === SP.m ? ' on' : ''}" data-j="${j}">${svg}</span>`).join('')}</div></div>`
@@ -2206,7 +2206,7 @@ function renderSys() {
 }
 function sysFocus() { document.querySelectorAll('#syspanel .sp-row').forEach(e => e.classList.toggle('sel', +e.dataset.i === SP.i)); $('#syspanel .sp-row.sel')?.scrollIntoView({ block: 'nearest' }); }
 async function openSys() {
-  SP.open = true; SP.i = 0; SP.p = 0; SP.confirm = null; SP.view = '';
+  SP.open = true; SP.i = 0; SP.p = 0; SP.confirm = null; SP.view = ''; SP.mixOpen = false;
   document.body.classList.add('sys-open'); tick(600, .07); renderSys();
   api('/api/padraw').then(r => { SP.battery = r.battery; if (SP.open) renderSys(); }).catch(() => {});
   api('/api/qa').then(r => { SP.qa = r; if (SP.open) renderSys(); }).catch(() => {});
