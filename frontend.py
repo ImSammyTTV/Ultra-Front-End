@@ -581,8 +581,11 @@ def hud():
         user32.SetLayeredWindowAttributes(hwnd, 0, 235, 2)  # LWA_ALPHA: a touch see-through
         no_border = ctypes.c_uint(0xFFFFFFFE)
         ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(no_border), ctypes.sizeof(no_border))
-        window.show()  # pywebview shows its page too (a window shown only by Windows stays blank)
-        user32.ShowWindow(hwnd, 4)  # SW_SHOWNOACTIVATE: and not taking the focus from the game
+        try:  # shown through WinForms so the page draws (a window shown by Windows alone stays blank); with no-activate set
+            from System import Func, Type  # above, it doesn't take the focus from the game
+            window.native.Invoke(Func[Type](lambda: window.native.Show()))
+        except Exception:
+            user32.ShowWindow(hwnd, 4)  # SW_SHOWNOACTIVATE
         user32.SetWindowPos(hwnd, ctypes.c_void_p(-1), 0, 0, 0, 0, 0x0013)  # topmost, no move, no size, no activate
         window_log("hud: shown")
     webview.start(styles, private_mode=True, storage_path=os.path.join(server.DATA, "webview-hud"))
