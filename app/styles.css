@@ -1226,3 +1226,5 @@ body.zone-2 #tabs, body.tabs-peek #tabs { pointer-events: auto; }
 .sp-row.sp-game .sp-art { width: 3.6vh; height: 4.8vh; object-fit: cover; border-radius: .6vh; flex: none; }
 .sp-head { margin: 1.6vh 0 .4vh 1.2vh; font-size: 1.3vh; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; opacity: .55; }
 .sp-head:first-child { margin-top: 0; }
+.sp-row.sp-friend .sp-art { width: 4.2vh; height: 4.2vh; border-radius: 50%; }
+.sp-row.off { opacity: .55; }

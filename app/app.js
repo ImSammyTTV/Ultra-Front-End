@@ -2107,6 +2107,10 @@ async function sysMedia() {
   sysMedia.t = setTimeout(() => api('/api/nowplaying').then(s => { if (SP.open) { SP.song = s?.title ? s : null; renderSys(); } }).catch(() => {}), 900);
 }
 function sysRows() {
+  // Friends opens inside Quick Access, like a console's friends list: A messages one, B goes back
+  if (SP.view === 'friends') return [{ head: `Friends · ${(SP.friendItems || []).filter(f => f.online).length} online` },
+    ...(SP.friendItems || []).map(f => ({ face: f.avatar, ic: 'user', label: f.name, sub: f.status, dim: !f.online, run: () => messageFriend(f) })),
+    { ic: 'back', label: 'Back', run: () => sysView('') }];
   const now = LIB.find(g => RUN.has(g.id));
   // grouped like a console's quick menu: a heading over each set, skipped when moving
   const group = (head, rows) => rows.length ? [{ head }, ...rows] : [];
@@ -2140,7 +2144,7 @@ function sysRows() {
     ...(SP.qa?.brightness != null ? [{ id: 'bright', ic: 'sun', label: 'Brightness', value: `${SP.qa.brightness}%`, sub: 'Left and right change it', run: () => {} }] : []),
     ]),
     ...group('More', [
-    { ic: 'friends', label: 'Friends', sub: SP.friends || '', run: () => { closeSys(); closePages(); openHub('friends'); } },
+    { ic: 'friends', label: 'Friends', sub: SP.friends || '', value: SP.friendItems?.length ? '›' : '', run: () => SP.friendItems?.length ? sysView('friends') : (closeSys(), closePages(), openHub('friends')) },
     { ic: 'settings', label: 'Settings', run: () => { closeSys(); closePages(); openPanel(); } },
 
     ]),
@@ -2171,18 +2175,19 @@ function renderSys() {
       + `<div class="sp-mbtns">${[MEDIA_ICONS[0], MEDIA_ICONS[1][SP.song.playing === false ? 0 : 1], MEDIA_ICONS[2]].map((svg, j) => `<span class="sp-mb${j === SP.m ? ' on' : ''}" data-j="${j}">${svg}</span>`).join('')}</div></div>`
     : r.id === 'power'
     ? `<div class="sp-row sp-power" data-i="${i}">${powerChoices().map((p, j) => `<div class="sp-pw${j === SP.p ? ' on' : ''}${SP.confirm === p.id ? ' warn' : ''}" data-j="${j}">${icon(p.ic)}<span>${SP.confirm === p.id ? 'Press A again' : p.label}</span></div>`).join('')}</div>`
-    : `<div class="sp-row${r.run ? '' : ' info'}${r.cover ? ' sp-game' : ''}" data-i="${i}">${r.cover ? `<img class="sp-art" src="${esc(r.cover)}" alt="">` : icon(r.ic)}<div class="sp-text">${r.over ? `<small>${esc(r.over)}</small>` : ''}<div>${esc(r.label)}</div>${r.sub ? `<small>${esc(r.sub)}</small>` : ''}</div>${r.value ? `<b class="sp-value">${esc(r.value)}</b>` : ''}</div>`).join('');
+    : `<div class="sp-row${r.run ? '' : ' info'}${r.cover ? ' sp-game' : ''}${r.face ? ' sp-friend' : ''}${r.dim ? ' off' : ''}" data-i="${i}">${r.cover || r.face ? `<img class="sp-art" src="${esc(r.cover || r.face)}" alt="">` : icon(r.ic)}<div class="sp-text">${r.over ? `<small>${esc(r.over)}</small>` : ''}<div>${esc(r.label)}</div>${r.sub ? `<small>${esc(r.sub)}</small>` : ''}</div>${r.value ? `<b class="sp-value">${esc(r.value)}</b>` : ''}</div>`).join('');
   sysFocus();
 }
 function sysFocus() { document.querySelectorAll('#syspanel .sp-row').forEach(e => e.classList.toggle('sel', +e.dataset.i === SP.i)); $('#syspanel .sp-row.sel')?.scrollIntoView({ block: 'nearest' }); }
 async function openSys() {
-  SP.open = true; SP.i = 0; SP.p = 0; SP.confirm = null;
+  SP.open = true; SP.i = 0; SP.p = 0; SP.confirm = null; SP.view = '';
   document.body.classList.add('sys-open'); tick(600, .07); renderSys();
   api('/api/padraw').then(r => { SP.battery = r.battery; if (SP.open) renderSys(); }).catch(() => {});
   api('/api/qa').then(r => { SP.qa = r; if (SP.open) renderSys(); }).catch(() => {});
   api('/api/friends').then(r => {
     const on = (r.items || []).filter(f => f.online), busy = on.find(f => f.game);
     SP.friends = !r.items?.length ? '' : busy ? `${busy.name} is playing ${busy.game}` : on.length ? `${on.length} online` : 'Nobody online';
+    SP.friendItems = (r.items || []).slice().sort((x, y) => (y.online - x.online) || (!!y.game - !!x.game));
     if (SP.open) renderSys();
   }).catch(() => {});
   const [vol, song, dl] = await Promise.all([api('/api/volume').catch(() => null), api('/api/nowplaying').catch(() => null), api('/api/downloads').catch(() => null)]);
@@ -2212,6 +2217,7 @@ function sysSide(dir) {
   const n = clamp(SP.p + dir, 0, powerChoices().length - 1);
   if (n !== SP.p) { SP.p = n; SP.confirm = null; tick(700, .03); renderSys(); }
 }
+function sysView(v) { SP.view = v; SP.i = 0; tick(700, .05); renderSys(); }
 async function qaDo(body) {
   try { SP.qa = await api('/api/qa', body); SP.confirm = null; tick(700, .03); renderSys(); } catch (e) { toast(e.message); }
 }
@@ -3372,7 +3378,7 @@ function input(action) {
   // The launch screen is over everything: B takes it down; nothing else may reach the menus hidden under it
   if (S.busy) return action === 'back' ? cancelLaunch() : undefined;
   if (PT.open) return action === 'back' && !PT.live ? closePadTester() : undefined;  // a controller in use is being tested: its B is held 2 s instead
-  if (SP.open) return ({ up: () => sysMove(-1), down: () => sysMove(1), left: () => sysSide(-1), right: () => sysSide(1), ok: sysOk, back: closeSys, system: closeSys })[action]?.();
+  if (SP.open) return ({ up: () => sysMove(-1), down: () => sysMove(1), left: () => sysSide(-1), right: () => sysSide(1), ok: sysOk, back: () => SP.view ? sysView('') : closeSys(), system: closeSys })[action]?.();
   if (action === 'system') return Q.open || V.open || P.open ? undefined : openSys();
   const kb = { up: () => searchMove(0, -1), down: () => searchMove(0, 1), left: () => searchMove(-1, 0), right: () => searchMove(1, 0), ok: searchEnter, back: closeSearch,
     options: () => searchType('Delete') };
