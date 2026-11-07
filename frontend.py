@@ -539,7 +539,8 @@ def overlay():
 
 
 def hud():
-    """The in-game display: a small topmost card in the corner of the game's screen for add-ons. It's see-through to
+    """The in-game display: a small topmost card in the top-left corner of the game's screen for add-ons (the
+    performance overlay has the top right). It's see-through to
     clicks and never takes the focus (WS_EX_TRANSPARENT | WS_EX_NOACTIVATE), so the game keeps the controller and the
     mouse; it isn't in the taskbar or Alt+Tab (WS_EX_TOOLWINDOW). The page sizes it to its cards, and closes it when
     there's nothing to show or the game has ended."""
@@ -555,14 +556,14 @@ def hud():
             try:
                 h = max(1, int(float(h) * scale))
                 window.resize(int(width / scale), int(h / scale))
-                window.move(int((sx + sw - width - margin) / scale), int((sy + margin) / scale))
+                window.move(int((sx + margin) / scale), int((sy + margin) / scale))
             except Exception:
                 pass
 
         def quit(self):
             os._exit(0)
 
-    window = webview.create_window("Ultra Front End HUD", URL + "/hud.html", x=int((sx + sw - width - margin) / scale), y=int((sy + margin) / scale),
+    window = webview.create_window("Ultra Front End HUD", URL + "/hud.html", x=int((sx + margin) / scale), y=int((sy + margin) / scale),
                                    width=int(width / scale), height=int(sh * .1 / scale), on_top=True, frameless=True, easy_drag=False,
                                    focus=False, background_color="#141518", hidden=True, js_api=HudApi())
 
