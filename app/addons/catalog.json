@@ -11,7 +11,7 @@
   {
     "id": "bambu",
     "title": "Bambu Lab",
-    "description": "How your 3D print is going, by the clock and in a small card over your game, with a message when it's done. Talks to the printer on your home network (LAN), not the cloud.",
+    "description": "How your 3D print is going, in a small card over your game at the start, 25%, 50%, 75% and the end, with a message when it's done. Talks to the printer on your home network (LAN), not the cloud.",
     "author": "ImSammyTTV",
     "version": "1.0",
     "icon": "addons/bambu.png",
