@@ -3412,7 +3412,7 @@ function panelMove(dy) {
   focusOn(clamp(P.focus + dy, 0, P.focusIdx.length - 1));
 }
 // Settings rows without an icon of their own get one from what they're about, so every row lines up with one
-const ROW_ICONS = [[/disturb|notification/i, 'bellOff'], [/start with windows|startup|sign in to windows|restart|shut ?down|sleep|power/i, 'power'],
+const ROW_ICONS = [[/disturb|notification/i, 'bellOff'], [/sign in to windows/i, 'user'], [/start with windows|startup|restart|shut ?down|sleep|power/i, 'power'],
   [/keep games on screen|full ?screen|borderless|window/i, 'wide'], [/xbox button|controller|button|gamepad|stick|vibrat|motion/i, 'pad'],
   [/friend/i, 'friends'], [/account|profile|name|sign in|steam id|login/i, 'user'], [/hidden|show games|uninstalled|not installed/i, 'eye'],
   [/installed|steam games|library|libraries|games found|scan/i, 'library'], [/scale|size|zoom/i, 'sliders'], [/icon|logo|art|cover|picture|wallpaper|background|screenshot/i, 'image'],
