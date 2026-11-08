@@ -3796,7 +3796,6 @@ function inputFrom(src, act) {
   if (src !== 'mouse') { pointerUsed(false); document.body.classList.add('idle'); }  // a controller or the keyboard: the mouse pointer goes until the mouse moves
   safely(() => input(act));
 }
-const PAD_ICON = $('#pad');
 function poll() {
   requestAnimationFrame(poll);
   const t = performance.now();
@@ -3820,8 +3819,6 @@ function poll() {
     edge('L3R3', b(10) && b(11), () => inputFrom('pad', 'zoomReset'));
     if (Math.abs(ax(3)) > .35 && t - (poll.zoomT || 0) > 50) { poll.zoomT = t; inputFrom('pad', ax(3) < 0 ? 'zoomIn' : 'zoomOut'); }
   }
-  const padIcon = gp ? 'on' : 'off';
-  if (PAD_ICON.dataset.s !== padIcon) { PAD_ICON.dataset.s = padIcon; PAD_ICON.innerHTML = gp ? icon('pad') : ''; }
   if (P.open && P.view === 'pad') padLive();
 }
 // Controllers screen: shows what the browser sees, to sort out controllers with unusual button layouts.
