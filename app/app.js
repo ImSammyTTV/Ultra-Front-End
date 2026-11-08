@@ -1085,10 +1085,10 @@ function renderActions() {
   }
   detailsFocus();
 }
-function heroLayer(url, blur) {
+function heroLayer(url, blur, now) {
   const box = $('#details .d-hero'), layer = document.createElement('div');
   layer.className = 'xf' + (blur ? ' blur' : '');
-  layer.style.cssText = `position:absolute;inset:0;opacity:0;transition:opacity .9s ease;background:url("${url}") center 30%/cover no-repeat`;
+  layer.style.cssText = `position:absolute;inset:0;opacity:${now ? 1 : 0};transition:opacity .9s ease;background:url("${url}") center 30%/cover no-repeat`;
   const old = [...box.children];
   box.appendChild(layer);
   raf2(() => layer.style.opacity = 1);
@@ -1104,10 +1104,12 @@ function detailsFor(g) {
   const entry = { t: Date.now() };
   entry.info = api('/api/game?id=' + q).then(d => {
     if (!d?.description) entry.t = Date.now() - 540000;  // nothing found yet: asked again after a minute, not ten
+    entry.d = d;  // kept, so the page opens with it already drawn (no empty page first)
+    [d?.hero, d?.logo].filter(Boolean).forEach(u => { const im = new Image(); im.src = u; });  // in the browser's cache before the page opens
     return d;
   }).catch(e => { delete DCACHE[g.id]; throw e; });
   return DCACHE[g.id] = Object.assign(entry, {
-    news: g.source === 'Emulators' ? Promise.resolve([]) : api('/api/game/news?id=' + q).then(r => r.news).catch(() => []) });  // emulated games show achievements instead
+    news: (g.source === 'Emulators' ? Promise.resolve([]) : api('/api/game/news?id=' + q).then(r => r.news).catch(() => [])).then(n => (entry.newsD = n)) });  // emulated games show achievements instead
 }
 let prefetchTimer;
 function schedulePrefetch(g) { clearTimeout(prefetchTimer); prefetchTimer = setTimeout(() => detailsFor(g), 450); }  // while browsing the row
@@ -1117,23 +1119,28 @@ async function openDetails(g, from = null) {  // from: the Library or Search pag
   window.addonEmit?.('game:details', { game: { id: g.id, title: g.title, platform: g.platform, cover: g.cover } });
   document.body.classList.add('details-open');
   tick(520, .09);
-  $('#details .d-hero').innerHTML = '';
-  if (g.cover) heroLayer(g.cover, true);  // blurred cover until the real hero art arrives
-  renderDetails();
   const c = detailsFor(g);
+  $('#details .d-hero').innerHTML = '';
+  // Already fetched (while browsing the row, or opened before): drawn at once with its art, so nothing flashes. Otherwise
+  // the blurred cover and the title first, filled in when the details arrive.
+  if (c?.d) { D.data = { ...c.d, ...(c.newsD ? { news: c.newsD } : {}) }; heroLayer(c.d.hero || g.cover, c.d.hero ? !!c.d.heroSoft : true, true); }
+  else if (g.cover) heroLayer(g.cover, true);
+  renderDetails();
   if (!c) return;
   c.info.then(d => {
     if (D.game !== g) return;
+    const had = D.data;
     D.data = { ...d, news: D.data?.news ?? d.news };
-    if (d.hero) { const im = new Image(); im.onload = () => D.game === g && heroLayer(d.hero, !!d.heroSoft); im.src = d.hero; }
-    renderDetails();
+    const same = had && had.hero === d.hero && had.description === d.description;  // drawn with these already: not again
+    if (d.hero && !had?.hero) { const im = new Image(); im.onload = () => D.game === g && heroLayer(d.hero, !!d.heroSoft); im.src = d.hero; }
+    if (!same) renderDetails();
     if (d.achPending) api('/api/game/achievements?id=' + encodeURIComponent(g.id)).then(r => {
       d.achPending = false; d.achievements = r.achievements;
       if (D.game === g) { D.data.achievements = r.achievements; D.data.achPending = false; renderStats(); renderNews(); }
     }).catch(() => {});
   }).catch(e => toast(e.message));
   c.news.then(news => {
-    if (D.game !== g) return;
+    if (D.game !== g || D.data?.news === news) return;  // drawn with this news already
     D.data = { ...(D.data || {}), news };
     renderNews();
   });
@@ -1142,15 +1149,21 @@ function closeDetails() { if (D.open) window.addonEmit?.('game:details:close', {
 function renderDetails() {
   const g = D.game, d = D.data, root = $('#details');
   const logo = root.querySelector('.d-logo');
-  logo.innerHTML = `<h1>${esc(g.title)}</h1>`;
-  if (d?.logo && !g.renamed) {  // swap the text title for the game's logo once it has loaded (a name of your own stays as text)
-    const im = new Image(); im.alt = g.title;
-    im.onload = () => { if (D.game === g) { logo.innerHTML = ''; logo.appendChild(im); } };
-    im.src = d.logo;
+  const wantLogo = d?.logo && !g.renamed ? d.logo : '';  // the game's logo in place of its name (a name of your own stays as text)
+  if (logo.dataset.for !== g.id + '|' + wantLogo) {  // only redrawn when it changes, so it doesn't blink
+    logo.dataset.for = g.id + '|' + wantLogo;
+    const im = wantLogo ? new Image() : null;
+    if (im) { im.alt = g.title; im.src = wantLogo; }
+    if (im?.complete && im.naturalWidth) { logo.innerHTML = ''; logo.appendChild(im); }  // already loaded: straight in
+    else {
+      logo.innerHTML = `<h1>${esc(g.title)}</h1>`;
+      if (im) im.onload = () => { if (D.game === g && logo.dataset.for === g.id + '|' + wantLogo) { logo.innerHTML = ''; logo.appendChild(im); } };
+    }
   }
   root.querySelector('.d-meta').textContent = [g.system || g.group, ...(d?.genres || []), d?.developer].filter(Boolean).join('   ·   ');
   root.querySelector('.d-desc').textContent = d?.description || '';
-  root.querySelector('.d-shots').innerHTML = mediaItems().map((m, i) => `<div class="d-media${m.kind === 'video' ? ' video' : ''}" data-i="${i}"><img src="${esc(m.thumb)}" alt="" loading="lazy">${m.kind === 'video' ? `<span class="pb">${ICON_PLAY}</span>` : ''}</div>`).join('');
+  const shots = mediaItems().map((m, i) => `<div class="d-media${m.kind === 'video' ? ' video' : ''}" data-i="${i}"><img src="${esc(m.thumb)}" alt="" loading="lazy">${m.kind === 'video' ? `<span class="pb">${ICON_PLAY}</span>` : ''}</div>`).join('');
+  if (root.querySelector('.d-shots').dataset.html !== shots) { root.querySelector('.d-shots').dataset.html = shots; root.querySelector('.d-shots').innerHTML = shots; }  // unchanged: left alone
   renderNews();
   renderStats();
   renderActions();
