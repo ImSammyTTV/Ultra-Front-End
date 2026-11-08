@@ -95,6 +95,8 @@ api.on('game:start', ({ game }) => { ... });
 
 | Event | What comes with it |
 |---|---|
+| `game:details` | `{ game }`: a game's page opened |
+| `game:details:close` | `{ game }`: its page closed |
 | `game:start` | `{ game }`: a game was launched from the app |
 | `game:running` | `{ games }`: the ids of the games running now, whenever that changes |
 | `game:exit` | `{ game }`: a game stopped |
@@ -122,6 +124,8 @@ api.on('game:start', ({ game }) => { ... });
 | `api.media('play' \| 'next' \| 'prev')` | the media controls |
 | `await api.volume()` / `api.setVolume(delta)` | the PC's volume (`{ volume, muted }`), and turning it up or down |
 | `api.sound(pitch, level)` | one of the app's small interface sounds |
+| `await api.youtube(query)` | YouTube search results: `[{ id, title, channel, seconds }]` |
+| `await api.youtubePlayer()` | loads YouTube's player (`window.YT`), to play a video or its sound |
 
 ### The person and the app
 

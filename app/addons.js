@@ -33,7 +33,7 @@ function addonApi(id) {
     slot: name => document.querySelector(`[data-addon-slot="${name}"]`),
     add(slotName, el) { const s = ctx.slot(slotName); if (!s || !el) return null; slotName === 'header' && s.querySelector('#clock') ? s.querySelector('#clock').before(el) : s.append(el); own.els.push(el); return el; },
     css(text) { const st = document.createElement('style'); st.dataset.addon = id; st.textContent = text; document.head.append(st); own.styles.push(st); return st; },
-    // events: 'game:start' {game}, 'game:running' {games}, 'game:exit' {game}, 'song' {title, artist, playing, art} or null,
+    // events: 'game:details' {game} (a game's page opens), 'game:details:close', 'game:start' {game}, 'game:running' {games}, 'game:exit' {game}, 'song' {title, artist, playing, art} or null,
     // 'quickaccess:open', 'quickaccess:close', 'input' (the button pressed: return true to take it), 'library' (games list)
     on(name, fn) { (ADDONS.events[name] ||= []).push(fn); const off = () => { ADDONS.events[name] = (ADDONS.events[name] || []).filter(f => f !== fn); }; own.off.push(off); return off; },
     every(ms, fn) { const t = setInterval(fn, Math.max(1000, ms)); own.timers.push(t); return t; },  // at most once a second
@@ -74,6 +74,13 @@ function addonApi(id) {
     hud: item => { own.hud = !!item; return api('/api/addon-hud', { id, item: item || null }).catch(() => {}); },
     // the app's own server, for an add-on that has a part there (like Bambu Lab's printer connection)
     request: (path, body) => api(path, body),
+    // YouTube's search: [{ id, title, channel, seconds }] (results kept a week)
+    youtube: query => api('/api/youtube/search?q=' + encodeURIComponent(query)).then(r => r.results || []).catch(() => []),
+    // YouTube's player (its IFrame API, window.YT), loaded once for the whole app
+    youtubePlayer: () => loadYouTubePlayer(),
+    // files in its own folder (an add-on in your Add-ons folder): their names, and an address to load one
+    ownFiles: () => api('/api/addons/files?dir=' + encodeURIComponent(id)).then(r => r.files || []).catch(() => []),
+    fileUrl: name => `/api/addons/file?dir=${encodeURIComponent(id)}&f=${encodeURIComponent(name)}`,
   };
   ctx._cleanup = () => {
     own.off.forEach(f => f()); own.timers.forEach(t => { clearInterval(t); clearTimeout(t); });

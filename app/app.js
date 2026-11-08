@@ -1114,6 +1114,7 @@ function schedulePrefetch(g) { clearTimeout(prefetchTimer); prefetchTimer = setT
 async function openDetails(g, from = null) {  // from: the Library or Search page it was opened on, which B goes back to
   if (!g) return;
   Object.assign(D, { open: true, game: g, data: null, col: 0, row: 0, a: 0, m: 0, n: 0, menu: false, mi: 0, from });
+  window.addonEmit?.('game:details', { game: { id: g.id, title: g.title, platform: g.platform, cover: g.cover } });
   document.body.classList.add('details-open');
   tick(520, .09);
   $('#details .d-hero').innerHTML = '';
@@ -1137,7 +1138,7 @@ async function openDetails(g, from = null) {  // from: the Library or Search pag
     renderNews();
   });
 }
-function closeDetails() { D.open = false; document.body.classList.remove('details-open'); tick(420, .06); }
+function closeDetails() { if (D.open) window.addonEmit?.('game:details:close', { game: D.game ? { id: D.game.id, title: D.game.title } : null }); D.open = false; document.body.classList.remove('details-open'); tick(420, .06); }
 function renderDetails() {
   const g = D.game, d = D.data, root = $('#details');
   const logo = root.querySelector('.d-logo');

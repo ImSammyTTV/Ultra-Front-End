@@ -2715,6 +2715,111 @@ def trailer_for_game(g, known):
     return [{"youtube": video_id, "name": name + " — Official trailer", "thumb": f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"}]
 
 
+def youtube_search(query, limit=8):
+    """YouTube's own search page, read like the trailers are: [{id, title, channel, seconds}], for add-ons (theme music).
+    Results are kept a week, so a game's page doesn't ask YouTube again."""
+    query = re.sub(r"\s+", " ", str(query or "")).strip()[:120]
+    if not query:
+        return []
+    cache = load("youtube-search.json", {})
+    hit = cache.get(query.lower())
+    if hit and time.time() - hit["t"] < 7 * 86400:
+        return hit["d"]
+    req = urllib.request.Request("https://www.youtube.com/results?" + urllib.parse.urlencode({"search_query": query}), headers={"User-Agent": UA})
+    with urllib.request.urlopen(req, timeout=12) as response:
+        page = response.read(5_000_000).decode("utf-8")
+    match = re.search(r"(?:var )?ytInitialData\s*=\s*", page)
+    if not match:
+        return []
+    data, _ = json.JSONDecoder().raw_decode(page[match.end():])
+    videos = []
+
+    def walk(node):
+        if isinstance(node, dict):
+            if "videoRenderer" in node:
+                videos.append(node["videoRenderer"])
+            else:
+                for value in node.values():
+                    walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+    walk(data)
+    out = []
+    for v in videos:
+        vid = v.get("videoId", "")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{11}", vid):
+            continue
+        length = (v.get("lengthText") or {}).get("simpleText", "")
+        parts = [int(x) for x in length.split(":") if x.isdigit()]
+        seconds = sum(n * 60 ** i for i, n in enumerate(reversed(parts))) if parts else 0
+        out.append({"id": vid, "title": "".join(x.get("text", "") for x in v.get("title", {}).get("runs", [])),
+                    "channel": "".join(x.get("text", "") for x in v.get("ownerText", {}).get("runs", [])), "seconds": seconds})
+        if len(out) >= limit:
+            break
+    cache[query.lower()] = {"t": time.time(), "d": out}
+    store("youtube-search.json", dict(list(cache.items())[-500:]))
+    return out
+
+
+# ---------- saved theme songs (the Theme music add-on's "Save songs on this PC") ----------
+# Off unless the person turns it on. The audio of a theme the add-on picked is saved once with yt-dlp (fetched from its
+# own GitHub releases into data/tools the first time, checked against GitHub's checksum), then played from the PC.
+THEME_CACHE = os.path.join(DATA, "theme-cache")
+THEME_JOBS = {}
+
+
+def yt_dlp_path():
+    folder = os.path.join(DATA, "tools")
+    exe = os.path.join(folder, "yt-dlp.exe")
+    if os.path.isfile(exe) and time.time() - os.path.getmtime(exe) < 14 * 86400:
+        return exe
+    try:
+        rel = http_json("https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest", timeout=30)
+        asset = next(a for a in rel.get("assets", []) if a.get("name") == "yt-dlp.exe")
+        url, digest = asset["browser_download_url"], str(asset.get("digest") or "").lower()
+        if not url.startswith("https://github.com/yt-dlp/yt-dlp/releases/download/") or not digest.startswith("sha256:"):
+            raise ValueError("no checksum")
+        os.makedirs(folder, exist_ok=True)
+        part = exe + ".part"
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=180) as r, open(part, "wb") as out:
+            shutil.copyfileobj(r, out)
+        if file_sha256(part) != digest[7:]:
+            os.remove(part)
+            raise ValueError("damaged")
+        os.replace(part, exe)
+    except Exception:
+        if not os.path.isfile(exe):
+            raise ValueError("Couldn't get the downloader for saving songs. Try again later.")
+        os.utime(exe)  # the copy we have still works: not asked again for a while
+    return exe
+
+
+def theme_file(video_id):
+    if not re.fullmatch(r"[A-Za-z0-9_-]{11}", str(video_id or "")):
+        return None
+    return next((os.path.join(THEME_CACHE, f) for f in (os.listdir(THEME_CACHE) if os.path.isdir(THEME_CACHE) else [])
+                 if f.startswith(video_id + ".") and not f.endswith((".part", ".ytdl"))), None)
+
+
+def theme_save(video_id):
+    """Saves one theme's audio in the background (once): its state is in THEME_JOBS until the file is there."""
+    if not re.fullmatch(r"[A-Za-z0-9_-]{11}", str(video_id or "")) or theme_file(video_id) or THEME_JOBS.get(video_id) == "saving":
+        return
+
+    def run():
+        THEME_JOBS[video_id] = "saving"
+        try:
+            os.makedirs(THEME_CACHE, exist_ok=True)
+            subprocess.run([yt_dlp_path(), "-f", "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio", "--no-playlist", "--no-progress",
+                            "-o", os.path.join(THEME_CACHE, "%(id)s.%(ext)s"), f"https://www.youtube.com/watch?v={video_id}"],
+                           capture_output=True, timeout=300, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            THEME_JOBS[video_id] = "saved" if theme_file(video_id) else "failed"
+        except Exception:
+            THEME_JOBS[video_id] = "failed"
+    threading.Thread(target=run, daemon=True).start()
+
+
 LR_INDEX, LR_LOCK = {}, threading.Lock()
 
 
@@ -10067,10 +10172,26 @@ class Handler(SimpleHTTPRequestHandler):
                 log_error()
                 f = None
             return self.send_path(f) if f else self.send_error(404)
+        if path in ("/api/themes/cached", "/api/themes/file"):  # ?id=: a saved theme song: whether it's there, or the file
+            vid = (urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("id") or [""])[0]
+            f = theme_file(vid)
+            if path.endswith("file"):
+                return self.send_path(f) if f else self.send_error(404)
+            return self.reply({"saved": bool(f), "state": THEME_JOBS.get(vid, "")})
+        if path == "/api/youtube/search":  # ?q=: for add-ons (theme music)
+            q = (urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("q") or [""])[0]
+            try:
+                return self.reply({"results": youtube_search(q)})
+            except (urllib.error.URLError, ValueError, TimeoutError):
+                return self.reply({"results": []})
         if path == "/api/addon-hud":
             return self.reply(hud_view())
         if path == "/api/addons":
             return self.reply({"addons": user_addons(), "folder": USER_ADDONS})
+        if path == "/api/addons/files":  # ?dir=: the files in one of your add-ons' folders (its own songs, pictures)
+            d = os.path.basename((urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("dir") or [""])[0])
+            folder = os.path.join(USER_ADDONS, d)
+            return self.reply({"files": sorted(os.listdir(folder)) if d and os.path.isdir(folder) else []})
         if path == "/api/addons/file":
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             f = user_addon_file((q.get("dir") or [""])[0], (q.get("f") or [""])[0])
@@ -10292,6 +10413,9 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.reply(settings_view())
             if path == "/api/album/delete":
                 delete_capture(body.get("id"))
+                return self.reply({"ok": True})
+            if path == "/api/themes/save":  # {id}: save this theme song's audio on the PC (the add-on's own setting)
+                theme_save(body.get("id"))
                 return self.reply({"ok": True})
             if path == "/api/addon-hud":  # {id, item}: an add-on's card over the game (item null takes it away)
                 hud_set(body.get("id"), body.get("item"))

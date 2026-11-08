@@ -16,5 +16,14 @@
     "version": "1.0",
     "icon": "addons/bambu.png",
     "script": "addons/bambu.js"
+  },
+  {
+    "id": "themes",
+    "title": "Theme music",
+    "description": "A game's theme plays quietly on its page and fades out when you leave, found on YouTube and played through its own player. Data saver, your own songs, and Next song if it picks the wrong one.",
+    "author": "ImSammyTTV",
+    "version": "1.0",
+    "icon": "addons/themes.png",
+    "script": "addons/themes.js"
   }
 ]
