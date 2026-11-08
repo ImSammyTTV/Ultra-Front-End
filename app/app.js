@@ -2260,7 +2260,7 @@ function sysRows() {
     ]),
     ...group('Batteries', [
     // each controller's battery; a wireless Xbox-style one can be turned off from here
-    ...(SP.qa?.pads || []).map((p, n) => ({ ic: 'pad', label: (SP.qa.pads.length > 1 ? `Controller ${n + 1}` : 'Controller'), value: p.battery ? p.battery[0].toUpperCase() + p.battery.slice(1) : '',
+    ...(SP.qa?.pads || []).map((p, n) => ({ ic: 'pad', label: SP.qa.handheld ? `${SP.qa.handheld} controllers` : (SP.qa.pads.length > 1 ? `Controller ${n + 1}` : 'Controller'), value: p.battery ? p.battery[0].toUpperCase() + p.battery.slice(1) : '',
       sub: p.wireless ? (SP.confirm === 'pad' + p.slot ? 'Press A again to turn it off' : 'A turns it off') : p.battery === 'wired' ? 'Plugged in' : '',
       run: p.wireless ? () => SP.confirm === 'pad' + p.slot ? qaDo({ action: 'padoff', slot: p.slot }).then(() => toast('Controller turned off')) : (SP.confirm = 'pad' + p.slot, renderSys()) : null })),
     ...(SP.qa?.steamBattery != null ? [{ ic: 'pad', label: 'Steam Controller', value: `${SP.qa.steamBattery}%`, sub: 'Battery' }] : []),

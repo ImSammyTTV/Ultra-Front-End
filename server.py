@@ -6629,6 +6629,34 @@ def screen_brightness(level=None):
 BT_BATTERY = {"at": 0.0, "items": [], "busy": False}
 
 
+HANDHELD = [None]
+
+
+def handheld_name():
+    """"Legion Go" (any model) when this PC is one, else "": from the firmware's own product name."""
+    if HANDHELD[0] is None:
+        HANDHELD[0] = ""
+        if WIN:
+            import winreg
+            try:
+                with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DESCRIPTION\System\BIOS") as k:
+                    text = " ".join(str(winreg.QueryValueEx(k, v)[0]) for v in ("SystemFamily", "SystemProductName", "SystemVersion") if _reg_has(k, v))
+                if re.search(r"legion\s*go", text, re.I):
+                    HANDHELD[0] = "Legion Go"
+            except OSError:
+                pass
+    return HANDHELD[0]
+
+
+def _reg_has(k, v):
+    import winreg
+    try:
+        winreg.QueryValueEx(k, v)
+        return True
+    except OSError:
+        return False
+
+
 def bt_batteries():
     """Battery levels Windows has for Bluetooth devices (headphones, controllers): [{"name", "level"}]. Reading them
     takes a few seconds, so it runs in the background at most every 2 minutes and Quick Access shows the last answer.
@@ -6647,7 +6675,9 @@ def bt_batteries():
                     name, _, level = line.strip().rpartition("|")
                     if name and level.isdigit():
                         items.setdefault(name, int(level))
-                BT_BATTERY["items"] = [{"name": n, "level": v} for n, v in items.items()]
+                # On a Legion Go its own controllers report to Windows as an Xbox controller: named as what they are
+                rename = (lambda n: "Legion Go controllers" if re.search(r"xbox", n, re.I) else n) if handheld_name() == "Legion Go" else (lambda n: n)
+                BT_BATTERY["items"] = [{"name": rename(n), "level": v} for n, v in items.items()]
             except (OSError, subprocess.SubprocessError):
                 pass
             finally:
@@ -6815,7 +6845,7 @@ def mixer_set(group, delta):
 
 def qa_view():
     """Everything Quick Access shows beyond volume and music, read fresh each time it opens."""
-    view = {"outputs": [], "pads": [], "wifi": None, "dnd": False, "brightness": None, "bt": None}
+    view = {"outputs": [], "pads": [], "wifi": None, "dnd": False, "brightness": None, "bt": None, "handheld": handheld_name()}
     for k, fn in (("outputs", sound_outputs), ("pads", xinput_pads), ("wifi", wifi_status), ("dnd", do_not_disturb), ("brightness", screen_brightness),
                   ("bt", bt_audio_devices), ("batteries", bt_batteries), ("pods", pods_battery), ("mixer", mixer_view)):
         try:
