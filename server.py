@@ -2179,7 +2179,9 @@ def scan_library(lib, cfg):
                 files.append(os.path.join(dirpath, n))
     games, pkgs, tids, cids = [], {}, {}, {}
     names = {os.path.basename(f).lower() for f in files}
+    SCAN_PROG["total"] += len(files)
     for f in sorted(files):
+        scan_step()
         stem = os.path.splitext(os.path.basename(f))[0]
         disc = re.search(r"\(disc ?(\d+)\)", os.path.basename(f), re.I)
         if disc and int(disc.group(1)) > 1 and re.sub(r"\(disc ?\d+\)", "(Disc 1)", os.path.basename(f), flags=re.I).lower() in names:
@@ -2396,6 +2398,7 @@ def sgdb_fill_missing(key, games):
         if k not in cache:
             if lookups >= 40:
                 continue
+            scan_step()
             lookups += 1
             try:
                 hit = sgdb_game_for(key, g)
@@ -2875,6 +2878,7 @@ def theme_save(video_id):
 
 
 LR_INDEX, LR_LOCK = {}, threading.Lock()
+LR_DOWN = {}  # index -> when it last couldn't be fetched: not asked again for a few minutes (a scan asks once per ROM)
 
 
 def libretro_index(thumbs, kind):
@@ -2887,14 +2891,27 @@ def libretro_index(thumbs, kind):
         hit = load("libretro-index.json", {}).get(key)
         if hit and time.time() - hit["t"] < 30 * 86400:
             names = hit["names"]
+        elif time.time() - LR_DOWN.get(key, 0) < 300:  # unreachable a moment ago: not waited on again for every ROM
+            if not hit:
+                raise urllib.error.URLError("libretro was unreachable a moment ago")
+            names = hit["names"]  # an older list will do until it can be reached
         else:
             req = urllib.request.Request("https://thumbnails.libretro.com/" + urllib.parse.quote(f"{thumbs}/{kind}/"), headers={"User-Agent": UA})
-            with urllib.request.urlopen(req, timeout=30) as r:
-                page = r.read().decode("utf-8", "replace")
-            names = [urllib.parse.unquote(n)[:-4] for n in re.findall(r'href="([^"?/][^"]*\.png)"', page)]
-            cache = load("libretro-index.json", {})
-            cache[key] = {"t": time.time(), "names": names}
-            store("libretro-index.json", cache)
+            try:
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    page = r.read().decode("utf-8", "replace")
+            except (OSError, http.client.HTTPException) as e:
+                LR_DOWN[key] = time.time()
+                if not hit:
+                    raise urllib.error.URLError(e) from e
+                page = None
+            if page is None:
+                names = hit["names"]
+            else:
+                names = [urllib.parse.unquote(n)[:-4] for n in re.findall(r'href="([^"?/][^"]*\.png)"', page)]
+                cache = load("libretro-index.json", {})
+                cache[key] = {"t": time.time(), "names": names}
+                store("libretro-index.json", cache)
         index = {}
         for n in names:
             index.setdefault(metadata_key(n), []).append(n)
@@ -3636,148 +3653,172 @@ def game_news(g):
 # ---------------------------------------------------------------- library scan
 STATE = {"games": [], "byId": {}, "errors": [], "counts": {}, "scanned": 0}
 SCAN_LOCK = threading.Lock()
+# How far a scan has got, for the app's progress window (a big batch of ROMs can take a while to read and find covers for):
+# phase "games" counts files read, phase "covers" counts covers looked up online
+SCAN_PROG = {"active": False, "phase": "", "done": 0, "total": 0, "started": 0.0}
+
+
+def scan_progress():
+    p = SCAN_PROG
+    return {"active": p["active"], "phase": p["phase"], "done": min(p["done"], p["total"]), "total": p["total"],
+            "seconds": round(time.time() - p["started"], 1) if p["active"] else 0}
+
+
+def scan_step(n=1):
+    SCAN_PROG["done"] += n
 
 
 def scan():
     with SCAN_LOCK:
-        cfg, accounts = config(), load("accounts.json", {})
-        ART_SEEN.clear()
-        games, errors, counts = {}, [], {}
+        SCAN_PROG.update(active=True, phase="games", done=0, total=0, started=time.time())
+        try:
+            scan_all()
+        finally:
+            SCAN_PROG.update(active=False, phase="")
 
-        def add(label, fn, key=None):
-            try:
-                found = fn()
-            except Exception as e:  # one broken source shouldn't hide the rest
-                rejected = isinstance(e, urllib.error.HTTPError) and e.code in (401, 403)
-                errors.append(f"{label}: the saved key was rejected. Reconnect it in Settings › Accounts." if rejected else f"{label}: {e}")
-                return
-            counts[key or label] = len(found)
-            for g in found:
-                old = games.get(g["id"])
-                if old and g.get("shortcut"):  # a Steam shortcut to a game Steam has listed: Steam's entry stays as it is
-                    continue
-                if old:  # e.g. Steam account + local install: keep install state and best stats
-                    g["launch"] = (g if g["installed"] else old)["launch"]
-                    g["installed"] = g["installed"] or old["installed"]
-                    g["minutes"] = max(g["minutes"], old["minutes"])
-                    g["lastPlayed"] = max(g["lastPlayed"], old["lastPlayed"])
-                    if g["cover"].startswith("http") and not old["cover"].startswith("http"):
-                        g["cover"] = old["cover"]
-                games[g["id"]] = g
 
-        if "steam" in accounts:
-            add("Steam account", lambda: scan_steam_account(accounts["steam"]))
-        if cfg["steamLocal"]:
-            add("Steam (installed)", scan_steam_local)
-        if WIN and any(cfg.get(p + "Local", True) for p in SERVICE_SCANS):
-            try:
-                programs = installed_programs()
-            except Exception as e:
-                programs = []
-                errors.append(f"Installed programs: {e}")
-            for prov, fn in (("ea", scan_ea), ("ubisoft", scan_ubisoft), ("gog", scan_gog), ("battlenet", scan_battlenet)):
-                if cfg.get(prov + "Local", True):
-                    add(f"{LOCAL_PROVIDERS[prov]} (installed)", lambda fn=fn: fn(programs, cfg))
-        if "epic" in accounts:
-            add("Epic account", lambda: scan_epic(accounts))
-        for lib in cfg["libraries"]:
-            add(lib["name"], lambda lib=lib: scan_library(lib, cfg), "lib:" + lib["id"])
-        root = cfg.get("romRoot")
-        if root and os.path.isdir(root):  # ROMs folder: every platform subfolder is a library
-            for sub in sorted(os.listdir(root)):
-                path = os.path.join(root, sub)
-                if not os.path.isdir(path):
-                    continue
-                s = detect_system(path)
-                emu = cfg.get("emulators", {}).get(s["system"], {})
-                lib = {"type": "roms", "path": path, "name": s["system"], "emulator": emu.get("path", ""), "args": emu.get("args"),
-                       "exts": s["exts"], "thumbs": s["thumbs"]}
-                add(f"ROMs/{s['system']}", lambda lib=lib: scan_library(lib, cfg))
-        elif root:
-            errors.append(f"ROMs folder {root} isn't available")
+def scan_all():
+    cfg, accounts = config(), load("accounts.json", {})
+    ART_SEEN.clear()
+    games, errors, counts = {}, [], {}
 
-        remote = [g for g in games.values() if g.get("appid") and g["cover"].startswith(STEAM_CDN.split("{")[0])]
-        if remote:
-            art = steam_store_art([g["appid"] for g in remote])
-            for g in remote:
-                g["cover"] = art.get(g["appid"]) or g["cover"]
+    def add(label, fn, key=None):
+        try:
+            found = fn()
+        except Exception as e:  # one broken source shouldn't hide the rest
+            rejected = isinstance(e, urllib.error.HTTPError) and e.code in (401, 403)
+            errors.append(f"{label}: the saved key was rejected. Reconnect it in Settings › Accounts." if rejected else f"{label}: {e}")
+            return
+        counts[key or label] = len(found)
+        for g in found:
+            old = games.get(g["id"])
+            if old and g.get("shortcut"):  # a Steam shortcut to a game Steam has listed: Steam's entry stays as it is
+                continue
+            if old:  # e.g. Steam account + local install: keep install state and best stats
+                g["launch"] = (g if g["installed"] else old)["launch"]
+                g["installed"] = g["installed"] or old["installed"]
+                g["minutes"] = max(g["minutes"], old["minutes"])
+                g["lastPlayed"] = max(g["lastPlayed"], old["lastPlayed"])
+                if g["cover"].startswith("http") and not old["cover"].startswith("http"):
+                    g["cover"] = old["cover"]
+            games[g["id"]] = g
 
-        for game_id, o in load("overrides.json", {}).items():  # artwork the user picked
-            g, f = games.get(game_id), o.get("cover") and os.path.join(ART_DIR, o["cover"])
-            if g and f and os.path.isfile(f):
-                still = o.get("coverStill") and os.path.join(ART_DIR, o["coverStill"])
-                if still and os.path.isfile(still):
-                    g["cover"] = local_art(game_id, still)
-                    if light_anim(f):  # animated once its light copy is made (asked for here if it isn't)
-                        g["coverAnim"] = local_art(game_id + "--anim", f)
-                else:
-                    g["cover"] = local_art(game_id, f)
-                g["custom"] = True
-            if g and o.get("hero") and os.path.isfile(os.path.join(ART_DIR, o["hero"])):
-                g["customHero"] = True
-            if g and o.get("appPath"):
-                g["launch"] = {"type": "exe", "exe": o["appPath"], "args": []}
-                g["appPath"] = o["appPath"]
-                g["installed"] = True
-            if g and o.get("logo") and os.path.isfile(os.path.join(ART_DIR, o["logo"])):
-                g["customLogo"] = True
-            if g and o.get("hidden"):
-                g["hidden"] = True
-            if g and o.get("title"):
-                g["renameTo"] = o["title"]  # applied after the duplicate merge below, which goes by the game's own name
-            if g and o.get("favorite"):
-                g["favorite"] = True
-            if g and o.get("collections"):
-                g["collections"] = o["collections"]
-        if cfg["onlineCovers"] and "sgdb" in accounts:
-            try:
-                sgdb_fill_missing(accounts["sgdb"]["key"], list(games.values()))
-            except Exception as e:  # SteamGridDB only fills in missing covers: unreachable is not worth a warning
-                if not offline(e):
-                    errors.append(f"SteamGridDB: {e}")
-        for g in games.values():
-            if not g["cover"] and g.get("fallbackCover"):
-                g["cover"] = libretro_cover(g) or g["fallbackCover"]
+    if "steam" in accounts:
+        add("Steam account", lambda: scan_steam_account(accounts["steam"]))
+    if cfg["steamLocal"]:
+        add("Steam (installed)", scan_steam_local)
+    if WIN and any(cfg.get(p + "Local", True) for p in SERVICE_SCANS):
+        try:
+            programs = installed_programs()
+        except Exception as e:
+            programs = []
+            errors.append(f"Installed programs: {e}")
+        for prov, fn in (("ea", scan_ea), ("ubisoft", scan_ubisoft), ("gog", scan_gog), ("battlenet", scan_battlenet)):
+            if cfg.get(prov + "Local", True):
+                add(f"{LOCAL_PROVIDERS[prov]} (installed)", lambda fn=fn: fn(programs, cfg))
+    if "epic" in accounts:
+        add("Epic account", lambda: scan_epic(accounts))
+    for lib in cfg["libraries"]:
+        add(lib["name"], lambda lib=lib: scan_library(lib, cfg), "lib:" + lib["id"])
+    root = cfg.get("romRoot")
+    if root and os.path.isdir(root):  # ROMs folder: every platform subfolder is a library
+        for sub in sorted(os.listdir(root)):
+            path = os.path.join(root, sub)
+            if not os.path.isdir(path):
+                continue
+            s = detect_system(path)
+            emu = cfg.get("emulators", {}).get(s["system"], {})
+            lib = {"type": "roms", "path": path, "name": s["system"], "emulator": emu.get("path", ""), "args": emu.get("args"),
+                   "exts": s["exts"], "thumbs": s["thumbs"]}
+            add(f"ROMs/{s['system']}", lambda lib=lib: scan_library(lib, cfg))
+    elif root:
+        errors.append(f"ROMs folder {root} isn't available")
 
-        log, sessions, fixed = load("playlog.json", {}), load("sessions.json", []), False
-        for g in games.values():
-            p = log.get(g["id"])
-            if p:
-                if "seconds" not in p:  # a log from before 1.2.7: counted again from its sessions, once
-                    p["minutes"], fixed = played_seconds(p, g["id"], sessions) // 60, True
-                g["lastPlayed"] = max(g["lastPlayed"], p.get("lastPlayed", 0))
-                g["minutes"] = max(g["minutes"], p.get("minutes", 0))
-        if fixed:
-            store("playlog.json", log)
-        # A game found by a launcher (EA app, Ubisoft, Battle.net) and again in a games folder added by hand is the same
-        # game: keep the launcher's entry (it starts through the launcher) with the better playtime of the two.
-        folders = {os.path.normcase(os.path.normpath(g["folder"])): g for g in games.values() if g.get("folder")}
-        for game_id, g in list(games.items()):
-            exe = os.path.normcase((g.get("launch") or {}).get("exe", ""))
-            owner = not g.get("folder") and exe and next((o for f, o in folders.items() if exe.startswith(f + os.sep)), None)
-            if owner:
-                owner["minutes"], owner["lastPlayed"] = max(owner["minutes"], g["minutes"]), max(owner["lastPlayed"], g["lastPlayed"])
-                del games[game_id]
-        # A PC game owned twice (on two stores, or two Steam versions of it) shows once: the installed copy, else the one
-        # played most, else the latest played, else Steam's; it keeps the better playtime and last-played of the copies.
-        copies = {}
-        for g in games.values():
-            if g.get("source") != "Emulators":
-                copies.setdefault(re.sub(r"[^a-z0-9]", "", re.sub(r"[™®©]", "", g["title"].lower())), []).append(g)
-        for same in copies.values():
-            if len(same) > 1:
-                keep = max(same, key=lambda c: (c["installed"], c["minutes"], c["lastPlayed"], c.get("source") == "Steam"))
-                for c in same:
-                    if c is not keep:
-                        keep["minutes"], keep["lastPlayed"] = max(keep["minutes"], c["minutes"]), max(keep["lastPlayed"], c["lastPlayed"])
-                        del games[c["id"]]
-        for g in games.values():
-            if g.get("renameTo"):
-                g["title"], g["renamed"] = g.pop("renameTo"), True
-        for k in [k for k in ART if k not in ART_SEEN]:
-            ART.pop(k, None)
-        STATE.update(games=list(games.values()), byId=games, errors=errors, counts=counts, scanned=time.time())
-        sync_systems(counts)
+    remote = [g for g in games.values() if g.get("appid") and g["cover"].startswith(STEAM_CDN.split("{")[0])]
+    if remote:
+        art = steam_store_art([g["appid"] for g in remote])
+        for g in remote:
+            g["cover"] = art.get(g["appid"]) or g["cover"]
+
+    for game_id, o in load("overrides.json", {}).items():  # artwork the user picked
+        g, f = games.get(game_id), o.get("cover") and os.path.join(ART_DIR, o["cover"])
+        if g and f and os.path.isfile(f):
+            still = o.get("coverStill") and os.path.join(ART_DIR, o["coverStill"])
+            if still and os.path.isfile(still):
+                g["cover"] = local_art(game_id, still)
+                if light_anim(f):  # animated once its light copy is made (asked for here if it isn't)
+                    g["coverAnim"] = local_art(game_id + "--anim", f)
+            else:
+                g["cover"] = local_art(game_id, f)
+            g["custom"] = True
+        if g and o.get("hero") and os.path.isfile(os.path.join(ART_DIR, o["hero"])):
+            g["customHero"] = True
+        if g and o.get("appPath"):
+            g["launch"] = {"type": "exe", "exe": o["appPath"], "args": []}
+            g["appPath"] = o["appPath"]
+            g["installed"] = True
+        if g and o.get("logo") and os.path.isfile(os.path.join(ART_DIR, o["logo"])):
+            g["customLogo"] = True
+        if g and o.get("hidden"):
+            g["hidden"] = True
+        if g and o.get("title"):
+            g["renameTo"] = o["title"]  # applied after the duplicate merge below, which goes by the game's own name
+        if g and o.get("favorite"):
+            g["favorite"] = True
+        if g and o.get("collections"):
+            g["collections"] = o["collections"]
+    need = [g for g in games.values() if not g["cover"] and not g.get("isFolder")]
+    SCAN_PROG.update(phase="covers", done=0, total=len(need) if cfg["onlineCovers"] and ("sgdb" in accounts or any(g.get("fallbackCover") for g in need)) else 0)
+    if cfg["onlineCovers"] and "sgdb" in accounts:
+        try:
+            sgdb_fill_missing(accounts["sgdb"]["key"], list(games.values()))
+        except Exception as e:  # SteamGridDB only fills in missing covers: unreachable is not worth a warning
+            if not offline(e):
+                errors.append(f"SteamGridDB: {e}")
+    for g in games.values():
+        if not g["cover"] and g.get("fallbackCover"):
+            g["cover"] = libretro_cover(g) or g["fallbackCover"]
+            scan_step()
+
+    log, sessions, fixed = load("playlog.json", {}), load("sessions.json", []), False
+    for g in games.values():
+        p = log.get(g["id"])
+        if p:
+            if "seconds" not in p:  # a log from before 1.2.7: counted again from its sessions, once
+                p["minutes"], fixed = played_seconds(p, g["id"], sessions) // 60, True
+            g["lastPlayed"] = max(g["lastPlayed"], p.get("lastPlayed", 0))
+            g["minutes"] = max(g["minutes"], p.get("minutes", 0))
+    if fixed:
+        store("playlog.json", log)
+    # A game found by a launcher (EA app, Ubisoft, Battle.net) and again in a games folder added by hand is the same
+    # game: keep the launcher's entry (it starts through the launcher) with the better playtime of the two.
+    folders = {os.path.normcase(os.path.normpath(g["folder"])): g for g in games.values() if g.get("folder")}
+    for game_id, g in list(games.items()):
+        exe = os.path.normcase((g.get("launch") or {}).get("exe", ""))
+        owner = not g.get("folder") and exe and next((o for f, o in folders.items() if exe.startswith(f + os.sep)), None)
+        if owner:
+            owner["minutes"], owner["lastPlayed"] = max(owner["minutes"], g["minutes"]), max(owner["lastPlayed"], g["lastPlayed"])
+            del games[game_id]
+    # A PC game owned twice (on two stores, or two Steam versions of it) shows once: the installed copy, else the one
+    # played most, else the latest played, else Steam's; it keeps the better playtime and last-played of the copies.
+    copies = {}
+    for g in games.values():
+        if g.get("source") != "Emulators":
+            copies.setdefault(re.sub(r"[^a-z0-9]", "", re.sub(r"[™®©]", "", g["title"].lower())), []).append(g)
+    for same in copies.values():
+        if len(same) > 1:
+            keep = max(same, key=lambda c: (c["installed"], c["minutes"], c["lastPlayed"], c.get("source") == "Steam"))
+            for c in same:
+                if c is not keep:
+                    keep["minutes"], keep["lastPlayed"] = max(keep["minutes"], c["minutes"]), max(keep["lastPlayed"], c["lastPlayed"])
+                    del games[c["id"]]
+    for g in games.values():
+        if g.get("renameTo"):
+            g["title"], g["renamed"] = g.pop("renameTo"), True
+    for k in [k for k in ART if k not in ART_SEEN]:
+        ART.pop(k, None)
+    STATE.update(games=list(games.values()), byId=games, errors=errors, counts=counts, scanned=time.time())
+    sync_systems(counts)
 
 
 # ---------------------------------------------------------------- watching for new games
@@ -10280,7 +10321,9 @@ class Handler(SimpleHTTPRequestHandler):
             return self.reply(pad_wait(after, bool(q.get("overlay"))))
         if path == "/api/ping":
             return self.reply({"ok": True, "scanned": STATE["scanned"], "page": page_version(), "build": BUILD, "pid": os.getpid(), "root": ROOT,
-                               "version": VERSION})
+                               "version": VERSION, "scan": scan_progress()})
+        if path == "/api/scan":  # polled quickly while a scan is under way, for its progress window
+            return self.reply({**scan_progress(), "scanned": STATE["scanned"]})
         if path == "/api/profile":
             return self.reply(profile())
         if path == "/api/avatar":

@@ -949,9 +949,52 @@ addEventListener('focus', async () => {
 let libStamp = 0;
 let pageStamp = 0;
 let sysStamp = 0;
+// ---------- library update progress ----------
+// A big batch of ROMs takes a while to read and find covers for, and browsing meanwhile stutters (the helper is busy, and the
+// library reloads at the end): a scan running over 2 seconds shows a window with how far it has got. B or A tucks it into a
+// small pill in the corner, to keep browsing; the library reloads once, when the scan is done.
+const SC = { polling: false, shown: false, mini: false };
+const SC_PHASE = { games: 'Reading your games', covers: 'Finding covers' };
+function scanTick() {
+  if (SC.polling) return;
+  SC.polling = true;
+  const step = async () => {
+    let p;
+    try { p = await api('/api/scan'); } catch { p = { active: false }; }
+    if (!p.active) { SC.polling = false; scanHide(); return watchLibrary(); }
+    scanShow(p);
+    setTimeout(step, 400);
+  };
+  step();
+}
+function scanShow(p) {
+  // only over the home screen: a menu, a game launching or the intro has the screen to itself (a settings change scans while it says "Working…")
+  const blocked = P.open || Q.open || SP.open || V.open || S.busy || INTRO.open || PT.open;
+  if (p.seconds < 2 || blocked && !SC.shown) return;
+  let box = $('#scanbox');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'scanbox';
+    box.innerHTML = `<div class="sc-card"><h2>Updating your library</h2><div class="sc-line"></div><div class="sc-bar"><i></i></div>
+      <div class="sc-foot">Press A or B to keep browsing while it finishes</div></div><div class="sc-pill"><span></span><div class="sc-bar"><i></i></div></div>`;
+    box.addEventListener('click', e => { e.stopPropagation(); SC.mini = !SC.mini; box.classList.toggle('mini', SC.mini); });
+    document.body.appendChild(box);
+  }
+  SC.shown = true;
+  box.classList.toggle('mini', SC.mini);
+  const frac = p.total ? p.done / p.total : 0;
+  box.querySelector('.sc-line').textContent = `${SC_PHASE[p.phase] || 'Working'}${p.total ? ` · ${p.done} of ${p.total}` : '…'}`;
+  box.querySelector('.sc-pill span').textContent = `Updating library${p.total ? ` · ${Math.round(frac * 100)}%` : '…'}`;
+  box.querySelectorAll('.sc-bar').forEach(b => { b.classList.toggle('wait', !p.total); b.firstChild.style.width = `${frac * 100}%`; });
+}
+function scanHide() {
+  SC.shown = false; SC.mini = false;
+  $('#scanbox')?.remove();
+}
 async function watchLibrary() {
   let r;
   try { r = await api('/api/ping'); } catch { return; }
+  if (r.scan?.active) scanTick();
   // New page files: refresh by itself, but only on the plain home screen so nothing is interrupted
   if (r.page && pageStamp && r.page !== pageStamp) {
     if (!S.busy && S.zone === 0 && !document.body.className.match(/-open/)) return location.reload();
@@ -3654,6 +3697,10 @@ function input(action) {
   // The launch screen is over everything: B takes it down; nothing else may reach the menus hidden under it
   if (S.busy) return action === 'back' ? cancelLaunch() : undefined;
   if (PT.open) return action === 'back' && !PT.live ? closePadTester() : undefined;  // a controller in use is being tested: its B is held 2 s instead
+  if (SC.shown && !SC.mini) {  // the library update window: A or B tucks it away; nothing else reaches the screen under it
+    if (action === 'back' || action === 'ok') { SC.mini = true; $('#scanbox')?.classList.add('mini'); }
+    return;
+  }
   if (SP.open) return ({ up: () => sysMove(-1), down: () => sysMove(1), left: () => sysSide(-1), right: () => sysSide(1), ok: sysOk, back: () => SP.view || SP.fold ? sysView('') : closeSys(), system: closeSys, options: () => SP.rows[SP.i]?.opt ? SP.rows[SP.i].opt() : sysDnd() })[action]?.();
   if (action === 'system') return Q.open || V.open || P.open ? undefined : openSys();
   const kb = { up: () => searchMove(0, -1), down: () => searchMove(0, 1), left: () => searchMove(-1, 0), right: () => searchMove(1, 0), ok: searchEnter, back: closeSearch,
