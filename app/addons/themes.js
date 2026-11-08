@@ -8,27 +8,29 @@ UFE.addon({
     const host = document.createElement('div');
     host.style.cssText = 'position:fixed;left:-9999px;top:0;width:200px;height:120px;opacity:0;pointer-events:none';
     api.add('home', host);
-    let player = null, audio = null, fade = 0, current = '', token = 0;
+    let player = null, audio = null, current = '', token = 0;
     const level = () => ({ low: 15, mid: 30, high: 50 })[api.settings().volume || 'mid'];
     const picks = () => api.store.get('picks', {});  // game id -> { id, title, n }: the song chosen, and which result it was
 
-    // eases the volume to a level over a second, then calls done
-    const ramp = (from, to, done) => {
-      clearInterval(fade);
+    // eases one sound's volume to a level over a second, then calls done. Each sound has its own fade, so a song fading
+    // out always finishes (and stops) even while the next one fades in.
+    const ramp = (p, a, from, to, done) => {
+      clearInterval(p?._fade ?? a?._fade);
       let i = 0;
-      fade = setInterval(() => {
+      const t = setInterval(() => {
         i++;
         const v = from + (to - from) * Math.min(1, i / 20);
-        try { if (player) player.setVolume(v); if (audio) audio.volume = v / 100; } catch {}
-        if (i >= 20) { clearInterval(fade); done?.(); }
+        try { if (p) p.setVolume(v); if (a) a.volume = v / 100; } catch {}
+        if (i >= 20) { clearInterval(t); done?.(); }
       }, 50);
+      if (p) p._fade = t; if (a) a._fade = t;
     };
     const stop = () => {
       token++;
       const p = player, a = audio;
       player = null; audio = null; current = '';
       if (!p && !a) return;
-      ramp(level(), 0, () => { try { p?.destroy(); } catch {} a?.pause(); host.innerHTML = ''; });
+      ramp(p, a, level(), 0, () => { try { p?.destroy(); } catch {} a?.pause(); if (a) a.src = ''; box?.remove(); });
     };
     // a theme from YouTube: the first result that's a song's length (1 to 10 minutes) and says theme, OST or music
     const find = async (g, skip = 0) => {
@@ -50,15 +52,16 @@ UFE.addon({
       }
       await api.youtubePlayer();
       if (mine !== token) return;
-      host.innerHTML = '<div></div>';
-      player = new YT.Player(host.firstChild, {
+      const slot = document.createElement('div');
+      host.appendChild(slot);  // its own place: the last song's player is still fading out beside it
+      player = new YT.Player(slot, {
         videoId: pick.id, width: 200, height: 120,
         // data saver: the smallest picture YouTube has, once (not looping), stopped after a minute
         playerVars: { autoplay: 1, controls: 0, disablekb: 1, playsinline: 1, rel: 0, ...(api.settings().saver ? {} : { loop: 1, playlist: pick.id }) },
         events: {
           onReady: e => { if (mine !== token) return e.target.destroy();
             if (api.settings().saver) { try { e.target.setPlaybackQuality('tiny'); } catch {} api.after(60000, () => { if (mine === token) stop(); }); }
-            e.target.setVolume(0); e.target.playVideo(); ramp(0, level()); },
+            e.target.setVolume(0); e.target.playVideo(); ramp(e.target, null, 0, level()); },
           onError: () => { if (mine !== token) return; next(g, true); },  // not allowed to play outside YouTube: the next one
         },
       });
@@ -66,7 +69,7 @@ UFE.addon({
     const playAudio = url => {
       audio = new Audio(url);
       audio.loop = true; audio.volume = 0;
-      audio.play().then(() => ramp(0, level())).catch(() => {});
+      audio.play().then(() => ramp(null, audio, 0, level())).catch(() => {});
     };
     const play = async g => {
       if (!g || current === g.id) return;
@@ -79,7 +82,7 @@ UFE.addon({
       if (file) {
         audio = new Audio(api.fileUrl(file));  // (playAudio below does the same for a saved song)
         audio.loop = true; audio.volume = 0;
-        audio.play().then(() => ramp(0, level())).catch(() => {});
+        audio.play().then(() => ramp(null, audio, 0, level())).catch(() => {});
         return;
       }
       playYouTube(g, mine);
@@ -98,6 +101,7 @@ UFE.addon({
     api.on('game:details', ({ game }) => { this.last = game; if (api.settings().off) return; play(game); });
     api.on('game:details:close', stop);
     api.on('game:start', stop);
+    api.every(1000, () => { if (current && !document.body.classList.contains('details-open')) stop(); });  // left the page some other way: silence
     this.stop = stop;
   },
   unmount() { this.stop?.(); },
