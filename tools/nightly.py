@@ -2,6 +2,8 @@
 
     python tools/nightly.py version   sets VERSION in server.py (in the build's checkout only, never committed) to the next
                                       release's number plus the build time, e.g. 1.2.7-nightly.202611080300, and prints it
+    python tools/nightly.py version dev   the same for a dev build (.github/workflows/dev.yml): 1.2.7-dev.202611080300,
+                                      which never updates itself
     python tools/nightly.py smoke EXE starts the built exe as a test copy (port 8141) and waits for its helper to answer
                                       with that version: a build that doesn't start is never published
 
@@ -21,13 +23,13 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SERVER = os.path.join(ROOT, "server.py")
 
 
-def set_version():
+def set_version(kind="nightly"):
     text = open(SERVER, encoding="utf-8").read()
     m = re.search(r'^VERSION = "(\d+)\.(\d+)\.(\d+)"', text, re.M)
     if not m:
         sys.exit("Couldn't read VERSION from server.py")
     major, minor, patch = map(int, m.groups())
-    version = f"{major}.{minor}.{patch + 1}-nightly.{datetime.now(timezone.utc):%Y%m%d%H%M}"
+    version = f"{major}.{minor}.{patch + 1}-{kind}.{datetime.now(timezone.utc):%Y%m%d%H%M}"
     text = text[:m.start()] + f'VERSION = "{version}"' + text[m.end():]
     open(SERVER, "w", encoding="utf-8", newline="").write(text)
     print(version)
@@ -60,7 +62,7 @@ def smoke(exe):
 
 if __name__ == "__main__":
     if sys.argv[1:2] == ["version"]:
-        set_version()
+        set_version("dev" if sys.argv[2:3] == ["dev"] else "nightly")
     elif sys.argv[1:2] == ["smoke"] and len(sys.argv) == 3:
         smoke(sys.argv[2])
     else:

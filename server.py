@@ -3632,8 +3632,8 @@ def whats_new_unseen():
     if not saved.get("seen"):
         store("whatsnew.json", {**saved, "seen": VERSION})
         return False
-    if is_nightly(VERSION):
-        return False  # nightly builds have no notes of their own in News: only the releases do
+    if is_nightly(VERSION) or is_dev(VERSION):
+        return False  # nightly and dev builds have no notes of their own in News: only the releases do
     return version_key(saved["seen"]) < version_key(VERSION)
 
 
@@ -11088,13 +11088,18 @@ NIGHTLY_TAG = "nightly"  # the pre-release the nightly build job (.github/workfl
 def version_key(v):
     """Comparable versions: 1.2.7-nightly.202611080300 comes after 1.2.6 and before 1.2.7 (the release it leads up to)."""
     v = v or ""
-    m = re.search(r"-nightly\.(\d+)", v)
+    m = re.search(r"-(?:nightly|dev)\.(\d+)", v)
     nums = tuple(int(x) for x in re.findall(r"\d+", v[:m.start()] if m else v)[:3]) or (0,)
     return nums + (0,) * (3 - len(nums)) + ((0, int(m.group(1))) if m else (1, 0))
 
 
 def is_nightly(v):
     return "-nightly." in (v or "")
+
+
+def is_dev(v):
+    """A dev build (.github/workflows/dev.yml): one branch's code, built to try out; it never updates itself."""
+    return "-dev." in (v or "")
 
 
 def update_channel():
@@ -11133,6 +11138,8 @@ def file_sha256(path):
 
 def updates_off():
     """Why this copy doesn't update itself, or "" when it does."""
+    if is_dev(VERSION):  # else the updater would put the main release straight back over it
+        return "This is a dev build, made to try out a change: it doesn't update itself. Download a release to get updates again"
     if MAC:
         bundle = mac_bundle() if getattr(sys, "frozen", False) else ""
         if not bundle:
