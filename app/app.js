@@ -3471,7 +3471,11 @@ const PT_FOOT = { '': 'Press B or Esc, or click, to leave', steam: 'Hold B for 2
   pad: 'Hold B for 2 seconds, press Esc, or click, to leave · LB / RB switch drawings' };
 const PT_ART = { steam: ['controller-steam.png', 'Steam Controller'], xbox: ['pad-xbox.png', 'Xbox controller'], ps5: ['pad-ps5.png', 'DualSense'],
   ps4: ['pad-ps4.png', 'DualShock 4'], ps3: ['pad-ps3.png', 'DualShock 3'], sw2: ['pad-sw2.png', 'Pro Controller 2'], sw1: ['pad-sw1.png', 'Pro Controller'] };
-const PT_PADS = ['xbox', 'ps5', 'ps4', 'ps3', 'sw2', 'sw1'];
+// Gaming handhelds (the app knows which one it runs on): their own drawing for their built-in controls
+const HH_ART = { 'Legion Go': 'legiongo', 'ROG Ally': 'rogally', 'ROG Xbox Ally': 'xboxally', 'MSI Claw': 'claw', 'Steam Deck': 'deck', AYANEO: 'ayaneo',
+  'GPD Win': 'gpdwin', OneXPlayer: 'onexplayer', AOKZOE: 'aokzoe' };  // Zotac Zone and AYN Thor: no front picture from their makers yet
+Object.entries(HH_ART).forEach(([name, k]) => { PT_ART[k] = [`pad-${k}.png`, name]; });
+const PT_PADS = ['xbox', 'ps5', 'ps4', 'ps3', 'sw2', 'sw1', ...Object.values(HH_ART)];
 // The standard Gamepad layout's buttons, as pads.json names them (17 is the touchpad on PlayStation pads, Share on Xbox ones)
 const PT_STD = ['a', 'b', 'x', 'y', 'lb', 'rb', 'lt', 'rt', 'view', 'menu', 'ls', 'rs', 'dup', 'ddown', 'dleft', 'dright', 'guide', 'touchpad share', 'mic'];
 const XI_BITS = [0x1000, 0x2000, 0x4000, 0x8000, 0x100, 0x200, 0, 0, 0x20, 0x10, 0x40, 0x80, 0x1, 0x2, 0x4, 0x8, 0x400];  // XInput's buttons in that order
@@ -3481,6 +3485,9 @@ function ptName(draw, k) {
   if (draw === 'sw1' || draw === 'sw2')  // Nintendo's letters sit swapped: the bottom button is B, the right one A
     return { dup: 'Up', ddown: 'Down', dleft: 'Left', dright: 'Right', a: 'B', b: 'A', x: 'Y', y: 'X', lb: 'L', rb: 'R', lt: 'ZL', rt: 'ZR', ls: 'L3', rs: 'R3',
       guide: 'Home', view: '−', menu: '+', share: 'Capture' }[k] || '';
+  if (Object.values(HH_ART).includes(draw)) return { dup: 'Up', ddown: 'Down', dleft: 'Left', dright: 'Right', a: 'A', b: 'B', x: 'X', y: 'Y', lb: draw === 'deck' ? 'L1' : 'LB',
+    rb: draw === 'deck' ? 'R1' : 'RB', lt: draw === 'deck' ? 'L2' : 'LT', rt: draw === 'deck' ? 'R2' : 'RT', ls: 'LS', rs: 'RS', guide: draw === 'deck' ? 'Steam' : 'Home',
+    view: 'View', menu: 'Menu', share: 'Share' }[k] || '';
   const ps = draw !== 'xbox';
   return { dup: 'Up', ddown: 'Down', dleft: 'Left', dright: 'Right', a: ps ? '✕' : 'A', b: ps ? '○' : 'B', x: ps ? '□' : 'X', y: ps ? '△' : 'Y',
     lb: ps ? 'L1' : 'LB', rb: ps ? 'R1' : 'RB', lt: ps ? 'L2' : 'LT', rt: ps ? 'R2' : 'RT', ls: ps ? 'L3' : 'LS', rs: ps ? 'R3' : 'RS', guide: ps ? 'PS' : 'Xbox',
@@ -3521,6 +3528,7 @@ async function openPadTester() {
   document.body.appendChild(box);
   addEventListener('keydown', padTesterKey, true);
   if (!PADS_AT) PADS_AT = await fetch('assets/pads.json').then(r => r.json()).catch(() => null);
+  if (!SP.qa) api('/api/qa').then(r => { SP.qa = r; }).catch(() => {});  // which handheld this is, for its drawing
   if (PT.open) padTesterTick();
 }
 function padTesterKey(e) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closePadTester(); } }
@@ -3561,7 +3569,7 @@ function steamTick(box, b) {
 // Any other pad, in the standard Gamepad layout: buttons, trigger pressure and both sticks
 function padTick(box, pad) {
   if (pad.id !== PT.padId) { PT.padId = pad.id; PT.pick = null; PT.prev = []; PT.change = 'Press something'; }
-  const auto = padDrawing(pad.id), on = i => !!pad.pressed[i];
+  const hh = HH_ART[SP.qa?.handheld], auto = hh && PADS_AT?.[hh] && padDrawing(pad.id) === 'xbox' ? hh : padDrawing(pad.id), on = i => !!pad.pressed[i];
   // LB / RB read here rather than as menu actions: for an Xbox pad those also come through the helper
   [[4, -1], [5, 1]].forEach(([i, dir]) => { if (on(i) && !PT.prev[i]) PT.pick = PT_PADS[(PT_PADS.indexOf(PT.pick || auto) + dir + PT_PADS.length) % PT_PADS.length]; });
   const draw = PT.pick || auto, at = PADS_AT?.[draw] || {}, key = i => (PT_STD[i] || '').split(' ').find(k => at[k]);
