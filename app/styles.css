@@ -1079,8 +1079,9 @@ body:not(.ready) #world, body:not(.ready) header, body:not(.ready) main, body:no
 #launch.has-logo .lbox::before { content: ""; position: absolute; left: 50%; top: 15vh; width: 90vh; height: 60vh; transform: translate(-50%, -50%); z-index: -1; pointer-events: none;
   background: radial-gradient(closest-side, rgba(150, 210, 255, .16), rgba(150, 210, 255, .05) 55%, transparent); animation: launchGlow 2.8s ease-in-out infinite; }
 @keyframes launchGlow { 50% { opacity: .55; } }
-/* game logos: many have a glow baked in that stops dead at the picture's edge, so the edges fade out */
-#launch .llogo, .d-logo img { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 10%, #000 90%, transparent), linear-gradient(to right, transparent, #000 8%, #000 92%, transparent); -webkit-mask-composite: source-in; mask-composite: intersect; }
+/* game logos: many have a glow baked in that stops dead at the picture's edge, so the very edges fade out (only the outer 2%:
+   wider covered the logos themselves) */
+#launch .llogo, .d-logo img { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 2%, #000 98%, transparent), linear-gradient(to right, transparent, #000 2%, #000 98%, transparent); -webkit-mask-composite: source-in; mask-composite: intersect; }
 /* album: the grid stops below the tabs, and a scrolled card leaves room for its game's heading */
 #albumpage .al-grid { margin: 0 -1vh; padding: 1vh; scroll-padding-block: 7vh 3vh; }
 /* UI scale (Settings › General). Everything is sized from the screen height, so page zoom wouldn't change it: --scale does.
