@@ -106,7 +106,7 @@ UFE.addon({
     const at = Math.max(0, vols.findIndex(([k]) => k === (s.volume || 'mid')));
     const last = this.last, pick = last && (api.store.get('picks', {})[last.id]);
     return [
-      { kind: 'row', label: 'Theme music', value: s.off ? 'Off' : 'On', sub: "Plays on a game's page", act: () => { api.saveSettings({ off: !s.off }); renderPanel(); } },
+      { kind: 'row', label: 'Play themes', value: s.off ? 'Off' : 'On', sub: "On a game's page", act: () => { api.saveSettings({ off: !s.off }); renderPanel(); } },
       { kind: 'row', label: 'Save songs on this PC', value: s.save ? 'On' : 'Off', sub: 'Each theme is saved the first time it plays, then plays from your PC with no data',
         act: () => { api.saveSettings({ save: !s.save }); renderPanel(); } },
       { kind: 'row', label: 'Data saver', value: s.saver ? 'On' : 'Off', sub: 'Lowest quality, plays once, stops after a minute. Your own songs use no data',

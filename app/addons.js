@@ -163,12 +163,13 @@ function addonRows() {
     return [
       { kind: 'head', label: a.title },
       // installed: A opens or closes its settings (and Remove, at the end of them); not installed: A installs it
-      { kind: 'row', ic: `<img class="paddon" src="${esc(a.icon)}" alt="">`, label: a.title, sub: `${a.description} · by ${a.author}${a.own ? ' · from your add-ons folder' : ''}`,
+      { kind: 'row', key: 'addon-' + a.id, ic: `<img class="paddon" src="${esc(a.icon)}" alt="">`, label: a.title, sub: `${a.description} · by ${a.author}${a.own ? ' · from your add-ons folder' : ''}`,
         value: on ? (ADDONS.open === a.id ? '▴' : '▾') : 'Install',
         act: () => { if (!on) return addonSet(a, true); ADDONS.open = ADDONS.open === a.id ? '' : a.id; renderPanel(); } },
       ...(on && ADDONS.open === a.id ? [
-        ...(ADDONS.defs[a.id]?.options ? ADDONS.defs[a.id].options(ADDONS.ctx[a.id] || UFE) : []),
-        { kind: 'row', ic: icon('close'), label: `Remove ${a.title}`, warn: true, sub: 'Takes it off; install it again any time', act: () => { ADDONS.open = ''; addonSet(a, false); } },
+        // each row its own key, so the highlight stays put as they redraw (a row named like the add-on would pull it back up)
+        ...(ADDONS.defs[a.id]?.options ? ADDONS.defs[a.id].options(ADDONS.ctx[a.id] || UFE) : []).map((r, i) => ({ key: `addon-${a.id}-${i}`, ...r })),
+        { kind: 'row', key: `addon-${a.id}-remove`, ic: icon('close'), label: `Remove ${a.title}`, warn: true, sub: 'Takes it off; install it again any time', act: () => { ADDONS.open = ''; addonSet(a, false); } },
       ] : []),
     ];
   }), ...folder];
