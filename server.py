@@ -13,6 +13,7 @@ import html
 import json
 import os
 import re
+import calendar
 import shutil
 import struct
 import subprocess
@@ -6914,6 +6915,53 @@ def steam_friends():
     return out
 
 
+EPIC_FRIENDS = [0.0, []]
+
+
+def epic_friends():
+    """Epic friends: their names and when each was last online (Epic shares no live game status with other apps).
+    Through the same Epic sign-in the library uses; cached for two minutes."""
+    accounts = load("accounts.json", {})
+    acc = accounts.get("epic")
+    if not acc:
+        return []
+    if time.time() - EPIC_FRIENDS[0] < 120:
+        return EPIC_FRIENDS[1]
+    tok = epic_token({"grant_type": "refresh_token", "refresh_token": acc["refresh_token"]})
+    acc["refresh_token"] = tok["refresh_token"]  # refresh tokens rotate
+    store("accounts.json", accounts)
+    me, auth = tok["account_id"], {"Authorization": f"bearer {tok['access_token']}", "User-Agent": EPIC_UA}
+    ids = [f["accountId"] for f in http_json(f"https://friends-public-service-prod.ol.epicgames.com/friends/api/v1/{me}/summary", headers=auth).get("friends", [])]
+    names = {}
+    for i in range(0, len(ids), 100):
+        q = urllib.parse.urlencode([("accountId", x) for x in ids[i:i + 100]])
+        for a in http_json("https://account-public-service-prod.ol.epicgames.com/account/api/public/account?" + q, headers=auth):
+            names[a["id"]] = a.get("displayName") or next((x.get("externalDisplayName") for x in (a.get("externalAuths") or {}).values() if x.get("externalDisplayName")), "")
+    try:
+        seen = http_json(f"https://presence-public-service-prod.ol.epicgames.com/presence/api/v1/_/{me}/last-online", headers=auth)
+    except (urllib.error.URLError, ValueError):
+        seen = {}
+    out = []
+    for fid in ids:
+        last = ((seen.get(fid) or [{}])[0]).get("last_online", "")
+        try:
+            ago = time.time() - calendar.timegm(time.strptime(last[:19], "%Y-%m-%dT%H:%M:%S")) if last else None
+        except ValueError:
+            ago = None
+        online = ago is not None and ago < 600
+        status = "Online on Epic" if online else ("Epic · " + (f"last online {fmt_ago(ago)}" if ago is not None else "offline"))
+        out.append({"id": "epic-" + fid, "name": names.get(fid) or "Epic friend", "avatar": "", "game": "", "status": status,
+                    "online": online, "platform": "Epic", "ago": ago if ago is not None else 1e12})
+    out.sort(key=lambda f: f["ago"])
+    EPIC_FRIENDS[0], EPIC_FRIENDS[1] = time.time(), out
+    return out
+
+
+def fmt_ago(sec):
+    m = sec / 60
+    return "just now" if m < 2 else f"{int(m)} min ago" if m < 60 else f"{int(m // 60)} h ago" if m < 1440 else "yesterday" if m < 2880 else f"{int(m // 1440)} days ago"
+
+
 def button_log(line):
     try:
         with open(os.path.join(DATA, "steam-button.log"), "a", encoding="utf-8") as f:
@@ -10114,13 +10162,19 @@ class Handler(SimpleHTTPRequestHandler):
             return self.reply({"games": list(RUN_NOW), "folders": len(RUN_DIRS[1])})
         if path == "/api/downloads":
             return self.reply({"items": steam_downloads()})
-        if path == "/api/friends":
+        if path == "/api/friends":  # Steam friends, then Epic friends (each platform's own list; one failing doesn't hide the other)
+            items, error = [], ""
             try:
-                return self.reply({"items": steam_friends()})
+                items = [{**f, "platform": "Steam"} for f in steam_friends()]
             except ValueError as e:
-                return self.reply({"items": [], "error": str(e)})
+                error = str(e)
             except OSError:
-                return self.reply({"items": [], "error": "Couldn't reach Steam. Check your connection."})
+                error = "Couldn't reach Steam. Check your connection."
+            try:
+                items += epic_friends()
+            except (OSError, ValueError, KeyError):
+                pass
+            return self.reply({"items": items, **({"error": error} if error and not items else {})})
         if path == "/api/unpack":
             gid_ = (urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("id") or [""])[0]
             return self.reply({"unpacking": gid_ in UNPACKING, "error": UNPACK_ERRORS.get(gid_, "")})

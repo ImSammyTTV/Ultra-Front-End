@@ -2162,6 +2162,7 @@ function openFriendMenu(f) {
   $('#quick .sys-info').innerHTML = infoRow('Status', f.status);
 }
 async function messageFriend(f) {
+  if (f.platform === 'Epic') return toast(`Message ${f.name} in the Epic Games Launcher`, 3500);  // Epic has no chat other apps can open
   try { await api('/api/friends/message', { id: f.id, name: f.name }); toast(`Opening Steam chat with ${f.name}`, 3000); }
   catch (e) { toast(/404/.test(e.message) ? 'This needs the latest frontend update.' : e.message); }
 }
