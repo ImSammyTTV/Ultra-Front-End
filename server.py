@@ -6633,7 +6633,7 @@ HANDHELD = [None]
 
 
 # Gaming handhelds, from the product name in their firmware: (pattern, name, controllers come off it)
-HANDHELDS = [(r"legion\s*go", "Legion Go", True), (r"rog\s*xbox\s*ally|rc73", "ROG Xbox Ally", False), (r"ayn\s*thor|ayn", "AYN Thor", False), (r"rog\s*ally|rc71l|rc72l", "ROG Ally", False),
+HANDHELDS = [(r"legion\s*go", "Legion Go", True), (r"rog\s*xbox\s*ally|rc73", "ROG Xbox Ally", False), (r"ayn\s*thor", "AYN Thor", False), (r"rog\s*ally|rc71l|rc72l", "ROG Ally", False),
              (r"claw", "MSI Claw", False), (r"jupiter|galileo|steam\s*deck", "Steam Deck", False), (r"ayaneo|aya\s*neo", "AYANEO", False),
              (r"gpd\s*win|g1617|g1618|g1619|g1620", "GPD Win", False), (r"onexplayer|onexfly|one-?netbook", "OneXPlayer", False),
              (r"zotac.*zone", "Zotac Zone", False), (r"aokzoe", "AOKZOE", False)]
