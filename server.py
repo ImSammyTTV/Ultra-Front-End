@@ -1000,10 +1000,10 @@ def install_download(name, url, filename, program_name, digest="", size=0, targe
     return os.path.join(target, program_name)
 
 
-# A project whose releases include test builds can be held to one line of them here ({name: tag pattern}). Eglantine
-# publishes daily builds and a build of every branch (branch-fix-..., branch-exp-...): Sam wants the newest of all of
-# them (2026-11-08), so it has no line and takes whichever was published last.
-GITHUB_TAGS = {}
+# A project whose releases include test builds is held to one line of them here ({name: tag pattern}). Eglantine
+# publishes daily builds of its main code and a build of every branch (branch-fix-..., branch-exp-...): branches are
+# code nobody has reviewed and merged yet, so only the daily builds are used (Sam, 2026-11-08: safety over newest).
+GITHUB_TAGS = {"Eglantine": r"^daily-\d{8}$"}
 
 
 # Ports come from people's own projects, and fake "fixed" builds that steal passwords are common: a port's download is
@@ -1047,6 +1047,8 @@ def github_latest(name):
         pass
     if name in PORT_NAMES:
         releases = [r for r in releases if port_release_ok(repo, r)]
+    else:  # the emulators' own projects (fixed in the app): never a release that talks of being fixed, cracked or unlocked
+        releases = [r for r in releases if not PORT_BAD.search(" ".join([r.get("name") or "", r.get("tag_name") or "", *[a["name"] for a in r.get("assets", [])]]))]
     avx2 = cpu_avx2()
     line = GITHUB_TAGS.get(name)  # a project whose releases include test builds of single fixes: only its regular line
     found = sorted(((r.get("published_at") or "", a) for r in releases if not r.get("draft") and (not line or re.search(line, r.get("tag_name") or ""))
