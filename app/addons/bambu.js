@@ -1,32 +1,19 @@
-// Bambu Lab: how your print is going, by the clock and in a card over your game, and a message when it's done.
+// Bambu Lab: how your print is going, in a card over your game at its milestones, and a message when it's done.
 // An example of api.hud: the card shows only while a game is running.
 // The app talks to the printer on your home network (LAN): its IP address, serial number and access code are on the
 // printer's screen (Settings › Network, or WLAN / LAN Only). Nothing goes through Bambu's cloud.
 UFE.addon({
   id: 'bambu',
   mount(api) {
-    const el = document.createElement('span');
-    el.className = 'bambu-chip';
-    api.add('header', el);
-    api.css(`.bambu-chip { display: inline-flex; align-items: center; gap: .7vh; margin-right: 2.2vh; font-variant-numeric: tabular-nums; }
-      .bambu-chip:empty { display: none; }
-      .bambu-chip i { display: inline-block; width: 6vh; height: .6vh; border-radius: .3vh; background: rgba(255,255,255,.22); overflow: hidden; }
-      .bambu-chip i b { display: block; height: 100%; background: #fff; border-radius: inherit; transition: width .6s ease; }`);
     let p = null, was = '';
     const left = m => m == null ? '' : m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`;
     const active = s => ['RUNNING', 'PREPARE', 'PAUSE', 'SLICING'].includes(s);
-    const draw = () => {
-      el.innerHTML = p && active(p.state) && p.percent != null
-        ? `${api.icon('printer')}<span>${p.state === 'PAUSE' ? 'Paused' : `${p.percent}%`}</span><i><b style="width:${p.percent}%"></b></i>${p.remaining ? `<span>${left(p.remaining)}</span>` : ''}`
-        : '';
-      api.refresh();
-    };
     const check = async () => {
       try { p = await api.request('/api/bambu'); } catch { return; }
       // a message when a print ends, whichever way
       if (active(was) && p.state === 'FINISH') { api.toast(`Print finished${p.name ? `: ${p.name}` : ''}`, 6000); api.sound(880, .08); }
       if (active(was) && p.state === 'FAILED') api.toast(`Print stopped${p.name ? `: ${p.name}` : ''}`, 6000);
-      draw(); card();
+      card();
       was = p.state;
     };
     check();
