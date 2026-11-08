@@ -2038,6 +2038,14 @@ $('#albumpage').addEventListener('click', e => {
 // ---------- quick menu (Y / O / right-click) ----------
 // A blurred overlay with the game's cover and a vertical list of big options.
 const Q = { open: false, game: null, i: 0, items: [] };
+// Updates from GitHub: the port's own project (owner/name). Only the project itself is used, and only releases its owner
+// made: never a copy, or a "fixed" build (those are often password stealers).
+function portUpdates(g) {
+  openSearch(null, async text => {
+    try { const r = await api('/api/ports/updates', { id: g.id, repo: text.trim() }); toast(r.repo ? `${g.title} now updates from ${r.repo}` : `${g.title} no longer updates from GitHub`, 4000); }
+    catch (e) { toast(e.message, 6000); }
+  }, { id: 'port-repo', label: `${g.title}: its GitHub project, as owner/name (leave empty to stop)`, max: 100 });
+}
 function quickItems(g) {
   const svg = n => n === 'play' ? ICON_PLAY : icon(n);
   return [  // no Play: A on the cover (or the details page) starts a game, so Y then A never starts one by mistake
@@ -2045,6 +2053,8 @@ function quickItems(g) {
     ...(D.open ? [] : [{ label: 'Game details', ic: svg('info'), run: () => openDetails(g) }]),
     { label: g.favorite ? 'Remove from Favourites' : 'Add to Favourites', ic: svg('star'), run: () => setFavorite(g, !g.favorite) },
     { label: 'Collections', ic: svg('library'), run: () => openCollections(g) },
+    // a PC port added from its program: it can keep itself up to date from its own GitHub project
+    ...(g.port ? [{ label: 'Updates from GitHub', ic: svg('download'), run: () => setTimeout(() => portUpdates(g), 0) }] : []),
     { label: 'Artwork', ic: svg('image'), run: () => openArtMenu(g) },
     { label: 'Rename', ic: svg('keyboard'), run: () => renameGame(g) },
     ...(g.renamed ? [{ label: 'Restore original name', ic: svg('reset'), run: () => setGameName(g, '') }] : []),

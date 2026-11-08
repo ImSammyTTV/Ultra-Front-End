@@ -1006,6 +1006,37 @@ def install_download(name, url, filename, program_name, digest="", size=0, targe
 GITHUB_TAGS = {}
 
 
+# Ports come from people's own projects, and fake "fixed" builds that steal passwords are common: a port's download is
+# only taken from the project itself (not a fork), from a release its owner (or the project's own build robot) made,
+# never one whose name or file talks of being fixed, cracked or unlocked, and only as a .zip or .7z.
+PORT_BAD = re.compile(r"(?i)\bfixed\b|\bfix(ed)?[-_ ]?(version|build|exe|download)|crack|keygen|loader|bypass|password|unlock(er|ed)?\b|free[-_ ]?download|\.(exe|scr|msi|bat|cmd|vbs|js|lnk)$")
+PORT_REPOS = {}
+
+
+def port_repo_ok(repo):
+    """The project itself: not a fork of someone else's, with its own source code, and at least two weeks old."""
+    if repo not in PORT_REPOS:
+        try:
+            info = http_json(f"https://api.github.com/repos/{repo}", timeout=20)
+            made = calendar.timegm(time.strptime(info.get("created_at", "2100-01-01T00:00:00Z")[:19], "%Y-%m-%dT%H:%M:%S"))
+            PORT_REPOS[repo] = (not info.get("fork") and not info.get("archived") and (info.get("size") or 0) > 500
+                                and time.time() - made > 14 * 86400, info.get("owner", {}).get("login", "").lower(), info.get("fork") and (info.get("parent") or {}).get("full_name"))
+        except (urllib.error.URLError, ValueError):
+            return False
+    return PORT_REPOS[repo][0]
+
+
+def port_release_ok(repo, release):
+    if not port_repo_ok(repo):
+        return False
+    author = (release.get("author") or {}).get("login", "").lower()
+    if author not in (PORT_REPOS[repo][1], "github-actions[bot]"):
+        return False  # uploaded by someone else, even on the project's own page
+    words = " ".join([release.get("name") or "", release.get("tag_name") or "", *[a["name"] for a in release.get("assets", [])]])
+    return not PORT_BAD.search(words) and all(a["name"].lower().endswith((".zip", ".7z", ".txt", ".tar.gz", ".tar.zst", ".appimage", ".json", ".patch", ".xz", ".dmg"))
+                                             or "sha256" in a["name"].lower() for a in release.get("assets", []))
+
+
 def github_latest(name):
     """The newest Windows download of a GitHub emulator: (asset, published) or (None, "")."""
     repo, pattern, program_name = GITHUB_EMUS[name]
@@ -1014,6 +1045,8 @@ def github_latest(name):
         releases = [http_json(f"https://api.github.com/repos/{repo}/releases/latest", timeout=30)] + releases
     except (urllib.error.URLError, ValueError):  # none yet: Eglantine only makes pre-releases
         pass
+    if name in PORT_NAMES:
+        releases = [r for r in releases if port_release_ok(repo, r)]
     avx2 = cpu_avx2()
     line = GITHUB_TAGS.get(name)  # a project whose releases include test builds of single fixes: only its regular line
     found = sorted(((r.get("published_at") or "", a) for r in releases if not r.get("draft") and (not line or re.search(line, r.get("tag_name") or ""))
@@ -2061,6 +2094,7 @@ def scan_library(lib, cfg):
         if not title or GENERIC_DIRS.fullmatch(title) or SHELF_DIRS.fullmatch(title):  # a name kept from before folders like Retail were skipped
             title = title_for_exe(path)
         g = exe_game(title, path, lib["name"], cfg)
+        g["port"] = True  # added from its program: it can update from its GitHub project (its quick menu)
         if lib.get("args"):
             g["launch"]["args"] = list(lib["args"])
         if lib.get("system"):  # an emulator set up for one game (PlayStation Home in its own RPCS3): listed with that console
@@ -9257,17 +9291,51 @@ EMU_UPDATE_LOCK = threading.Lock()
 
 
 # PC ports that publish Windows builds on GitHub: kept up to date like the emulators (Settings › Systems › Emulator
-# updates). Found by their program, wherever they were installed; their saves and settings stay (only the files in the
-# new build are written). Ports with their own launcher that updates them (Midnight Club) aren't here.
-PORT_GITHUB = {
-    "Bloodborne": ("Supermedo/bloodborne_pc", r"^Bloodborne-Windows\.zip$", "Play Bloodborne.exe"),
-    "DRIVECLUB": ("OverkillLabs3/driveclub-recomp", r"^driveclub-recomp-[\d.]+-win64\.zip$", "DriveClub.exe"),
-    "inFAMOUS Second Son": ("HayatoG/iss_pc", r"^infamous-windows-x86_64(-[\w-]+)?\.zip$", "Play inFAMOUS Second Son.exe"),
-    "Savage Wind": ("Revivedx/SavageWindRecomp", r"^SavageWind-[\w.-]+-windows\.zip$", "savagewind.exe"),
-    "Killzone Shadow Fall": ("lesca-191204/killzone-shadowfall-pc", r"^KillzoneShadowFall-v[\d.]+-windows\.zip$", "Killzone Shadow Fall.exe"),
-}
+# updates), once someone adds a port's project from its quick menu. Found by their program, wherever they were installed;
+# their saves and settings stay (only the files in the new build are written).
+def port_updates():
+    """Ports kept up to date from their GitHub releases: {name: {repo, asset (pattern, optional), program}}. Each person
+    adds their own from a game's quick menu (Updates from GitHub); kept in data/port-updates.json, not in the app."""
+    out = {}
+    for name, e in load("port-updates.json", {}).items():
+        if isinstance(e, dict) and re.fullmatch(r"[\w.-]+/[\w.-]+", str(e.get("repo", ""))) and e.get("program"):
+            out[name] = (e["repo"], e.get("asset") or r"(?i)win(dows)?[-_ .]?(x64|x86_64|64)?.*\.(zip|7z)$", e["program"])
+    return out
+
+
+def port_update_set(name, repo, program):
+    """Adds (or with no repo, removes) one port's GitHub updates."""
+    entries = load("port-updates.json", {})
+    repo = re.sub(r"^https?://github\.com/|\.git$|/+$", "", str(repo or "").strip())
+    if not repo:
+        entries.pop(name, None)
+    else:
+        if not re.fullmatch(r"[\w.-]+/[\w.-]+", repo):
+            raise ValueError("That isn't a GitHub project: type it as owner/name")
+        PORT_REPOS.pop(repo, None)
+        if not port_repo_ok(repo):
+            parent = (PORT_REPOS.get(repo) or (0, 0, None))[2]
+            raise ValueError(f"{repo} is a copy of {parent}: use the original project" if parent else
+                             f"{repo} doesn't look like a port's own project (too new, no source code, or archived), so it isn't used")
+        releases = http_json(f"https://api.github.com/repos/{repo}/releases?per_page=5", timeout=20)
+        if not any(re.search(r"(?i)win(dows)?[-_ .]?(x64|x86_64|64)?.*\.(zip|7z)$", a["name"]) for r in releases for a in r.get("assets", [])):
+            raise ValueError(f"{repo} has no Windows download in its releases")
+        entries[name] = {"repo": repo, "program": os.path.basename(program)}
+    store("port-updates.json", entries)
+    sync_port_updates()
+
+
+def sync_port_updates():
+    for name in [n for n in GITHUB_EMUS if n in PORT_NAMES and n not in port_updates()]:
+        GITHUB_EMUS.pop(name, None)
+        PORT_NAMES.discard(name)
+    for name, entry in port_updates().items():
+        GITHUB_EMUS[name] = entry
+        PORT_NAMES.add(name)
+
+
+PORT_NAMES = set()
 PORT_HOMES = [os.path.expanduser(r"~\Games\Ports"), r"C:\Ultra-Front-End\Ports"]
-GITHUB_EMUS.update(PORT_GITHUB)  # downloaded and checked the same way
 
 
 def own_ports(cfg=None):
@@ -9275,7 +9343,8 @@ def own_ports(cfg=None):
     cfg = cfg or config()
     out = {}
     paths = [l.get("path", "") for l in cfg.get("libraries", []) if l.get("type") == "game"]
-    for name, (_, _, program) in PORT_GITHUB.items():
+    sync_port_updates()
+    for name, (_, _, program) in port_updates().items():
         hit = next((p for p in paths if os.path.basename(p).lower() == program.lower() and os.path.isfile(p)), None)
         if not hit:
             for home in PORT_HOMES:
@@ -10457,6 +10526,13 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.reply({"ok": True, "installing": not g["installed"], "unpacking": result == "unpacking"})
             if path == "/api/game/app-location":
                 return self.reply(change_app_location(body.get("id"), bool(body.get("reset"))))
+            if path == "/api/ports/updates":  # {id, repo}: a PC game added by hand updates from its GitHub project (no repo: stops)
+                g = STATE["byId"].get(body.get("id"))
+                exe = ((g or {}).get("launch") or {}).get("exe") or ""
+                if not g or not g.get("port") or not os.path.isfile(exe):
+                    raise ValueError("Only a game added from its program can update from GitHub")
+                port_update_set(g["title"], body.get("repo"), exe)
+                return self.reply({"ok": True, "repo": (load("port-updates.json", {}).get(g["title"]) or {}).get("repo", "")})
             if path == "/api/game/hide":
                 g = STATE["byId"].get(body.get("id"))
                 if not g:
