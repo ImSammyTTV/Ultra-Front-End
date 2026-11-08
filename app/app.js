@@ -2774,6 +2774,7 @@ function panelItems() {
   if (P.view === 'art') {
     const A = P.art;
     return [
+      ...(A.note && !A.loading ? [{ kind: 'note', warn: true, label: A.note }] : []),  // SteamGridDB unreachable: libretro's art only
       ...(A.loading ? [{ kind: 'note', label: 'Loading artwork…' }]
         : A.grids.length ? A.grids.map(a => ({ kind: 'thumb', thumb: a.thumb, badge: a.animated ? 'Animated' : '', label: a.author ? `by ${a.author}` : '', act: () => chooseArt(a.url) }))
         : [{ kind: 'note', label: !A.current && A.games.length ? 'Which game is it? Pick it below, or search by name.'

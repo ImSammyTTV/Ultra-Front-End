@@ -7,6 +7,7 @@ Run: python server.py [--auto-exit]   then open http://127.0.0.1:8137
 User data (libraries, accounts, play log) lives in data/ and is never committed.
 """
 import base64
+import http.client
 import glob
 import hashlib
 import html
@@ -199,8 +200,17 @@ UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) GameFrontend/0.1"
 
 def http_json(url, data=None, headers=None, timeout=15):
     req = urllib.request.Request(url, data=data, headers={"User-Agent": UA, **(headers or {})})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read().decode("utf-8"))
+    except (http.client.HTTPException, ConnectionError, TimeoutError) as e:
+        # the connection dropped part way (reset, cut off, timed out reading): the same "couldn't reach it" every caller handles
+        raise urllib.error.URLError(e) from e
+
+
+def offline(e):
+    """True for "couldn't reach the site" (no internet, DNS, timeout), not for the site answering with an error."""
+    return isinstance(e, urllib.error.URLError) and not isinstance(e, urllib.error.HTTPError)
 
 
 def read(path):
@@ -2237,6 +2247,7 @@ def scan_library(lib, cfg):
 SGDB = "https://www.steamgriddb.com/api/v2"
 SGDB_KEY_PAGE = "https://www.steamgriddb.com/profile/preferences/api"
 GRID_DIMS = "600x900,342x482,660x930"  # tall covers only
+SGDB_UNREACHABLE = "Couldn't reach SteamGridDB. Check your internet connection and try again."
 ART_DIR = os.path.join(DATA, "art")
 
 
@@ -2312,9 +2323,12 @@ def set_art(game_id, url, kind="cover"):
                                                              or host == "thumbnails.libretro.com"):
         raise ValueError("Artwork must come from SteamGridDB or libretro")
     limit = 60 * 1024 * 1024  # animated covers and backgrounds run to tens of megabytes
-    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=60) as r:
-        data = r.read(limit + 1)
-        ctype = (r.headers.get("Content-Type") or "").split(";")[0]
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=60) as r:
+            data = r.read(limit + 1)
+            ctype = (r.headers.get("Content-Type") or "").split(";")[0]
+    except (urllib.error.URLError, http.client.HTTPException, ConnectionError, TimeoutError) as e:
+        raise ValueError("That artwork couldn't be downloaded. Check your internet connection and try again.") from e
     if len(data) > limit or not ctype.startswith("image/"):
         raise ValueError("That artwork couldn't be downloaded")
     os.makedirs(ART_DIR, exist_ok=True)
@@ -2388,7 +2402,9 @@ def sgdb_fill_missing(key, games):
                 grids = sgdb_grids(key, hit["id"]) if hit else []
                 cache[k] = grids[0]["url"] if grids else ""
                 changed = True
-            except (urllib.error.URLError, ValueError, KeyError, TimeoutError):
+            except (urllib.error.URLError, ValueError, KeyError, TimeoutError) as e:
+                if offline(e):  # no internet or SteamGridDB is down: the rest would only wait out their timeouts too; next scan tries again
+                    break
                 continue
         g["cover"] = cache[k]
     if changed:
@@ -2592,8 +2608,9 @@ def hero_for(g):
             m = sgdb_game_for(accounts["sgdb"]["key"], g)
             heroes = sgdb(f"/heroes/game/{m['id']}", accounts["sgdb"]["key"], types="static", nsfw="false") if m else []
             url = heroes[0]["url"] if heroes else ""
-        except (urllib.error.URLError, ValueError, KeyError, TimeoutError):
-            pass
+        except (urllib.error.URLError, ValueError, KeyError, TimeoutError) as e:
+            if offline(e):
+                return url  # not remembered, so it's looked up again once the connection is back
     HEROES[g["id"]] = url
     return url
 
@@ -3715,8 +3732,9 @@ def scan():
         if cfg["onlineCovers"] and "sgdb" in accounts:
             try:
                 sgdb_fill_missing(accounts["sgdb"]["key"], list(games.values()))
-            except Exception as e:
-                errors.append(f"SteamGridDB: {e}")
+            except Exception as e:  # SteamGridDB only fills in missing covers: unreachable is not worth a warning
+                if not offline(e):
+                    errors.append(f"SteamGridDB: {e}")
         for g in games.values():
             if not g["cover"] and g.get("fallbackCover"):
                 g["cover"] = libretro_cover(g) or g["fallbackCover"]
@@ -10950,13 +10968,19 @@ class Handler(SimpleHTTPRequestHandler):
                     if g.get("source") != "Emulators":
                         raise ValueError("Connect SteamGridDB first")
                     return self.reply({"current": None, "games": [], "grids": extra})
-                found = sgdb_search(key, query or g["title"])
-                current = next((f for f in found if f["id"] == body.get("sgdbId")), None)
-                if not current and not query:
-                    current = sgdb_game_for(key, g)
-                current = current or (found[0] if found and query else None)  # not this game's: let the list below choose
-                results = ([current] if current else []) + [f for f in found if not current or f["id"] != current["id"]]
-                return self.reply({"current": current, "games": results[:6], "grids": (sgdb_grids(key, current["id"], kind) if current else []) + extra})
+                try:
+                    found = sgdb_search(key, query or g["title"])
+                    current = next((f for f in found if f["id"] == body.get("sgdbId")), None)
+                    if not current and not query:
+                        current = sgdb_game_for(key, g)
+                    current = current or (found[0] if found and query else None)  # not this game's: let the list below choose
+                    results = ([current] if current else []) + [f for f in found if not current or f["id"] != current["id"]]
+                    grids = sgdb_grids(key, current["id"], kind) if current else []
+                except urllib.error.URLError as e:
+                    if extra:  # libretro still answered: its art to choose from, and a word on why SteamGridDB's isn't there
+                        return self.reply({"current": None, "games": [], "grids": extra, "note": SGDB_UNREACHABLE})
+                    raise ValueError(SGDB_UNREACHABLE if offline(e) else f"SteamGridDB isn't answering right now ({e.code}). Try again in a little while.") from e
+                return self.reply({"current": current, "games": results[:6], "grids": grids + extra})
             if path == "/api/art/set":
                 if body.get("id") not in STATE["byId"]:
                     raise ValueError("Game not found")
@@ -10977,7 +11001,7 @@ class Handler(SimpleHTTPRequestHandler):
         except urllib.error.HTTPError as e:
             return self.reply({"error": f"The service said no ({e.code}). Check the details and try again."}, 400)
         except (urllib.error.URLError, TimeoutError):
-            return self.reply({"error": "Couldn't reach the internet service"}, 400)
+            return self.reply({"error": "Couldn't reach the internet service. Check your internet connection and try again."}, 400)
         except (ValueError, KeyError, OSError) as e:
             return self.reply({"error": str(e)}, 400)
         except Exception as e:  # a bug rather than bad input
