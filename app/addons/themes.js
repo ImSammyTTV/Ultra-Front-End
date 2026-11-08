@@ -30,7 +30,7 @@ UFE.addon({
       const p = player, a = audio;
       player = null; audio = null; current = '';
       if (!p && !a) return;
-      ramp(p, a, level(), 0, () => { try { p?.destroy(); } catch {} a?.pause(); if (a) a.src = ''; box?.remove(); });
+      ramp(p, a, level(), 0, () => { try { p?.destroy(); } catch {} a?.pause(); if (a) a.src = ''; });  // destroy() takes its own frame away
     };
     // a theme from YouTube: the first result that's a song's length (1 to 10 minutes) and says theme, OST or music
     const find = async (g, skip = 0) => {

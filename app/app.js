@@ -2227,7 +2227,8 @@ function sysRows() {
         .concat([{ ic: 'reset', label: 'Look again', run: () => { SP.networks = null; renderSys(); qaDo({ action: 'wifiscan' }); } }])
       : [{ ic: 'wifi', label: 'No networks in range', sub: 'A looks again', run: () => { SP.networks = null; renderSys(); qaDo({ action: 'wifiscan' }); } }]), back];
   if (SP.view === 'friends') return [{ head: `Friends · ${(SP.friendItems || []).filter(f => f.online).length} online` },
-    ...(SP.friendItems || []).map(f => ({ face: f.avatar, ic: 'user', label: f.name, sub: f.status, dim: !f.online, run: () => messageFriend(f) })),
+    ...(SP.friendItems == null ? [{ ic: 'friends', label: 'Loading friends…' }] : !SP.friendItems.length ? [{ ic: 'friends', label: SP.friendsError || 'No friends to show yet', sub: 'Connect Steam or Epic in Settings › Accounts' }]
+      : SP.friendItems.map(f => ({ face: f.avatar, ic: 'user', label: f.name, sub: f.status, dim: !f.online, run: () => messageFriend(f) }))),
     { ic: 'back', label: 'Back', run: () => sysView('') }];
   const fold = v => { if (SP.fold !== v) return []; SP.view = v; const r = sysRows(); SP.view = ''; return r.slice(1, -1).map(x => ({ ...x, fold: true })); };
   const chev = v => SP.fold === v ? '▴' : '▾';
@@ -2278,7 +2279,7 @@ function sysRows() {
     // each add-on's rows fold under a row of their own, like the other categories
     ...(window.addonQaGroups?.() || []).flatMap(g => group(g.title, g.rows)),
     // Friends and Settings on their own, outside the categories
-    { ic: 'friends', id: 'fold-friends', label: 'Friends', sub: SP.friends || '', value: SP.friendItems?.length ? chev('friends') : '', run: () => SP.friendItems?.length ? sysView('friends') : (closeSys(), closePages(), openHub('friends')) }, ...fold('friends'),
+    { ic: 'friends', id: 'fold-friends', label: 'Friends', sub: SP.friends || '', value: chev('friends'), run: () => sysView('friends') }  /* always inside Quick Access, never the full page */, ...fold('friends'),
     { ic: 'settings', label: 'Settings', run: () => { closeSys(); closePages(); openPanel(); } },
     // the power choices, like the in-game menu; Restart and Shut down ask for A twice
     { id: 'power', foot: true, run: () => powerPick(powerChoices()[SP.p]) },  // the power buttons, icons with their names, left and right pick one
@@ -2341,8 +2342,9 @@ async function openSys() {
     const on = (r.items || []).filter(f => f.online), busy = on.find(f => f.game);
     SP.friends = !r.items?.length ? '' : busy ? `${busy.name} is playing ${busy.game}` : on.length ? `${on.length} online` : 'Nobody online';
     SP.friendItems = (r.items || []).slice().sort((x, y) => (y.online - x.online) || (!!y.game - !!x.game));
+    SP.friendsError = r.error || '';
     if (SP.open) renderSys();
-  }).catch(() => {});
+  }).catch(() => { SP.friendItems ||= []; if (SP.open) renderSys(); });
   const [vol, song, dl] = await Promise.all([api('/api/volume').catch(() => null), api('/api/nowplaying').catch(() => null), api('/api/downloads').catch(() => null)]);
   if (!SP.open) return;
   if (vol) { SP.volume = vol.volume; SP.muted = vol.muted; }
