@@ -6632,20 +6632,47 @@ BT_BATTERY = {"at": 0.0, "items": [], "busy": False}
 HANDHELD = [None]
 
 
-def handheld_name():
-    """"Legion Go" (any model) when this PC is one, else "": from the firmware's own product name."""
+# Gaming handhelds, from the product name in their firmware: (pattern, name, controllers come off it)
+HANDHELDS = [(r"legion\s*go", "Legion Go", True), (r"rog\s*xbox\s*ally", "ROG Xbox Ally", False), (r"rog\s*ally|rc71l|rc72l", "ROG Ally", False),
+             (r"claw", "MSI Claw", False), (r"jupiter|galileo|steam\s*deck", "Steam Deck", False), (r"ayaneo|aya\s*neo", "AYANEO", False),
+             (r"gpd\s*win|g1617|g1618|g1619|g1620", "GPD Win", False), (r"onexplayer|onexfly|one-?netbook", "OneXPlayer", False),
+             (r"zotac.*zone|zone", "Zotac Zone", False), (r"aokzoe", "AOKZOE", False)]
+
+
+def handheld_info():
+    """(name, controllers come off it) when this PC is a gaming handheld, else ("", False): from its firmware."""
     if HANDHELD[0] is None:
-        HANDHELD[0] = ""
+        HANDHELD[0] = ("", False)
         if WIN:
             import winreg
             try:
                 with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DESCRIPTION\System\BIOS") as k:
-                    text = " ".join(str(winreg.QueryValueEx(k, v)[0]) for v in ("SystemFamily", "SystemProductName", "SystemVersion") if _reg_has(k, v))
-                if re.search(r"legion\s*go", text, re.I):
-                    HANDHELD[0] = "Legion Go"
+                    text = " ".join(str(winreg.QueryValueEx(k, v)[0]) for v in ("SystemManufacturer", "SystemFamily", "SystemProductName", "SystemVersion", "BaseBoardProduct") if _reg_has(k, v))
+                for pattern, name, detach in HANDHELDS:
+                    if re.search(pattern, text, re.I):
+                        HANDHELD[0] = (name, detach)
+                        break
             except OSError:
                 pass
     return HANDHELD[0]
+
+
+def handheld_name():
+    return handheld_info()[0]
+
+
+def system_battery():
+    """This PC's own battery (a handheld's or a laptop's): {"level", "charging"}, or None without one."""
+    if not WIN:
+        return None
+    import ctypes
+
+    class SPS(ctypes.Structure):
+        _fields_ = [("ac", ctypes.c_ubyte), ("flag", ctypes.c_ubyte), ("pct", ctypes.c_ubyte), ("saver", ctypes.c_ubyte), ("life", ctypes.c_ulong), ("full", ctypes.c_ulong)]
+    st = SPS()
+    if not ctypes.windll.kernel32.GetSystemPowerStatus(ctypes.byref(st)) or st.flag & 128 or st.pct > 100:
+        return None  # 128: no battery
+    return {"level": st.pct, "charging": bool(st.flag & 8) or st.ac == 1}
 
 
 def _reg_has(k, v):
@@ -6675,8 +6702,9 @@ def bt_batteries():
                     name, _, level = line.strip().rpartition("|")
                     if name and level.isdigit():
                         items.setdefault(name, int(level))
-                # On a Legion Go its own controllers report to Windows as an Xbox controller: named as what they are
-                rename = (lambda n: "Legion Go controllers" if re.search(r"xbox", n, re.I) else n) if handheld_name() == "Legion Go" else (lambda n: n)
+                            # On a handheld whose controllers come off it (Legion Go), they report to Windows as an Xbox controller
+                hh, detach = handheld_info()
+                rename = (lambda n: f"{hh} controllers" if re.search(r"xbox", n, re.I) else n) if detach else (lambda n: n)
                 BT_BATTERY["items"] = [{"name": rename(n), "level": v} for n, v in items.items()]
             except (OSError, subprocess.SubprocessError):
                 pass
@@ -6845,7 +6873,7 @@ def mixer_set(group, delta):
 
 def qa_view():
     """Everything Quick Access shows beyond volume and music, read fresh each time it opens."""
-    view = {"outputs": [], "pads": [], "wifi": None, "dnd": False, "brightness": None, "bt": None, "handheld": handheld_name()}
+    view = {"outputs": [], "pads": [], "wifi": None, "dnd": False, "brightness": None, "bt": None, "handheld": handheld_name(), "detach": handheld_info()[1], "power": system_battery()}
     for k, fn in (("outputs", sound_outputs), ("pads", xinput_pads), ("wifi", wifi_status), ("dnd", do_not_disturb), ("brightness", screen_brightness),
                   ("bt", bt_audio_devices), ("batteries", bt_batteries), ("pods", pods_battery), ("mixer", mixer_view)):
         try:
