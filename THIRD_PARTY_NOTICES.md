@@ -95,7 +95,7 @@ The logos of the older systems, made plain white and trimmed to the artwork (the
 
 ## Controller pictures
 
-The controller pictures in `app/assets` are the makers' own product images, with the backgrounds removed. They and the logos on them belong to their owners: `pad-xbox.png` (Xbox Wireless Controller) to Microsoft, `pad-ps5.png` (DualSense) and `pad-ps4.png` (DUALSHOCK 4) to Sony Interactive Entertainment, `pad-sw1.png` and `pad-sw2.png` (Pro Controllers) to Nintendo, and `controller-steam.png` (Steam Controller) to Valve Corporation. `pad-ps3.png` is an original picture made for this project with an image generator.
+The controller pictures in `app/assets` are the makers' own product images, with the backgrounds removed. They and the logos on them belong to their owners: `pad-xbox.png` (Xbox Wireless Controller) to Microsoft, `pad-ps5.png` (DualSense) and `pad-ps4.png` (DUALSHOCK 4) to Sony Interactive Entertainment, `pad-sw1.png` and `pad-sw2.png` (Pro Controllers) to Nintendo, and `controller-steam.png` (Steam Controller) to Valve Corporation. `pad-ps3.png` is an original picture made for this project with an image generator. The handheld pictures are their makers' own product images too: `pad-legiongo.png` (Legion Go) to Lenovo, `pad-rogally.png` and `pad-xboxally.png` (ROG Ally, ROG Xbox Ally X) to ASUSTeK, with the Xbox logo to Microsoft, `pad-claw.png` (Claw) to Micro-Star International, `pad-deck.png` (Steam Deck) to Valve Corporation, `pad-ayaneo.png` (AYANEO 2S) to AYANEO, `pad-gpdwin.png` (GPD Win 4) to GPD, `pad-onexplayer.png` (OneXFly F1 Pro) to One-Netbook, and `pad-aokzoe.png` (AOKZOE A1 Pro) to AOKZOE.
 
 ## Data the app fetches
 
