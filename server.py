@@ -9256,6 +9256,43 @@ EMU_UPDATES = {"checked": 0.0, "github": {}, "winget": {}, "error": ""}  # what'
 EMU_UPDATE_LOCK = threading.Lock()
 
 
+# PC ports that publish Windows builds on GitHub: kept up to date like the emulators (Settings › Systems › Emulator
+# updates). Found by their program, wherever they were installed; their saves and settings stay (only the files in the
+# new build are written). Ports with their own launcher that updates them (Midnight Club) aren't here.
+PORT_GITHUB = {
+    "Bloodborne": ("Supermedo/bloodborne_pc", r"^Bloodborne-Windows\.zip$", "Play Bloodborne.exe"),
+    "DRIVECLUB": ("OverkillLabs3/driveclub-recomp", r"^driveclub-recomp-[\d.]+-win64\.zip$", "DriveClub.exe"),
+    "inFAMOUS Second Son": ("HayatoG/iss_pc", r"^infamous-windows-x86_64(-[\w-]+)?\.zip$", "Play inFAMOUS Second Son.exe"),
+    "Savage Wind": ("Revivedx/SavageWindRecomp", r"^SavageWind-[\w.-]+-windows\.zip$", "savagewind.exe"),
+    "Killzone Shadow Fall": ("lesca-191204/killzone-shadowfall-pc", r"^KillzoneShadowFall-v[\d.]+-windows\.zip$", "Killzone Shadow Fall.exe"),
+}
+PORT_HOMES = [os.path.expanduser(r"~\Games\Ports"), r"C:\Ultra-Front-End\Ports"]
+GITHUB_EMUS.update(PORT_GITHUB)  # downloaded and checked the same way
+
+
+def own_ports(cfg=None):
+    """The ports above that are installed: {name: folder of its program}, from the library's games, then the ports folders."""
+    cfg = cfg or config()
+    out = {}
+    paths = [l.get("path", "") for l in cfg.get("libraries", []) if l.get("type") == "game"]
+    for name, (_, _, program) in PORT_GITHUB.items():
+        hit = next((p for p in paths if os.path.basename(p).lower() == program.lower() and os.path.isfile(p)), None)
+        if not hit:
+            for home in PORT_HOMES:
+                for root, dirs, files in os.walk(home) if os.path.isdir(home) else []:
+                    if root.count(os.sep) - home.count(os.sep) > 3:
+                        dirs[:] = []
+                        continue
+                    if any(f.lower() == program.lower() for f in files):
+                        hit = os.path.join(root, program)
+                        break
+                if hit:
+                    break
+        if hit:
+            out[name] = os.path.dirname(hit)
+    return out
+
+
 def own_github_emus(cfg=None):
     """The downloaded emulators Ultra Front End installed and uses: {name: (folder, systems)}. Only its own folders in
     C:\\Ultra-Front-End\\Emulators or ~\\Emulators (never a build you put somewhere yourself)."""
@@ -9268,6 +9305,8 @@ def own_github_emus(cfg=None):
             if systems and os.path.isfile(os.path.join(folder, program)):
                 out[name] = (folder, systems)
                 break
+    for name, folder in own_ports(cfg).items():
+        out[name] = (folder, ["PC port"])
     return out
 
 
