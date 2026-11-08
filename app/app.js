@@ -3369,7 +3369,7 @@ function renderPanel() {
     if (it.kind === 'input') return `<label class="prow pinput${on}" data-i="${i}"><span>${esc(it.label)}<i class="pkb">${icon('keyboard')}A opens the keyboard</i></span><input data-id="${it.id}" value="${esc(typed[it.id] ?? it.value)}" placeholder="${esc(it.placeholder)}"${it.max ? ` maxlength="${it.max}"` : ''} spellcheck="false" autocomplete="off"></label>`;
     const logo = it.logo || it.img;  // logos are drawn white through a mask; a name with an extension is used as-is
     const lead = logo ? `<span class="ticon plogo ${logo.split('.')[0]}" style="--logo:url(assets/platforms/${logo.includes('.') ? logo : logo + '.svg'})"></span>`
-      : it.ic ? `<span class="pic">${it.ic}</span>` : '';
+      : it.ic ? `<span class="pic">${it.ic}</span>` : (it.kind === 'row' || it.kind === 'info') && !it.thumb ? `<span class="pic">${icon(rowIcon(it.label))}</span>` : '';
     return `<div class="prow${on}${it.kind === 'info' ? ' info' : ''}${it.primary ? ' primary' : ''}${it.warn ? ' warn' : ''}" data-i="${i}">${it.bar === 'busy' ? '<div class="pbar busy" style="overflow:hidden"><i style="width:30%"></i></div>' : it.bar != null ? `<div class="pbar"><i style="width:${it.bar}%"></i></div>` : ''}<div class="prow-main">${lead ? `<span class="picon-slot">${lead}</span>` : ''}<div><div class="pl">${esc(it.label)}</div>${it.sub ? `<div class="ps">${esc(it.sub)}</div>` : ''}</div></div>${it.value ? `<div class="pv">${esc(it.value)}</div>` : ''}</div>`;
   };
   const plain = draw(-1);
@@ -3411,6 +3411,16 @@ function panelMove(dy) {
   }
   focusOn(clamp(P.focus + dy, 0, P.focusIdx.length - 1));
 }
+// Settings rows without an icon of their own get one from what they're about, so every row lines up with one
+const ROW_ICONS = [[/disturb|notification/i, 'bellOff'], [/start with windows|startup|sign in to windows|restart|shut ?down|sleep|power/i, 'power'],
+  [/keep games on screen|full ?screen|borderless|window/i, 'wide'], [/xbox button|controller|button|gamepad|stick|vibrat|motion/i, 'pad'],
+  [/friend/i, 'friends'], [/account|profile|name|sign in|steam id|login/i, 'user'], [/hidden|show games|uninstalled|not installed/i, 'eye'],
+  [/installed|steam games|library|libraries|games found|scan/i, 'library'], [/scale|size|zoom/i, 'sliders'], [/icon|logo|art|cover|picture|wallpaper|background|screenshot/i, 'image'],
+  [/sound|volume|music|audio|theme song/i, 'volume'], [/update|download|nightly|version|install/i, 'download'], [/weather|language|region|time zone|clock/i, 'globe'],
+  [/folder|location|path|drive/i, 'folder'], [/record|video|capture|album|clip/i, 'album'], [/performance|fps|overlay|hud/i, 'bolt'],
+  [/dark|night|theme|colour|color/i, 'moon'], [/reset|clear|restore|forget|remove|delete/i, 'reset'], [/news/i, 'news'], [/search/i, 'search'],
+  [/keyboard|typ/i, 'keyboard'], [/count|usage|stats|about|help|licen/i, 'info'], [/link|connect|web/i, 'link']];
+const rowIcon = label => (ROW_ICONS.find(([re]) => re.test(label || '')) || [, 'settings'])[1];
 function setUiVolume(change) {
   S.uiVolume = clamp((S.uiVolume ?? 60) + change, 0, 100);
   save(); tick(760, .08); renderPanel();  // the tick lets you hear the new level

@@ -1295,3 +1295,10 @@ body.trim-open.quick-open #quick { z-index: 10; }
 .tr-btns { display: flex; gap: 1.4vh; }
 .tr-b { font: inherit; font-size: 2vh; padding: 1.1vh 2.6vh; border: 0; border-radius: 99px; background: rgba(255, 255, 255, .12); color: var(--text); cursor: pointer; }
 .tr-b:hover { background: #fff; color: var(--menu-ink); }
+/* Settings rows, tidier: a long description shows two lines until the row is picked, and values sit in a small pill */
+.prow .ps { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.35; }
+.prow.sel .ps { -webkit-line-clamp: unset; }
+.prow .pv { padding: .5vh 1.4vh; border-radius: 99px; background: rgba(255, 255, 255, .07); font-size: 1.7vh; white-space: nowrap; max-width: 34%; overflow: hidden; text-overflow: ellipsis; }
+.prow.sel .pv { background: rgba(56, 189, 248, .18); }
+.prow .pic svg { width: 3vh; height: 3vh; opacity: .85; }
+.prow .pl { font-weight: 500; }
