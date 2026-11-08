@@ -999,9 +999,10 @@ def install_download(name, url, filename, program_name, digest="", size=0, targe
     return os.path.join(target, program_name)
 
 
-# Eglantine publishes a build of every branch (branch-fix-..., branch-exp-...) beside its daily builds: installs and
-# updates take the daily line, never someone's experiment
-GITHUB_TAGS = {"Eglantine": r"^daily-\d{8}$"}
+# A project whose releases include test builds can be held to one line of them here ({name: tag pattern}). Eglantine
+# publishes daily builds and a build of every branch (branch-fix-..., branch-exp-...): Sam wants the newest of all of
+# them (2026-11-08), so it has no line and takes whichever was published last.
+GITHUB_TAGS = {}
 
 
 def github_latest(name):
