@@ -2836,7 +2836,8 @@ function panelItems() {
       ...(A.note && !A.loading ? [{ kind: 'note', warn: true, label: A.note }] : []),  // SteamGridDB unreachable: libretro's art only
       ...(A.loading ? [{ kind: 'note', label: 'Loading artwork…' }]
         : A.grids.length ? A.grids.map(a => ({ kind: 'thumb', thumb: a.thumb, badge: a.animated ? 'Animated' : '', label: a.author ? `by ${a.author}` : '', act: () => chooseArt(a.url) }))
-        : [{ kind: 'note', label: !A.current && A.games.length ? 'Which game is it? Pick it below, or search by name.'
+        : [{ kind: 'note', label: A.missing ? `SteamGridDB doesn’t list “${A.missing}” yet. New games often take a few weeks to get artwork there: try again later, or pick another game below.`
+          : !A.current && A.games.length ? 'Which game is it? Pick it below, or search by name.'
           : `No ${P.artKind === 'logo' ? 'logos' : P.artKind === 'hero' ? 'backgrounds' : 'covers'} found for this game. Try another name below.` }]),
       { kind: 'head', label: A.current ? `Showing: ${A.current.name}${A.current.year ? ` (${A.current.year})` : ''}. Not the right game?` : 'Search' },
       ...A.games.filter(x => !A.current || x.id !== A.current.id).map(x => ({ kind: 'row', label: `${x.name}${x.year ? ` (${x.year})` : ''}`, act: () => loadArt({ sgdbId: x.id, query: A.query }) })),

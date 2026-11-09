@@ -2346,10 +2346,32 @@ def sgdb(path, key, **params):
     return r.get("data")
 
 
-def sgdb_search(key, term):
+def sgdb_search(key, term, limit=6):
     hits = sgdb("/search/autocomplete/" + urllib.parse.quote(term, safe=""), key) or []
     return [{"id": h["id"], "name": h["name"], "year": time.gmtime(h["release_date"]).tm_year if h.get("release_date") else None}
-            for h in hits[:6]]
+            for h in hits[:limit]]
+
+
+def art_search(key, g, query):
+    """SteamGridDB's games for the art picker, the likeliest first, and the words a hit needs to count as this game.
+    The search is also tried without a console name typed after it ("... Switch 2": SteamGridDB's names don't have
+    one) and as the game's own title, and hits with every word come first, so a longer title isn't pushed out by a
+    shorter one it starts with ("Nintendo Switch Sports" for "Nintendo Switch Sports Resort")."""
+    wanted = query or g["title"]
+    bare = wanted
+    for name in sorted({g.get("system") or "", g.get("group") or "", *platform_words(g.get("system"))} - {""}, key=len, reverse=True):
+        bare = re.sub(rf"[\s:,-]+{re.escape(name)}\s*$", "", bare, flags=re.I).strip() or bare
+    words = title_words(bare)
+    found, seen = [], set()
+    for term in dict.fromkeys([wanted, bare, g["title"]]):
+        for h in sgdb_search(key, term, 10):
+            if h["id"] not in seen:
+                seen.add(h["id"])
+                found.append(h)
+        if any(words <= title_words(h["name"]) for h in found):
+            break  # the game is among them: no need to ask again
+    found.sort(key=lambda h: not words <= title_words(h["name"]))  # (a stable sort: SteamGridDB's order within each)
+    return found, words
 
 
 def sgdb_game_for(key, game):
@@ -11133,18 +11155,20 @@ class Handler(SimpleHTTPRequestHandler):
                         raise ValueError("Connect SteamGridDB first")
                     return self.reply({"current": None, "games": [], "grids": extra})
                 try:
-                    found = sgdb_search(key, query or g["title"])
+                    found, words = art_search(key, g, query)
                     current = next((f for f in found if f["id"] == body.get("sgdbId")), None)
                     if not current and not query:
                         current = sgdb_game_for(key, g)
-                    current = current or (found[0] if found and query else None)  # not this game's: let the list below choose
+                    # a typed search shows its top hit's art only when that hit has every word of it: else the list asks
+                    current = current or (found[0] if found and query and words <= title_words(found[0]["name"]) else None)
                     results = ([current] if current else []) + [f for f in found if not current or f["id"] != current["id"]]
                     grids = sgdb_grids(key, current["id"], kind) if current else []
                 except urllib.error.URLError as e:
                     if extra:  # libretro still answered: its art to choose from, and a word on why SteamGridDB's isn't there
                         return self.reply({"current": None, "games": [], "grids": extra, "note": SGDB_UNREACHABLE})
                     raise ValueError(SGDB_UNREACHABLE if offline(e) else f"SteamGridDB isn't answering right now ({e.code}). Try again in a little while.") from e
-                return self.reply({"current": current, "games": results[:6], "grids": grids + extra})
+                missing = not current and not any(words <= title_words(f["name"]) for f in found)  # SteamGridDB has no such game (yet)
+                return self.reply({"current": current, "games": results[:6], "grids": grids + extra, **({"missing": query or g["title"]} if missing else {})})
             if path == "/api/art/set":
                 if body.get("id") not in STATE["byId"]:
                     raise ValueError("Game not found")
