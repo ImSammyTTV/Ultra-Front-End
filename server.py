@@ -10559,6 +10559,8 @@ class Handler(SimpleHTTPRequestHandler):
             if path == "/api/update":  # Settings > About: check now, install now, or the page has shown "Updated"
                 if body.get("action") == "seen":
                     store("update.json", {**load("update.json", {}), "updated": None})
+                elif body.get("action") == "channel" and is_dev(VERSION):
+                    pass  # a dev build stays on the dev builds (Settings doesn't offer the choice)
                 elif body.get("action") == "channel":  # Settings › About: main releases or nightly builds, then a check on that channel
                     cfg = config()
                     cfg["updateChannel"] = "nightly" if body.get("channel") == "nightly" else "main"
@@ -11105,12 +11107,20 @@ def is_nightly(v):
 
 
 def is_dev(v):
-    """A dev build (.github/workflows/dev.yml): one branch's code, built to try out; it never updates itself."""
+    """A dev build (.github/workflows/dev.yml): a branch's code, built to try out before it goes into main."""
     return "-dev." in (v or "")
 
 
+DEV_TAG = "dev"  # the pre-release the dev build job replaces on every push to a branch other than main
+DEV_EVERY = 300  # a dev copy asks for a newer dev build this often (an unchanged answer doesn't count against GitHub's limit)
+
+
 def update_channel():
-    """Settings › About: "main" (the releases) or "nightly" (a build of the newest code every night, and the releases too)."""
+    """Settings › About: "main" (the releases) or "nightly" (a build of the newest code every night, and the releases too).
+    A dev build is always on "dev": it follows the dev builds, and only them, until a release is downloaded over it (its
+    settings may be shared with a normal copy, so the choice isn't saved)."""
+    if is_dev(VERSION):
+        return "dev"
     return "nightly" if config().get("updateChannel") == "nightly" else "main"
 
 
@@ -11145,8 +11155,6 @@ def file_sha256(path):
 
 def updates_off():
     """Why this copy doesn't update itself, or "" when it does."""
-    if is_dev(VERSION):  # else the updater would put the main release straight back over it
-        return "This is a dev build, made to try out a change: it doesn't update itself. Download a release to get updates again"
     if MAC:
         bundle = mac_bundle() if getattr(sys, "frozen", False) else ""
         if not bundle:
@@ -11169,6 +11177,8 @@ def updates_off():
 def latest_release():
     """The release this copy's channel offers (version, notes, and its exe with GitHub's SHA-256), or None while there's
     none: the newest main release, or on the nightly channel whichever is newer of that and the latest nightly build."""
+    if update_channel() == "dev":  # the newest dev build only: the releases would put this copy back on main
+        return fetch_release(f"https://api.github.com/repos/{UPDATE_REPO}/releases/tags/{DEV_TAG}", "devRelease")
     main = fetch_release(f"https://api.github.com/repos/{UPDATE_REPO}/releases/latest", "release")
     if update_channel() != "nightly":
         return main
@@ -11203,15 +11213,16 @@ def fetch_release(api_url, key):
     url, digest = asset.get("browser_download_url", ""), str(asset.get("digest") or "").lower()
     # only this project's own download, and only with a SHA-256 to check it against
     ok = digest.startswith("sha256:") and asset.get("size") and (test or url.startswith(f"https://github.com/{UPDATE_REPO}/releases/download/"))
-    # a nightly build's version is its release title (its tag, "nightly", stays the same every night)
+    # a nightly or dev build's version is in its release title or notes (its tag, "nightly" or "dev", stays the same)
+    kind = {"nightlyRelease": "nightly", "devRelease": "dev"}.get(key, "")
     version = str(rel.get("name") if key != "release" else rel.get("tag_name") or "").strip().lstrip("vV")
-    if key != "release":  # a readable title ("Ultra Front End 1.2.7 Nightly, 6 November 2026"): the exact version is in its notes
-        m = re.search(r"\d+\.\d+\.\d+-nightly\.\d+", f'{rel.get("name") or ""} {rel.get("body") or ""}')
+    if kind:  # a readable title ("Ultra Front End 1.2.7 Nightly, 6 November 2026"): the exact version is in its notes
+        m = re.search(rf"\d+\.\d+\.\d+-{kind}\.\d+", f'{rel.get("name") or ""} {rel.get("body") or ""}')
         version = m.group(0) if m else version
     release = {"version": version, "notes": str(rel.get("body") or ""), "page": str(rel.get("html_url") or ""),
                "exe": {"url": url, "size": asset["size"], "sha256": digest[7:]} if ok else None}
-    if key != "release" and not is_nightly(version):
-        release["exe"] = None  # not a nightly build's title: never installed from here
+    if key != "release" and f"-{kind}." not in version:
+        release["exe"] = None  # not a nightly (or dev) build's title: never installed from here
     if not test:
         store("update.json", {**load("update.json", {}), etag_key: etag, key: release})
     return release
@@ -11341,7 +11352,7 @@ def update_step(action=None):
             tag = latest_tag()
             known = (UPDATE["latest"] or {}).get("version") or VERSION
             newer = bool(tag) and version_key(tag) > version_key(known)
-        if action or newer or now - UPDATE["checked"] > UPDATE_EVERY:
+        if action or newer or now - UPDATE["checked"] > (DEV_EVERY if update_channel() == "dev" else UPDATE_EVERY):
             UPDATE["checked"], UPDATE["state"] = now, "checking"
             UPDATE["latest"] = latest_release()
         rel, saved = UPDATE["latest"], load("update.json", {})
@@ -11429,7 +11440,7 @@ def watch_updates():
     if saved.get("installing") == VERSION:  # this copy is the update: the page says so once, and reopens if it was open
         store("update.json", {**saved, "installing": None, "reopen": False,
                               "updated": {"version": VERSION, "from": saved.get("from"),
-                                          "notes": (saved.get("nightlyRelease" if is_nightly(VERSION) else "release") or {}).get("notes", "")}})
+                                          "notes": (saved.get("nightlyRelease" if is_nightly(VERSION) else "devRelease" if is_dev(VERSION) else "release") or {}).get("notes", "")}})
         if saved.get("reopen"):
             threading.Thread(target=open_frontend, daemon=True).start()
     elif saved.get("installing"):  # the release said one version but its exe is another: don't install it over and over

@@ -2,8 +2,8 @@
 # pre-release (replacing the previous one), so a change can be tried on a PC before it goes into main.
 # Download UltraFrontEnd.exe from Releases › "Dev build", or from the run's artifacts. Actions › Dev build › Run workflow
 # builds any branch on demand.
-# A dev build never updates itself (server.py is_dev), and no copy of the app ever installs one: the app only reads the
-# main releases and the "nightly" tag.
+# A dev build updates itself to each newer dev build (server.py: the "dev" channel), and only to them. No other copy of
+# the app ever installs one: those read only the main releases and the "nightly" tag.
 name: Dev build
 
 on:
@@ -63,7 +63,7 @@ jobs:
           git fetch -q --depth=50 origin main 2>/dev/null || true  # for the list of what this branch adds
           {
             echo "Dev build $version, made from the branch \`$branch\` at $sha, to try a change before it goes into main."
-            echo "It doesn't update itself. To go back to normal updates, download the latest release."
+            echo "A dev build updates itself to each new dev build. To go back to Main, download the latest release."
             echo
             echo "Newest changes on this branch:"
             if git rev-parse -q --verify origin/main >/dev/null; then

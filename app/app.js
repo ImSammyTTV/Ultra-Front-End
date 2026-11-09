@@ -2560,8 +2560,11 @@ function updateRows(u) {
     ...(u.off || !P.data?.options ? [] : [{ kind: 'row', label: 'Count this copy', value: onOff(P.data.options.usageCheckin),
       sub: 'Checks in once a day to show roughly how many people are using Ultra Front End. It only counts copies: nothing about you or your games is included',
       act: () => setOpt('usageCheckin') }]),
+    // a dev build follows the dev builds: nothing to choose
+    ...(u.off || u.channel !== 'dev' ? [] : [{ kind: 'info', label: 'Updates: Dev builds',
+      sub: 'Changes being worked on, installed as soon as each one is built. Can have bugs. To go back to Main, download the latest release' }]),
     // main releases, or the newest code built every night (and the releases too)
-    ...(u.off ? [] : [{ kind: 'row', label: 'Updates', value: nightly ? 'Nightly' : 'Main',
+    ...(u.off || u.channel === 'dev' ? [] : [{ kind: 'row', label: 'Updates', value: nightly ? 'Nightly' : 'Main',
       sub: nightly ? 'A build of the newest changes every night, before they’re released. Can have bugs. Choose to go back to Main'
         : 'Tested releases. Choose to get a build of the newest changes every night instead (can have bugs)',
       act: () => setChannel(nightly ? 'main' : 'nightly') }]),

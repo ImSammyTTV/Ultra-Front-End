@@ -3,7 +3,7 @@
     python tools/nightly.py version   sets VERSION in server.py (in the build's checkout only, never committed) to the next
                                       release's number plus the build time, e.g. 1.2.7-nightly.202611080300, and prints it
     python tools/nightly.py version dev   the same for a dev build (.github/workflows/dev.yml): 1.2.7-dev.202611080300,
-                                      which never updates itself
+                                      which updates itself to the newer dev builds only
     python tools/nightly.py smoke EXE starts the built exe as a test copy (port 8141) and waits for its helper to answer
                                       with that version: a build that doesn't start is never published
 
