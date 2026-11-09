@@ -2249,6 +2249,7 @@ def scan_library(lib, cfg):
 SGDB = "https://www.steamgriddb.com/api/v2"
 SGDB_KEY_PAGE = "https://www.steamgriddb.com/profile/preferences/api"
 GRID_DIMS = "600x900,342x482,660x930"  # tall covers only
+SGDB_RETRY = 3 * 86400  # a game SteamGridDB had no cover for is looked up again after this long
 SGDB_UNREACHABLE = "Couldn't reach SteamGridDB. Check your internet connection and try again."
 ART_DIR = os.path.join(DATA, "art")
 
@@ -2389,29 +2390,35 @@ def reset_art(game_id, kind="cover"):
 
 
 def sgdb_fill_missing(key, games):
-    """Give games without any cover the top SteamGridDB grid (cached by title; a few new lookups per scan)."""
+    """Give games without any cover the top SteamGridDB grid (cached by title; a few new lookups per scan). A title it had
+    nothing for is asked about again after a few days: a new game often has no art for its first weeks."""
     cache, changed, lookups = load("sgdb-cache.json", {}), False, 0
+    misses = load("sgdb-misses.json", {})  # title -> when SteamGridDB last had nothing for it (a miss from before this was kept: 0)
+    reachable = True
     for g in games:
         if g["cover"] or g.get("isFolder"):  # (a folder tile named "Movies" isn't a game called Movies)
             continue
         k = norm(g["title"])
-        if k not in cache:
-            if lookups >= 40:
-                continue
+        if reachable and lookups < 40 and (k not in cache or not cache[k] and time.time() - misses.get(k, 0) > SGDB_RETRY):
             scan_step()
             lookups += 1
             try:
                 hit = sgdb_game_for(key, g)
                 grids = sgdb_grids(key, hit["id"]) if hit else []
                 cache[k] = grids[0]["url"] if grids else ""
+                if grids:
+                    misses.pop(k, None)
+                else:
+                    misses[k] = time.time()
                 changed = True
             except (urllib.error.URLError, ValueError, KeyError, TimeoutError) as e:
-                if offline(e):  # no internet or SteamGridDB is down: the rest would only wait out their timeouts too; next scan tries again
-                    break
-                continue
-        g["cover"] = cache[k]
+                # no internet or SteamGridDB is down: no more lookups (they'd only wait out their timeouts too; the next
+                # scan tries again), but the covers already found still go on their games
+                reachable = not offline(e)
+        g["cover"] = cache.get(k, "")
     if changed:
         store("sgdb-cache.json", cache)
+        store("sgdb-misses.json", misses)
 
 
 # ---------------------------------------------------------------- game details (news, store info, hero art)
