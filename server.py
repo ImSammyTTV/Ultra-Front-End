@@ -10664,6 +10664,12 @@ class Handler(SimpleHTTPRequestHandler):
                     store("update.json", {**load("update.json", {}), "updated": None})
                 elif body.get("action") == "channel" and is_dev(VERSION):
                     pass  # a dev build stays on the dev builds (Settings doesn't offer the choice)
+                elif body.get("action") == "devtoken" and is_dev(VERSION):  # Settings › About on a dev build: the owner's GitHub token
+                    set_dev_token(body.get("token"))
+                    UPDATE.update(latest=None, state="", error="", retry=0.0)
+                    if dev_token() and not updates_off():
+                        threading.Thread(target=update_step, args=["check"], daemon=True).start()
+                        time.sleep(1.5)  # long enough, mostly, for the page to show whether GitHub took it
                 elif body.get("action") == "channel":  # Settings › About: main releases or nightly builds, then a check on that channel
                     cfg = config()
                     cfg["updateChannel"] = "nightly" if body.get("channel") == "nightly" else "main"
@@ -11217,8 +11223,81 @@ def is_dev(v):
     return "-dev." in (v or "")
 
 
-DEV_TAG = "dev"  # the pre-release the dev build job replaces on every push to a branch other than main
-DEV_EVERY = 300  # a dev copy asks for a newer dev build this often (an unchanged answer doesn't count against GitHub's limit)
+DEV_TAG = "dev"  # the draft release the dev build job (.github/workflows/dev.yml) replaces on every push to the dev branch
+DEV_EVERY = 300  # a dev copy asks for a newer dev build this often
+
+
+# Dev builds are draft releases, which GitHub shows only to the project's owner: a dev copy reads them with the owner's
+# own GitHub token (Settings › About), kept in its data folder and sent to api.github.com only.
+def dev_token_path():
+    return os.path.join(DATA, "dev-token.txt")
+
+
+def dev_token():
+    try:
+        with open(dev_token_path(), encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def set_dev_token(token):
+    token = (token or "").strip()
+    if not token:
+        try:
+            os.remove(dev_token_path())
+        except OSError:
+            pass
+        return
+    if not re.fullmatch(r"(github_pat_|ghp_)[A-Za-z0-9_]{20,250}", token):
+        raise ValueError("That doesn't look like a GitHub token: it starts with github_pat_ (or ghp_)")
+    os.makedirs(DATA, exist_ok=True)
+    with open(dev_token_path(), "w", encoding="utf-8") as f:
+        f.write(token)
+
+
+class GitHubOnlyAuth(urllib.request.HTTPRedirectHandler):
+    """Follows a redirect without the token: GitHub sends an asset download on to its file storage, which mustn't get it."""
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is not None and urllib.parse.urlparse(newurl).hostname != "api.github.com":
+            new.remove_header("Authorization")
+        return new
+
+
+def dev_request(url, accept="application/vnd.github+json"):
+    token = dev_token()
+    if not token:
+        raise ValueError("dev builds need your GitHub token: add it below")
+    return urllib.request.Request(url, headers={"Accept": accept, "User-Agent": UA, "Authorization": f"Bearer {token}",
+                                                "X-GitHub-Api-Version": "2022-11-28"})
+
+
+def fetch_dev_release():
+    """The newest dev build (a draft release tagged dev), read with the owner's token, or None while there's none."""
+    try:
+        with urllib.request.build_opener(GitHubOnlyAuth).open(dev_request(f"https://api.github.com/repos/{UPDATE_REPO}/releases?per_page=30"), timeout=15) as r:
+            listed = json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403, 404):
+            raise ValueError("GitHub didn't accept the dev token (it may have expired, or can't see drafts): add a new one below") from e
+        raise
+    drafts = sorted((x for x in listed if x.get("draft") and x.get("tag_name") == DEV_TAG), key=lambda x: x.get("created_at") or "", reverse=True)
+    if not drafts:
+        return None
+    rel = drafts[0]
+    body = str(rel.get("body") or "")
+    m = re.search(r"\d+\.\d+\.\d+-dev\.\d+", f'{rel.get("name") or ""} {body}')
+    asset = next((a for a in rel.get("assets") or [] if a.get("name") == UPDATE_ASSET), None) or {}
+    # the SHA-256 GitHub lists for the file, else the one the build wrote in the notes
+    digest = str(asset.get("digest") or "").lower()
+    sha = digest[7:] if digest.startswith("sha256:") else (re.search(r"SHA-256: ([0-9a-f]{64})", body) or [None, ""])[1]
+    url = str(asset.get("url") or "")
+    ok = m and sha and asset.get("size") and url.startswith(f"https://api.github.com/repos/{UPDATE_REPO}/releases/assets/")
+    release = {"version": m.group(0) if m else "", "notes": body, "page": "",
+               "exe": {"url": url, "size": asset["size"], "sha256": sha, "auth": True} if ok else None}
+    store("update.json", {**load("update.json", {}), "devRelease": release})
+    return release
 
 
 def update_channel():
@@ -11289,7 +11368,7 @@ def latest_release():
     """The release this copy's channel offers (version, notes, and its exe with GitHub's SHA-256), or None while there's
     none: the newest main release, or on the nightly channel whichever is newer of that and the latest nightly build."""
     if update_channel() == "dev":  # the newest dev build only: the releases would put this copy back on main
-        return fetch_release(f"https://api.github.com/repos/{UPDATE_REPO}/releases/tags/{DEV_TAG}", "devRelease")
+        return fetch_dev_release()
     main = fetch_release(f"https://api.github.com/repos/{UPDATE_REPO}/releases/latest", "release")
     if update_channel() != "nightly":
         return main
@@ -11325,7 +11404,7 @@ def fetch_release(api_url, key):
     # only this project's own download, and only with a SHA-256 to check it against
     ok = digest.startswith("sha256:") and asset.get("size") and (test or url.startswith(f"https://github.com/{UPDATE_REPO}/releases/download/"))
     # a nightly or dev build's version is in its release title or notes (its tag, "nightly" or "dev", stays the same)
-    kind = {"nightlyRelease": "nightly", "devRelease": "dev"}.get(key, "")
+    kind = {"nightlyRelease": "nightly"}.get(key, "")
     version = str(rel.get("name") if key != "release" else rel.get("tag_name") or "").strip().lstrip("vV")
     if kind:  # a readable title ("Ultra Front End 1.2.7 Nightly, 6 November 2026"): the exact version is in its notes
         m = re.search(rf"\d+\.\d+\.\d+-{kind}\.\d+", f'{rel.get("name") or ""} {rel.get("body") or ""}')
@@ -11345,7 +11424,11 @@ def download_update(release):
     part, ready = update_paths()
     digest = hashlib.sha256()
     try:
-        with urllib.request.urlopen(urllib.request.Request(asset["url"], headers={"User-Agent": UA}), timeout=60) as r, open(part, "wb") as f:
+        if asset.get("auth"):  # a dev build: GitHub's API hands over a draft's file to the owner's token only
+            get = urllib.request.build_opener(GitHubOnlyAuth).open(dev_request(asset["url"], "application/octet-stream"), timeout=60)
+        else:
+            get = urllib.request.urlopen(urllib.request.Request(asset["url"], headers={"User-Agent": UA}), timeout=60)
+        with get as r, open(part, "wb") as f:
             while chunk := r.read(1 << 20):
                 digest.update(chunk)
                 f.write(chunk)
@@ -11580,6 +11663,7 @@ def update_view():
     rel = UPDATE["latest"] or (saved.get("release") if update_channel() == "main" else None) or {}
     newer = wanted_release(rel)
     return {"version": VERSION, "channel": update_channel(), "off": updates_off(), "state": UPDATE["state"], "error": UPDATE["error"],
+            **({"devToken": bool(dev_token())} if is_dev(VERSION) else {}),
             "latest": rel.get("version") if newer else None, "notes": rel.get("notes", "") if newer else "", "updated": saved.get("updated")}
 
 

@@ -1,8 +1,10 @@
-# Dev build: every push to the dev branch builds the exe, checks it starts, and publishes it as the "dev" pre-release
+# Dev build: every push to the dev branch builds the exe, checks it starts, and saves it as the "dev" draft release
 # (replacing the previous one), so a change can be tried on a PC before it goes into main. Branches: main (the releases
 # and nightly builds) and dev (these).
-# Download UltraFrontEnd.exe from Releases › "Dev build" once: it updates itself after that. Actions › Dev build › Run
-# workflow builds again on demand.
+# A draft is private: only the project's owner sees it on the Releases page. (No copy is kept on the run: on a public
+# repo anyone signed in to GitHub can download a run's files.)
+# Download UltraFrontEnd.exe from the draft once, add a GitHub token in its Settings › About, and it updates itself after
+# that. Actions › Dev build › Run workflow builds again on demand.
 # A dev build updates itself to each newer dev build (server.py: the "dev" channel), and only to them. No other copy of
 # the app ever installs one: those read only the main releases and the "nightly" tag.
 name: Dev build
@@ -14,7 +16,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write  # to replace the dev pre-release
+  contents: write  # to replace the dev draft release
 
 concurrency:
   group: dev
@@ -46,12 +48,6 @@ jobs:
       - name: Check it starts
         run: python tools/nightly.py smoke "dist/UltraFrontEnd.exe"
 
-      - name: Keep the exe with this run
-        uses: actions/upload-artifact@v4
-        with:
-          name: UltraFrontEnd-dev-${{ steps.build.outputs.version }}
-          path: dist/UltraFrontEnd.exe
-          retention-days: 14
 
       - name: Publish
         shell: bash
@@ -73,11 +69,19 @@ jobs:
             else
               git log --no-merges --format='- %s' -10
             fi
+            echo
+            # for the updater, in case GitHub doesn't list the file's SHA-256 itself
+            echo "SHA-256: $(sha256sum dist/UltraFrontEnd.exe | cut -d' ' -f1)"
           } > notes.md
           # GitHub sometimes answers a release request with a server error (HTTP 500): a few tries, a minute apart
+          repo="$GITHUB_REPOSITORY"
           for try in 1 2 3 4; do
-            gh release delete dev --cleanup-tag --yes 2>/dev/null || true
-            if gh release create dev dist/UltraFrontEnd.exe THIRD_PARTY_NOTICES.md --prerelease --title "$title" \
+            # the previous dev builds go: drafts, and the public pre-release (and its tag) from before they were drafts
+            for id in $(gh api "repos/$repo/releases?per_page=100" -q '.[] | select(.tag_name == "dev") | .id'); do
+              gh api -X DELETE "repos/$repo/releases/$id" || true
+            done
+            gh api -X DELETE "repos/$repo/git/refs/tags/dev" 2>/dev/null || true
+            if gh release create dev dist/UltraFrontEnd.exe THIRD_PARTY_NOTICES.md --draft --prerelease --title "$title" \
                  --notes-file notes.md --target "$(git rev-parse HEAD)"; then
               exit 0
             fi

@@ -2561,9 +2561,14 @@ function updateRows(u) {
     ...(u.off || !P.data?.options ? [] : [{ kind: 'row', label: 'Count this copy', value: onOff(P.data.options.usageCheckin),
       sub: 'Checks in once a day to show roughly how many people are using Ultra Front End. It only counts copies: nothing about you or your games is included',
       act: () => setOpt('usageCheckin') }]),
-    // a dev build follows the dev builds: nothing to choose
+    // a dev build follows the dev builds: nothing to choose. They're private (draft releases): read with your GitHub token
     ...(u.off || u.channel !== 'dev' ? [] : [{ kind: 'info', label: 'Updates: Dev builds',
-      sub: 'Changes being worked on, installed as soon as each one is built. Can have bugs. To go back to Main, download the latest release' }]),
+      sub: 'Changes being worked on, installed as soon as each one is built. Can have bugs. To go back to Main, download the latest release' },
+      { kind: 'note', label: u.devToken ? 'Your GitHub token is saved. Dev builds are private: only your token can see them.'
+        : 'Dev builds are private. To get them, paste a GitHub token: GitHub › Settings › Developer settings › Fine-grained tokens › Generate new token. Repository access: only Ultra-Front-End. Permissions: Contents, read and write (GitHub only shows drafts to tokens that can write).' },
+      { kind: 'input', id: 'devtoken', label: 'GitHub token', value: '', placeholder: u.devToken ? 'Saved (paste a new one to replace it)' : 'github_pat_…' },
+      { kind: 'row', label: 'Save token', primary: !u.devToken, act: () => setDevToken(val('devtoken')) },
+      ...(u.devToken ? [{ kind: 'row', label: 'Remove token', sub: 'Dev builds stop updating until a token is added again', act: () => setDevToken('') }] : [])]),
     // main releases, or the newest code built every night (and the releases too)
     ...(u.off || u.channel === 'dev' ? [] : [{ kind: 'row', label: 'Updates', value: nightly ? 'Nightly' : 'Main',
       sub: nightly ? 'A build of the newest changes every night, before they’re released. Can have bugs. Choose to go back to Main'
@@ -2573,6 +2578,13 @@ function updateRows(u) {
     ...(u.off ? [] : [{ kind: 'row', label: u.latest ? `Update now to version ${u.latest}` : 'Check for updates',
       sub: u.latest ? 'The frontend closes and opens again on the new version' : 'If there’s a new version, it installs and the frontend opens again on it',
       act: () => updateNow('install') }])];
+}
+async function setDevToken(token) {
+  let u;
+  try { u = await api('/api/update', { action: 'devtoken', token }); } catch (e) { return toast(e.message, 5000); }
+  if (P.data) P.data.update = u;
+  renderPanel();
+  toast(!token ? 'Token removed' : u.error ? u.error : 'Token saved: looking for the newest dev build…', 5000);
 }
 async function setChannel(channel) {
   let u;
