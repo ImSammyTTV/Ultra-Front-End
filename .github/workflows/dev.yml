@@ -1,16 +1,17 @@
-# Dev build: every push to a branch other than main builds the exe, checks it starts, and publishes it as the "dev"
-# pre-release (replacing the previous one), so a change can be tried on a PC before it goes into main.
-# Download UltraFrontEnd.exe from Releases › "Dev build", or from the run's artifacts. Actions › Dev build › Run workflow
-# builds any branch on demand.
+# Dev build: every push to the dev branch builds the exe, checks it starts, and publishes it as the "dev" pre-release
+# (replacing the previous one), so a change can be tried on a PC before it goes into main. Branches: main (the releases
+# and nightly builds) and dev (these).
+# Download UltraFrontEnd.exe from Releases › "Dev build" once: it updates itself after that. Actions › Dev build › Run
+# workflow builds again on demand.
 # A dev build updates itself to each newer dev build (server.py: the "dev" channel), and only to them. No other copy of
 # the app ever installs one: those read only the main releases and the "nightly" tag.
 name: Dev build
 
 on:
   push:
-    branches-ignore: [main]
+    branches: [dev]
     paths-ignore: ["stats/**", "**.md"]
-  workflow_dispatch:  # pick the branch in "Use workflow from"
+  workflow_dispatch:
 
 permissions:
   contents: write  # to replace the dev pre-release
@@ -21,6 +22,7 @@ concurrency:
 
 jobs:
   dev:
+    if: github.ref == 'refs/heads/dev'  # a manual run from another branch publishes nothing
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -59,7 +61,7 @@ jobs:
           version="${{ steps.build.outputs.version }}"
           branch="${GITHUB_REF_NAME}"
           sha=$(git rev-parse --short HEAD)
-          title="Ultra Front End Dev build: $branch ($sha)"
+          title="Ultra Front End Dev build ($sha)"
           git fetch -q --depth=50 origin main 2>/dev/null || true  # for the list of what this branch adds
           {
             echo "Dev build $version, made from the branch \`$branch\` at $sha, to try a change before it goes into main."
