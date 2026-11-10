@@ -4075,7 +4075,7 @@ function eggQuiet(it, fast) {
 }
 function eggDetails(g) {
   eggStop();
-  document.fonts?.load("900 15vh 'Passion One'").catch(() => {});  // the banner's font, ready before Play
+  new Image().src = 'assets/wasted.png';  // the banner, ready before Play
   if (musicMayPlay()) EGG.theme = eggAudio(g.egg.theme, { volume: 30, loop: true });
 }
 // quiet while a video plays or a game runs; back once neither is so (and Play's moment is over)
@@ -4119,7 +4119,7 @@ function eggPlay(g) {
   EGG.sound = eggAudio(g.egg.play, { volume: 80, loop: false, fadeIn: false });  // a sound hits at once (a song fades in)
   const box = document.createElement('div');
   box.id = 'egg-wasted';
-  box.innerHTML = `<div class="ew-band"><div class="ew-big">wasted</div><div class="ew-line">${esc(eggJoke(g))}</div></div>`;
+  box.innerHTML = `<div class="ew-band"><img class="ew-big" src="assets/wasted.png" alt="wasted" draggable="false"><div class="ew-line">${esc(eggJoke(g))}</div></div>`;
   box.addEventListener('click', () => eggDone(g));
   document.body.appendChild(box);
   document.body.classList.remove('egg-wasted'); void document.body.offsetWidth;  // (pressed again: the push-in starts over)

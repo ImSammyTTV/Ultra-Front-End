@@ -2793,8 +2793,60 @@ def egg_shot_file(i, small):
     return thumb if small else full
 
 
+EGG_PAGE = "https://www.rockstargames.com/VI"
+EGG_ART = re.compile(r"/VI/_next/static/media/featured\.[A-Za-z0-9_.~-]+\.jpg")  # the official key art, 4K
+EGG_ART_LOOKUP = [False]
+
+
 def egg_hero():
-    return EGG["hero"]
+    """The background: Rockstar's own key art (looked up on the game's page once a week, in the background, and kept on
+    this PC), or the picture from SteamGridDB until that's known."""
+    saved = load("egg.json", {})
+    if time.time() - saved.get("artT", 0) > 7 * 86400 and not EGG_ART_LOOKUP[0]:
+        EGG_ART_LOOKUP[0] = True
+        def look():
+            try:
+                with urllib.request.urlopen(urllib.request.Request(EGG_PAGE, headers={"User-Agent": UA}), timeout=15) as r:
+                    m = EGG_ART.search(r.read(8 << 20).decode("utf-8", "replace"))
+                if m:
+                    store("egg.json", {**load("egg.json", {}), "art": "https://www.rockstargames.com" + m.group(0), "artT": time.time()})
+                egg_art_file()  # fetched now, so it's on this PC before it's shown
+            except (urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError, ValueError):
+                pass
+            finally:
+                EGG_ART_LOOKUP[0] = False
+        threading.Thread(target=look, daemon=True).start()
+    art = saved.get("art", "")
+    on_disk = art and os.path.isfile(egg_art_path(art))
+    return f"/api/egg/art?v={hashlib.sha1(art.encode()).hexdigest()[:8]}" if on_disk else EGG["hero"]
+
+
+def egg_art_path(url):
+    return os.path.join(ART_DIR, "egg", "art-" + hashlib.sha1(url.encode()).hexdigest()[:8] + ".jpg")
+
+
+def egg_art_file():
+    """The key art on disk, fetched the first time it's asked for; None if it can't be had."""
+    url = load("egg.json", {}).get("art", "")
+    if not EGG_ART.search(url) or not url.startswith("https://www.rockstargames.com/"):
+        return None
+    f = egg_art_path(url)
+    with EGG_SHOTS_LOCK:
+        if not os.path.isfile(f):
+            os.makedirs(os.path.dirname(f), exist_ok=True)
+            try:
+                with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=60) as r:
+                    if not (r.headers.get("Content-Type") or "").startswith("image/"):
+                        return None
+                    data = r.read(30 << 20)
+            except (urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError):
+                return None
+            for old in glob.glob(os.path.join(os.path.dirname(f), "art-*.jpg")):  # a newer key art replaces the last
+                os.remove(old)
+            with open(f + ".part", "wb") as out:
+                out.write(data)
+            os.replace(f + ".part", f)
+    return f
 
 
 def hero_for(g):
@@ -10787,6 +10839,9 @@ class Handler(SimpleHTTPRequestHandler):
         if path in ("/api/album/file", "/api/album/thumb"):
             cid = (urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("id") or [""])[0]
             f = album_file(cid) if path.endswith("file") else album_thumb(cid)
+            return self.send_path(f) if f else self.send_error(404)
+        if path == "/api/egg/art":  # the nearly-out game's key art, its background
+            f = egg_art_file()
             return self.send_path(f) if f else self.send_error(404)
         if path == "/api/egg/shot":  # ?i=&small=: one of the nearly-out game's official screenshots
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
