@@ -1335,10 +1335,10 @@ body.egg-wasted #world, body.egg-wasted main, body.egg-wasted header, body.egg-w
 #egg-wasted { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; pointer-events: auto; cursor: pointer; }
 #egg-wasted .ew-band { width: 100%; padding: 3.2vh 0 3.6vh; text-align: center; background: linear-gradient(90deg, transparent, rgba(0, 0, 0, .78) 18%, rgba(0, 0, 0, .78) 82%, transparent);
   opacity: 0; transition: opacity .35s ease .25s; }
-@font-face { font-family: 'Ultra'; src: url('assets/fonts/Ultra-Regular.ttf') format('truetype'); font-display: block; }
-#egg-wasted .ew-big { font: 400 12vh/1.05 'Ultra', Georgia, serif; letter-spacing: .01em; color: #b8141c; text-transform: lowercase;
-  -webkit-text-stroke: .35vh #000; paint-order: stroke fill; text-shadow: .3vh .5vh 0 #000, 0 0 3vh rgba(0, 0, 0, .8); transform: scale(1.6); opacity: 0; transition: transform .45s cubic-bezier(.2, 1.4, .4, 1) .3s, opacity .2s ease .3s; }
+@font-face { font-family: 'Passion One'; src: url('assets/fonts/PassionOne-Black.ttf') format('truetype'); font-weight: 900; font-display: block; }
+#egg-wasted .ew-big { font: 900 15vh/1 'Passion One', Impact, sans-serif; letter-spacing: .01em; color: #c11b1b; text-transform: lowercase;
+  -webkit-text-stroke: .6vh #111; paint-order: stroke fill; text-shadow: .35vh .55vh 0 #000, 0 0 3vh rgba(0, 0, 0, .8); transform: scale(1.6, 1.84); opacity: 0; transition: transform .45s cubic-bezier(.2, 1.4, .4, 1) .3s, opacity .2s ease .3s; }
 #egg-wasted .ew-line { margin-top: 1.6vh; font-size: 2.4vh; font-weight: 600; color: #f2f2f2; opacity: 0; transform: translateY(1vh); transition: opacity .4s ease 1.3s, transform .4s ease 1.3s; }
 #egg-wasted.on .ew-band, #egg-wasted.on .ew-big, #egg-wasted.on .ew-line { opacity: 1; }
-#egg-wasted.on .ew-big { transform: none; }
+#egg-wasted.on .ew-big { transform: scaleY(1.15); }  /* tall, like the game's */
 #egg-wasted.on .ew-line { transform: none; }
