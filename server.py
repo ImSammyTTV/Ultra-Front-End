@@ -524,13 +524,17 @@ def scan_steam_local():
             if not appid or not name or appid in seen or STEAM_SKIP.search(name):
                 continue
             # Steam also keeps a record for a game it hasn't finished installing (queued, a demo or playtest it never
-            # downloaded): only the ones flagged fully installed, with their folder there, can start
+            # downloaded): only the ones flagged fully installed, with their folder there, can start. A game being updated
+            # is still installed, though Steam can take that flag off while the update is queued or downloading: it has
+            # an update flag (2 needed, 256 running, 512 paused, 1024 started) and depots already installed, which a
+            # first download doesn't have yet
             try:
                 flags = int(ci(st, "StateFlags") or 0)
             except ValueError:
                 flags = 0
             folder = ci(st, "installdir") and os.path.join(lib, "steamapps", "common", ci(st, "installdir"))
-            if not flags & 4 or not (folder and os.path.isdir(folder)):
+            updating = flags & (2 | 256 | 512 | 1024) and bool(ci(st, "InstalledDepots"))
+            if not (flags & 4 or updating) or not (folder and os.path.isdir(folder)):
                 continue
             seen.add(appid)
             s = stats.get(appid, {})
