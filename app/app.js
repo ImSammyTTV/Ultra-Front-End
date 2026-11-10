@@ -102,7 +102,7 @@ const colorOf = g => g.color || `hsl(${hue(g.title)},45%,42%)`;
 
 async function api(path, body) {
   let r;
-  try { r = await fetch(path, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Frontend': '1' }, body: JSON.stringify(body) }); }
+  try { r = await fetch(path, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Frontend': '1', ...(WALLPAPER ? { 'X-Wallpaper': '1' } : {}) }, body: JSON.stringify(body) }); }
   catch { throw new Error('The frontend helper isn’t running. Close Ultra Front End and open it again.'); }
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || `Something went wrong (${r.status})`);
@@ -793,6 +793,7 @@ const POWER = [{ id: 'sleep', ic: 'moon', label: 'Sleep', done: 'Going to sleep'
   { id: 'shutdown', ic: 'power', label: 'Shut down', confirm: true }, { id: 'exit', ic: 'exit', label: 'Exit' }];
 const powerChoices = () => API && !ON_ANDROID ? POWER : POWER.filter(p => p.id === 'exit');  // Android apps can't sleep or restart the device
 function powerPick(p) {
+  if (WALLPAPER) return toast('Shutting down, restarting and quitting aren’t available from the wallpaper', 4000);  // (never by a stray press)
   if (p.id === 'exit') return quitFrontend();
   if (p.confirm && SP.confirm !== p.id) {
     SP.confirm = p.id; renderSys();
@@ -817,6 +818,7 @@ function sysMenu(title, items) {
   quickFocus();
 }
 function quitFrontend() {
+  if (WALLPAPER) return toast('Quitting isn’t available from the wallpaper', 4000);
   playOutro(() => {
     if (window.pywebview?.api?.quit) window.pywebview.api.quit();
     else if (window.AndroidApp) window.AndroidApp.quit();
@@ -3830,6 +3832,8 @@ const keyHold = {};
 function stopKeyHolds() { Object.values(keyHold).forEach(clearTimeout); for (const k in keyHold) delete keyHold[k]; }
 const recentKeys = [];
 addEventListener('keydown', e => {
+  // A wallpaper never acts on the keyboard Wallpaper Engine passes on: it can arrive while you type in another window
+  if (WALLPAPER && e.isTrusted) return;
   const k = e.key.toLowerCase(), typing = e.target.tagName === 'INPUT' && !SR.entry;
   if (!e.repeat) { recentKeys.unshift(e.key === ' ' ? 'Space' : e.key); recentKeys.length = Math.min(recentKeys.length, 6); }
   if (P.mapping && !e.repeat) {  // Controllers screen is waiting for the quick-menu button

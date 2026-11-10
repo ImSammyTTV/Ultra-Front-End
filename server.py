@@ -6506,6 +6506,9 @@ PAD = {"seq": 0, "events": [], "cond": threading.Condition(), "pads": 0, "seen":
 # Nothing is read from the keyboard while any other window is in front, or with no wallpaper showing.
 WALLPAPER = {"seen": 0.0, "desk": 0.0, "fronts": []}  # (desk, fronts: when the desktop was last in front, and the windows seen in front, for /api/wallpaper)
 DESK = [False]  # the desktop is in front and a wallpaper is showing (watch_controller keeps it up to date)
+# Never from a wallpaper, whatever reaches it: shutting down, restarting or sleeping the PC, quitting, closing a game,
+# and (by their names, in do_POST) anything that removes or deletes
+WALLPAPER_NEVER = {"/api/system", "/api/quit", "/api/uninstall", "/api/running/close", "/api/album/delete"}
 
 
 def wallpaper_live():
@@ -6695,7 +6698,8 @@ def watch_controller():
         user32.GetWindowTextW(user32.GetForegroundWindow(), title, n + 1)
         front = title.value.startswith("Ultra Front End") and frontend_in_front()
         DESK[0] = not front and wallpaper_live() and desktop_in_front(user32)
-        keys_down = wallpaper_keys(user32, keys_down) if DESK[0] else set()
+        # (the keyboard isn't read for the wallpaper: keys typed in another window reached it and went through to the
+        # power menu, 2026-11-11. Off until "the desktop is in front" can be trusted for it)
         if front and now - last_fg > 2:  # the frontend is in front again: a game started through a link has ended
             last_fg = now
             session = open_session()
@@ -11131,6 +11135,8 @@ class Handler(SimpleHTTPRequestHandler):
                     k in body and body[k] is not None and not isinstance(body[k], str) for k in TEXT_FIELDS) or ("pid" in body and not isinstance(body["pid"], int)):
                 raise ValueError("A field has the wrong type")
             path = urllib.parse.urlparse(self.path).path
+            if self.headers.get("X-Wallpaper") == "1" and (path in WALLPAPER_NEVER or re.search(r"/(remove|delete|uninstall|close)$", path)):
+                raise ValueError("That can't be done from the wallpaper: open Ultra Front End for it")
             if path == "/api/spawn/done":
                 spawn_done(body.get("id"), int(body.get("pid") or 0))
                 return self.reply({"ok": True})
