@@ -4001,7 +4001,7 @@ setInterval(() => {
   if (D.open && D.game?.egg) { const d = D.data; $('#details .d-meta').textContent = [g.system || g.group, ...(d?.genres || []), d?.developer, eggLeft(g, true)].filter(Boolean).join('   ·   '); }
 }, 1000);
 // one hidden YouTube player: a song or a sound, faded in, and faded out when stopped
-function eggAudio(id, { volume, loop, start = 0 }) {
+function eggAudio(id, { volume, loop, start = 0, fadeIn = true }) {
   const host = document.createElement('div');
   host.style.cssText = 'position:fixed;left:-9999px;top:0;width:200px;height:120px;opacity:0;pointer-events:none';
   document.body.appendChild(host);
@@ -4012,7 +4012,7 @@ function eggAudio(id, { volume, loop, start = 0 }) {
     if (it.gone) return;
     it.player = new YT.Player(slot, { host: 'https://www.youtube-nocookie.com', videoId: id, width: 200, height: 120,
       playerVars: { autoplay: 1, controls: 0, disablekb: 1, playsinline: 1, rel: 0, start, origin: location.origin, ...(loop ? { loop: 1, playlist: id } : {}) },
-      events: { onReady: e => { if (it.gone) return e.target.destroy(); e.target.setVolume(0); e.target.playVideo(); eggRamp(it, 0, volume); } } });
+      events: { onReady: e => { if (it.gone) return e.target.destroy(); e.target.setVolume(fadeIn ? 0 : volume); e.target.playVideo(); if (fadeIn) eggRamp(it, 0, volume); } } });
   }).catch(() => {});
   return it;
 }
@@ -4075,7 +4075,7 @@ function eggHomeVideo(g) {
 function eggPlay(g) {
   eggQuiet(EGG.theme, true); EGG.theme = null;
   eggQuiet(EGG.sound, true);
-  EGG.sound = eggAudio(g.egg.play, { volume: 80, loop: false });
+  EGG.sound = eggAudio(g.egg.play, { volume: 80, loop: false, fadeIn: false });  // a sound hits at once (a song fades in)
   document.body.classList.add('egg-wasted');
   setTimeout(() => {
     document.body.classList.remove('egg-wasted');
