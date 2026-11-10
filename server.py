@@ -894,7 +894,7 @@ FIXED_ARGS = {"Blizzard.BattleNet": ["--location", os.path.join(os.environ.get("
 GITHUB_EMUS = {
     "RPCS3": ("RPCS3/rpcs3-binaries-win", r"_win64.*\.7z$", "rpcs3.exe"),
     "KytyPS5": ("KytyPS5/KytyPS5", r"-Windows-x64\.zip$", "kyty_emulator.exe"),
-    "Eglantine": ("Djihads80/eglantine", r"^eglantine-windows-x86_64\.zip$", "eglantine.exe"),
+    "Eglantine": ("Eglantine-Community/Eglantine", r"^eglantine-windows-x86_64\.zip$", "eglantine.exe"),  # (moved from Djihads80/Eglantine, 2026-11)
     "Mesen": ("nesdev-org/MesenCE", r"^Mesen_[0-9.]+_Windows\.zip$", "Mesen.exe"),  # MesenCE: Mesen2 is archived
     "Xenia Canary": ("xenia-canary/xenia-canary", r"^xenia_canary_windows\.7z$", "xenia_canary.exe"),
     "Ymir": ("StrikerX3/Ymir", r"^ymir-windows-x86_64-(AVX2|SSE2)-v[0-9.]+\.zip$", "ymir-sdl3.exe"),  # AVX2 build when the CPU has it
@@ -912,7 +912,7 @@ GITHUB_EMUS = {
 EMU_SITES = {
     "DuckStation": "https://www.duckstation.org/", "PCSX2": "https://pcsx2.net/", "RPCS3": "https://rpcs3.net/",
     "shadPS4": "https://shadps4.net/", "KytyPS5": "https://github.com/KytyPS5/KytyPS5", "PPSSPP": "https://www.ppsspp.org/",
-    "Vita3K": "https://vita3k.org/", "Eglantine": "https://github.com/Djihads80/Eglantine", "Eden": "https://eden-emu.dev/",
+    "Vita3K": "https://vita3k.org/", "Eglantine": "https://github.com/Eglantine-Community/Eglantine", "Eden": "https://eden-emu.dev/",
     "Cemu": "https://cemu.info/", "Dolphin": "https://dolphin-emu.org/", "Project64": "https://www.pj64-emu.com/",
     "Mesen": "https://github.com/nesdev-org/MesenCE", "Azahar": "https://azahar-emu.org/", "melonDS": "https://melonds.kuribo64.net/",
     "mGBA": "https://mgba.io/", "Xenia Canary": "https://xenia.jp/", "xemu": "https://xemu.app/",
@@ -1080,8 +1080,8 @@ def github_latest(name):
 
 
 def on_project(url, repo):
-    """A download from the project's own releases. GitHub's names ignore letter case (Eglantine's project is now
-    Djihads80/eglantine), and no two projects differ only by it, so neither does this."""
+    """A download from the project's own releases. GitHub's names ignore letter case and no two projects differ only
+    by it, so neither does this. (A project that moves to a new owner, as Eglantine did, is updated here by hand.)"""
     return url.lower().startswith(f"https://github.com/{repo}/releases/download/".lower())
 
 
@@ -12366,7 +12366,7 @@ MAC_DOWNLOADS = {
     "KytyPS5": ("KytyPS5/KytyPS5", None, r"-macOS-x86_64\.zip$", "Kyty*"),
     "PPSSPP": ("hrydgard/ppsspp", r"^PPSSPPSDL-macOS-v[\d.]+\.zip$", None, "PPSSPP*.app"),
     "Vita3K": ("Vita3K/Vita3K", r"^macos-arm64-latest\.dmg$", r"^macos-latest\.dmg$", "Vita3K.app"),
-    "Eglantine": ("Djihads80/eglantine", r"^eglantine-macos-arm64\.zip$", None, "Eglantine*.app"),
+    "Eglantine": ("Eglantine-Community/Eglantine", r"^eglantine-macos-arm64\.zip$", None, "Eglantine*.app"),
     "Cemu": ("cemu-project/Cemu", None, r"^cemu-[\d.]+-macos-\d+-x64\.dmg$", "Cemu.app"),
     "Dolphin": ("https://dl.dolphin-emu.org/releases/2609a/dolphin-2609a-universal.dmg", None, None, "Dolphin.app"),  # its own site, as on Windows
     "ares": ("ares-emulator/ares", r"^ares-macos-universal\.zip$", None, "ares.app"),
