@@ -74,9 +74,9 @@ jobs:
             echo
             echo "Changes since the last nightly build:"
             if [ -n "$last" ] && git cat-file -e "$last" 2>/dev/null; then
-              git log --no-merges --format='- %s' "$last..HEAD"
+              git log --no-merges --invert-grep --grep='^Changelog: skip$' --format='- %s' "$last..HEAD"
             else
-              git log --no-merges --format='- %s' -15
+              git log --no-merges --invert-grep --grep='^Changelog: skip$' --format='- %s' -15
             fi
           } > notes.md
           # GitHub sometimes answers a release request with a server error (HTTP 500): a few tries, a minute apart

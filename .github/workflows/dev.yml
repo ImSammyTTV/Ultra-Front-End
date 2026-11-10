@@ -65,9 +65,9 @@ jobs:
             echo
             echo "Newest changes on this branch:"
             if git rev-parse -q --verify origin/main >/dev/null; then
-              git log --no-merges --format='- %s' origin/main..HEAD | head -30
+              git log --no-merges --invert-grep --grep='^Changelog: skip$' --format='- %s' origin/main..HEAD | head -30
             else
-              git log --no-merges --format='- %s' -10
+              git log --no-merges --invert-grep --grep='^Changelog: skip$' --format='- %s' -10
             fi
             echo
             # for the updater, in case GitHub doesn't list the file's SHA-256 itself
