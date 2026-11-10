@@ -2727,7 +2727,7 @@ def egg_info():
 
 
 def egg_hero():
-    return f"https://i.ytimg.com/vi/{EGG['trailers'][0]}/maxresdefault.jpg"
+    return EGG["hero"]
 
 
 def hero_for(g):
@@ -3654,14 +3654,14 @@ def game_details(g):
     d["news"] = news[1] if news and time.time() - news[0] < 1800 else None
     if g.get("source") == "Emulators":
         d["raConnected"] = bool(ra_account())
-    if g.get("egg"):  # the official trailers first (what YouTube's search found too, after them), and a frame as the background
+    if g.get("egg"):  # the official trailers first (what YouTube's search found too, after them), and its own background
         pinned = [{"youtube": v, "name": f"{g['title']} — Trailer {i + 1}", "thumb": f"https://i.ytimg.com/vi/{v}/hqdefault.jpg"} for i, v in enumerate(EGG["trailers"])]
         d["trailers"] = pinned + [t for t in d.get("trailers") or [] if t.get("youtube") not in EGG["trailers"]][:2]
         # no store page to take screenshots from: frames from the official trailers (three from each), not a fan video's
         d["screenshots"] = [shot for v in EGG["trailers"] for shot in trailer_stills([{"youtube": v}])]
         if not custom:
             d["hero"], d["heroSoft"] = egg_hero(), False
-        d["egg"] = {**g["egg"], "background": EGG["trailers"][0]}
+        d["egg"] = g["egg"]
         info = egg_info()  # its own article, whatever the search for its name found (or didn't)
         for field in ("description", "descSource", "sourceTitle", "developer"):
             if info.get(field):
@@ -3821,7 +3821,8 @@ def game_news(g):
 # ---------------------------------------------------------------- library scan
 # A tile for a game that's nearly out, at the front of the row with a countdown. Left out of every changelog on purpose.
 EGG = {"id": "egg-gta6", "title": "Grand Theft Auto VI", "release": "2026-11-19", "wiki": "Grand_Theft_Auto_VI",
-       "theme": "O3vUm7ftFR0", "play": "K3kFQHKE0LA", "trailers": ["QdBZY2fkU-0", "VQRLujxTm3c"], "platforms": "PS5 · Xbox Series X|S"}
+       "theme": "O3vUm7ftFR0", "play": "K3kFQHKE0LA", "trailers": ["QdBZY2fkU-0", "VQRLujxTm3c"], "platforms": "PS5 · Xbox Series X|S",
+       "hero": "https://cdn2.steamgriddb.com/hero_thumb/2bb2d7cd82fbb47f72d832d9500a3751.jpg"}
 EGG_DAYS_AFTER = 2  # it stays this long once it's out ("Out now"), then goes by itself
 
 

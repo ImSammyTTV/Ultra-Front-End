@@ -604,7 +604,7 @@ const heroOf = g => HERO_CACHE[g.id] ??= (API ? api('/api/hero?id=' + encodeURIC
 let animTimer = 0;
 function animateBackground(g) {
   clearTimeout(animTimer);
-  if (g?.egg) return eggHomeVideo(g);
+  if (g?.egg) return;  // its background is a still picture
   if (!g || !HERO_ANIM[g.id]) return;
   animTimer = setTimeout(() => {
     if (game()?.id !== g.id || !S.artBg) return;
@@ -3984,9 +3984,9 @@ requestAnimationFrame(poll);
 if (API) setInterval(watchLibrary, 5000);
 
 // ---------- a tile for a game that's nearly out ----------
-// At the front of the row with a countdown to its release (local midnight). Its page plays its theme and its trailer
-// behind, silent, as does the home screen once the selection rests on it; Play has a sound of its own.
-const EGG = { theme: null, bg: null, sound: null };
+// At the front of the row with a countdown to its release (local midnight). Its page plays its theme; Play has a sound
+// of its own.
+const EGG = { theme: null, sound: null };
 function eggOut(g) { const [y, m, d] = g.egg.release.split('-').map(Number); return new Date(y, m - 1, d); }
 function eggLeft(g, long) {
   const ms = eggOut(g) - Date.now();
@@ -4036,44 +4036,13 @@ function eggQuiet(it, fast) {
   let v = 30; try { v = it.player.getVolume(); } catch {}
   eggRamp(it, v, 0, end);
 }
-// the trailer, silent and looping, filling a box: the details page's background, or the home screen's
-function eggVideo(box, id) {
-  const layer = document.createElement('div');
-  layer.className = 'egg-video';
-  const slot = document.createElement('div');
-  layer.appendChild(slot);
-  box.appendChild(layer);
-  loadYouTubePlayer().then(() => {
-    if (!layer.isConnected) return;
-    new YT.Player(slot, { host: 'https://www.youtube-nocookie.com', videoId: id,
-      playerVars: { autoplay: 1, mute: 1, controls: 0, disablekb: 1, playsinline: 1, rel: 0, loop: 1, playlist: id, iv_load_policy: 3, origin: location.origin },
-      events: { onReady: e => { e.target.mute(); e.target.playVideo(); },
-        onStateChange: e => { if (e.data === 1) layer.classList.add('on'); } } });  // shown once it's playing: the still until then
-  }).catch(() => {});
-  return layer;
-}
 function eggDetails(g) {
   eggStop();
   document.fonts?.load("900 15vh 'Passion One'").catch(() => {});  // the banner's font, ready before Play
   EGG.theme = eggAudio(g.egg.theme, { volume: 30, loop: true });
-  detailsFor(g)?.info.then(d => {
-    if (!D.open || D.game !== g || !d?.egg?.background) return;
-    setTimeout(() => { if (D.open && D.game === g) EGG.bg = eggVideo($('#details .d-hero'), d.egg.background); }, 1000);
-  }).catch(() => {});
 }
 function eggStop() {
   eggQuiet(EGG.theme); EGG.theme = null;
-  EGG.bg?.remove(); EGG.bg = null;
-}
-let eggHomeTimer = 0;
-function eggHomeVideo(g) {
-  clearTimeout(eggHomeTimer);
-  eggHomeTimer = setTimeout(() => {
-    if (game()?.id !== g.id || !S.artBg || D.open) return;
-    const box = $('#gamebg'), last = box.lastChild;
-    if (!last || last.querySelector('.egg-video')) return;
-    detailsFor(g)?.info.then(d => { if (d?.egg?.background && game()?.id === g.id && last.isConnected) eggVideo(last, d.egg.background); }).catch(() => {});
-  }, 1500);  // once the selection rests on it (the layer goes with the next game's background)
 }
 // Play: it isn't out (and not on a PC). The screen drains of colour and slowly pushes in, a banner drops in with the
 // sound, and a line underneath ribs you for trying: a different one each press.
