@@ -4054,6 +4054,7 @@ function eggVideo(box, id) {
 }
 function eggDetails(g) {
   eggStop();
+  document.fonts?.load('12vh Ultra').catch(() => {});  // the banner's font, ready before Play
   EGG.theme = eggAudio(g.egg.theme, { volume: 30, loop: true });
   detailsFor(g)?.info.then(d => {
     if (!D.open || D.game !== g || !d?.egg?.background) return;

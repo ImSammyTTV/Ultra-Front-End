@@ -2693,6 +2693,39 @@ def wiki_summary(title):
 HEROES = {}  # game id -> wide background URL ("" when none), for the "game art" home background
 
 
+def egg_info():
+    """Its Wikipedia article, read straight from the page it is (no search to match), with the genre and developer
+    Wikidata keeps for it. Kept for a day; {} while Wikipedia can't be reached."""
+    saved = load("egg.json", {})
+    if saved.get("info") and time.time() - saved.get("infoT", 0) < 86400:
+        return saved["info"]
+    try:
+        page = http_json("https://en.wikipedia.org/api/rest_v1/page/summary/" + EGG["wiki"], headers=WIKI_UA, timeout=8)
+        bio = ""
+        for sentence in re.split(r"(?<=[.!?])\s+", page.get("extract", "")):
+            if bio and len(bio) + len(sentence) > 650:
+                break
+            bio = (bio + " " + sentence).strip()
+        info = {"description": bio, "descSource": "Wikipedia", "sourceTitle": page.get("title") or EGG["title"]}
+        entity_id = page.get("wikibase_item", "")
+        if re.fullmatch(r"Q\d+", entity_id):
+            claims = http_json(f"https://www.wikidata.org/wiki/Special:EntityData/{entity_id}.json", headers=WIKI_UA, timeout=8)["entities"][entity_id].get("claims", {})
+            ids = lambda prop: [c["mainsnak"]["datavalue"]["value"]["id"] for c in claims.get(prop, [])
+                                if c.get("rank") != "deprecated" and isinstance(c.get("mainsnak", {}).get("datavalue", {}).get("value"), dict)]
+            genres, developers = ids("P136")[:3], ids("P178")[:2]
+            if genres or developers:
+                q = urllib.parse.urlencode({"action": "wbgetentities", "ids": "|".join(genres + developers), "props": "labels", "languages": "en", "format": "json"})
+                entities = http_json("https://www.wikidata.org/w/api.php?" + q, headers=WIKI_UA, timeout=8).get("entities", {})
+                label = lambda i: entities.get(i, {}).get("labels", {}).get("en", {}).get("value", "")
+                info["genres"] = [label(i) for i in genres if label(i)]
+                info["developer"] = ", ".join(label(i) for i in developers if label(i))
+    except (urllib.error.URLError, ValueError, KeyError, TypeError, TimeoutError, OSError):
+        return saved.get("info") or {}  # yesterday's will do
+    if info["description"]:
+        store("egg.json", {**load("egg.json", {}), "info": info, "infoT": time.time()})
+    return info
+
+
 def egg_hero():
     return f"https://i.ytimg.com/vi/{EGG['trailers'][0]}/maxresdefault.jpg"
 
@@ -3629,6 +3662,12 @@ def game_details(g):
         if not custom:
             d["hero"], d["heroSoft"] = egg_hero(), False
         d["egg"] = {**g["egg"], "background": EGG["trailers"][0]}
+        info = egg_info()  # its own article, whatever the search for its name found (or didn't)
+        for field in ("description", "descSource", "sourceTitle", "developer"):
+            if info.get(field):
+                d[field] = info[field]
+        if info.get("genres"):  # shown as "Action-adventure", like Wikipedia's other games
+            d["genres"] = list(dict.fromkeys((tidy_genres([x]) or [(lambda y: y[:1].upper() + y[1:])(re.sub(r"\s+video games?$", "", x, flags=re.I))])[0] for x in info["genres"]))
     DETAILS[g["id"]] = (time.time(), d)
     return d
 
