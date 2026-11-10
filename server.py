@@ -3783,7 +3783,7 @@ def game_news(g):
 # A tile for a game that's nearly out, at the front of the row with a countdown. Left out of every changelog on purpose.
 EGG = {"id": "egg-gta6", "title": "Grand Theft Auto VI", "release": "2026-11-19", "wiki": "Grand_Theft_Auto_VI",
        "theme": "O3vUm7ftFR0", "play": "K3kFQHKE0LA", "trailers": ["QdBZY2fkU-0", "VQRLujxTm3c"], "platforms": "PS5 · Xbox Series X|S"}
-EGG_DAYS_AFTER = 30  # it stays this long once it's out ("Out now"), then goes by itself
+EGG_DAYS_AFTER = 2  # it stays this long once it's out ("Out now"), then goes by itself
 
 
 def egg_game():

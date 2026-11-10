@@ -179,7 +179,8 @@ function tabIcon(name) {
 }
 async function loadLibrary() {
   if (API) {
-    try { const r = await api('/api/library'); LIB = r.games; libStamp = r.scanned; window.addonEmit?.('library', LIB.length); } catch (e) { toast(e.message); }
+    // (the tile for a game that's nearly out goes once it's been out two days, even with the app left open)
+    try { const r = await api('/api/library'); LIB = r.games.filter(g => !g.egg || Date.now() < eggOut(g).getTime() + 3 * 864e5); libStamp = r.scanned; window.addonEmit?.('library', LIB.length); } catch (e) { toast(e.message); }
   } else {
     LIB = (window.LIBRARY || []).map(g => ({ ...g, group: g.source === 'Ports' ? 'PC Ports' : g.source, installed: true, lastPlayed: Date.now() / 1000 - g.lastPlayed * 86400 }));
   }
@@ -3998,6 +3999,7 @@ function eggLeft(g, long) {
 setInterval(() => {
   const g = LIB.find(x => x.egg);
   if (!g) return;
+  if (Date.now() >= eggOut(g).getTime() + 3 * 864e5 && !D.open && !P.open) { loadLibrary().then(() => buildRow(false)); return; }  // its time is up: off the row
   document.querySelectorAll('.egg-count').forEach(el => { el.textContent = eggLeft(g); });
   if (D.open && D.game?.egg) { const d = D.data; $('#details .d-meta').textContent = [g.system || g.group, ...(d?.genres || []), d?.developer, eggLeft(g, true)].filter(Boolean).join('   ·   '); }
 }, 1000);
