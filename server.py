@@ -153,7 +153,7 @@ PORT = int(sys.argv[sys.argv.index("--port") + 1]) if "--port" in sys.argv else 
 SELF_FILE = (LINUX and plat_linux.appimage()) or sys.executable  # (on Linux the AppImage, which an update replaces, not the program inside it)
 BUILD = "%d-%d" % (int(os.path.getmtime(SELF_FILE)), os.path.getsize(SELF_FILE)) if getattr(sys, "frozen", False) else "source"
 QUIT = [lambda: os._exit(0)]  # how this helper leaves when a newer build takes over; Game Frontend.exe takes its tray icon down too
-VERSION = "1.2.9"  # the release this is; tools/release.py publishes it as tag v<VERSION>
+VERSION = "1.2.10"  # the release this is; tools/release.py publishes it as tag v<VERSION>
 UPDATE_REPO = "ImSammyTTV/Ultra-Front-End"  # whose GitHub releases a copy of the exe keeps itself current from
 os.makedirs(DATA, exist_ok=True)
 
