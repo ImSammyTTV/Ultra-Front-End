@@ -2572,7 +2572,11 @@ function updateRows(u) {
         : 'Dev builds are private. To get them, paste a GitHub token: GitHub › Settings › Developer settings › Fine-grained tokens › Generate new token. Repository access: only Ultra-Front-End. Permissions: Contents, read and write (GitHub only shows drafts to tokens that can write).' },
       { kind: 'input', id: 'devtoken', label: 'GitHub token', value: '', placeholder: u.devToken ? 'Saved (paste a new one to replace it)' : 'github_pat_…' },
       { kind: 'row', label: 'Save token', primary: !u.devToken, act: () => setDevToken(val('devtoken')) },
-      ...(u.devToken ? [{ kind: 'row', label: 'Remove token', sub: 'Dev builds stop updating until a token is added again', act: () => setDevToken('') }] : [])]),
+      // removing it takes a second press within 4 seconds: one press by mistake only asks
+      ...(u.devToken ? [{ kind: 'row', label: devTokenAsk ? 'Press again to remove the token' : 'Remove token',
+        sub: devTokenAsk ? 'Dev builds stop updating until a token is added again' : 'Dev builds stop updating until a token is added again. Asks first',
+        act: () => { if (devTokenAsk) { devTokenAsk = false; return setDevToken(''); }
+          devTokenAsk = true; renderPanel(); clearTimeout(devTokenAskT); devTokenAskT = setTimeout(() => { devTokenAsk = false; if (P.open) renderPanel(); }, 4000); } }] : [])]),
     // main releases, or the newest code built every night (and the releases too)
     ...(u.off || u.channel === 'dev' ? [] : [{ kind: 'row', label: 'Updates', value: nightly ? 'Nightly' : 'Main',
       sub: nightly ? 'A build of the newest changes every night, before they’re released. Can have bugs. Choose to go back to Main'
@@ -2583,6 +2587,7 @@ function updateRows(u) {
       sub: u.latest ? 'The frontend closes and opens again on the new version' : 'If there’s a new version, it installs and the frontend opens again on it',
       act: () => updateNow('install') }])];
 }
+let devTokenAsk = false, devTokenAskT = 0;
 async function setDevToken(token) {
   let u;
   try { u = await api('/api/update', { action: 'devtoken', token }); } catch (e) { return toast(e.message, 5000); }
