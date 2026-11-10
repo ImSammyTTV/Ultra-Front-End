@@ -2386,19 +2386,25 @@ def sgdb_game_for(key, game):
         return {"id": known["sgdbId"], "name": known["title"], "year": int(known["released"])}
     # The top search hit can be another game ("Nintendo Switch Sports" for "Nintendo Switch Sports Resort"), whose art would
     # then show this game as that one: only a hit with every word of the title counts.
-    words = title_words(game["title"])
-    return next((h for h in sgdb_search(key, game["title"]) if words <= title_words(h["name"])), None)
+    name = metadata_title(game["title"])  # "... Switch 2 Edition" is the game's own art
+    words = title_words(name)
+    return next((h for h in sgdb_search(key, name) if words <= title_words(h["name"])), None)
 
 
 ROMAN = {"ii": "2", "iii": "3", "iv": "4", "v": "5", "vi": "6", "vii": "7", "viii": "8", "ix": "9", "x": "10"}
 
 
 def title_words(title):
-    """A title's words for telling games apart: accents, apostrophes and little words dropped, numerals as digits, so
-    "The Legend of Zelda - Majora's Mask" and "Legend of Zelda: Majoras Mask" have the same words."""
+    """A title's words for telling games apart: accents, apostrophes and little words dropped, numerals as digits, and a
+    plural's s (a file named "Super Mario Bros Wonders" is Super Mario Bros. Wonder), so "The Legend of Zelda - Majora's
+    Mask" and "Legend of Zelda: Majoras Mask" have the same words."""
     import unicodedata
     plain = unicodedata.normalize("NFKD", title).encode("ascii", "ignore").decode().lower().replace("'", "")
-    return {ROMAN.get(w, w) for w in re.findall(r"[a-z0-9]+", plain)} - {"the", "a", "an", "of", "and"}
+    return {singular(ROMAN.get(w, w)) for w in re.findall(r"[a-z0-9]+", plain)} - {"the", "a", "an", "of", "and"}
+
+
+def singular(word):
+    return word[:-1] if len(word) > 3 and word.endswith("s") and not word.endswith(("ss", "us", "is")) else word
 
 
 def sgdb_grids(key, sgdb_id, kind="cover"):
@@ -2653,6 +2659,8 @@ def wiki_match_rank(page, game):
     base = simple(re.split(r"\s+-\s+", game)[0])
     if base != g and len(base) >= 4 and flat(p) == flat(base) and not re.search(r"series|franchise", page, re.I):
         return 3                                                 # "Donkey Kong Country 2 - Diddy's Kong Quest" ~ "Donkey Kong Country 2"
+    if not dated and len(flat(g)) >= 4 and title_words(p) == title_words(g):
+        return 3                                                 # "Super Mario Bros. Wonder" ~ "Super Mario Bros Wonders"
     return None
 
 
@@ -3384,7 +3392,8 @@ def remote_info(g, appid, local):
         if not d["screenshots"] and g.get("contentId"):
             d["screenshots"] = ps_store_shots(g["contentId"])
         if not d["trailers"]:  # delisted Steam games, Epic games and ROMs: look for an official trailer on YouTube
-            d["trailers"] = trailer_for_game(g, known)
+            # by the name Wikipedia knows it by, when it found it ("Super Mario Bros. Wonder" for "...Wonders Switch 2 Edition")
+            d["trailers"] = trailer_for_game({**g, "title": d.get("sourceTitle") or g["title"]} if d.get("descSource") == "Wikipedia" else g, known)
         if not d["screenshots"]:  # still nothing (delisted games, add-on-only packages): stills from the trailer
             d["screenshots"] = trailer_stills(d["trailers"])
     if not d["hero"] and "hero" not in local and d["screenshots"]:  # no background art anywhere: a screenshot, shown softened
