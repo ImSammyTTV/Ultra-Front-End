@@ -147,7 +147,7 @@ const PLATFORM_ORDER = ['PC', 'PS5', 'PS4', 'PS3', 'PS2', 'PS1', 'PSP', 'PS Vita
   'PC Engine', 'PC Engine CD', 'PC-FX', 'Neo Geo', 'Neo Geo CD', 'Neo Geo Pocket', 'Atari Jaguar', 'Atari Lynx', 'Atari 7800', 'Atari 5200', 'Atari 2600',
   'Atari ST', 'Atari 8-bit', 'WonderSwan', 'Arcade', '3DO', 'CD-i', 'ColecoVision', 'Intellivision', 'Vectrex', 'Odyssey 2', 'N-Gage',
   'DOS', 'ScummVM', 'C64', 'VIC-20', 'Amiga', 'ZX Spectrum', 'Amstrad CPC', 'MSX', 'Apple II', 'Flash'];
-const platformOf = g => g.source === 'Emulators' ? (g.system || g.group) : g.source === 'Android' ? 'Android' : 'PC';
+const platformOf = g => g.egg ? '' : g.source === 'Emulators' ? (g.system || g.group) : g.source === 'Android' ? 'Android' : 'PC';
 // Platform logos (Simple Icons, Wikimedia Commons) for the tab bar; consoles without a free logo of their own use their maker's.
 const SGDB_LOGO = 'steamgriddb.png';  // white-on-transparent version of SteamGridDB's logo
 const PLATFORM_LOGO = { PC: 'windows11', PS5: 'playstation5', PS4: 'playstation4', PS3: 'playstation3', PS2: 'playstation2', PS1: 'playstation',
@@ -186,7 +186,7 @@ async function loadLibrary() {
   // Tabs are platforms, in console-family order; only platforms with games get a tab.
   // Hidden games stay out of every tab; they're listed under Settings > Hidden games.
   const rank = n => (PLATFORM_ORDER.indexOf(n) + 1) || 99;
-  const platforms = [...new Set(LIB.filter(g => !g.hidden).map(platformOf))].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+  const platforms = [...new Set(LIB.filter(g => !g.hidden && !g.egg).map(platformOf))].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
   TABS = [{ name: 'All Games', has: g => !g.hidden },
     ...(LIB.some(g => !g.hidden && g.favorite) ? [{ name: 'Favourites', has: g => !g.hidden && g.favorite }] : []),
     ...platforms.map(n => ({ name: n, has: g => !g.hidden && platformOf(g) === n }))];
@@ -380,7 +380,7 @@ const strip = $('#strip');
 // played since counts as played when it arrived, so new games show at the front.
 const NEW_FOR = 3 * 86400;
 const recency = g => Math.max(g.lastPlayed || 0, g.added && Date.now() / 1000 - g.added < NEW_FOR ? g.added : 0);
-const byRecent = (a, b) => recency(b) - recency(a) || (b.installed !== false) - (a.installed !== false) || a.title.localeCompare(b.title);
+const byRecent = (a, b) => !!b.egg - !!a.egg || recency(b) - recency(a) || (b.installed !== false) - (a.installed !== false) || a.title.localeCompare(b.title);
 // ---------- games that are already running ----------
 let RUN = new Set();
 async function watchRunning() {
@@ -442,7 +442,7 @@ function tileHTML(g, i, animate) {
     <div class="art"><div class="ph"><span>${esc(g.title)}</span></div>
     ${g.cover ? `<img src="${esc(g.cover)}" alt="" draggable="false" loading="lazy" onerror="coverRetry(this)">` : ''}</div>
     ${g.coverAnim ? `<img class="anim-cover" data-anim="${esc(g.coverAnim)}" alt="" draggable="false" onerror="this.remove()">` : ''}
-    ${g.favorite ? `<i class="fav">${icon('star')}</i>` : ''}${RUN.has(g.id) ? '<i class="runtag">Running</i>' : ''}<div class="frame"></div></div>`;
+    ${g.favorite ? `<i class="fav">${icon('star')}</i>` : ''}${RUN.has(g.id) ? '<i class="runtag">Running</i>' : ''}${g.egg ? `<i class="egg-count">${esc(eggLeft(g))}</i>` : ''}<div class="frame"></div></div>`;
 }
 let rowKey = '';
 function buildRow(animate) {
@@ -603,6 +603,7 @@ const heroOf = g => HERO_CACHE[g.id] ??= (API ? api('/api/hero?id=' + encodeURIC
 let animTimer = 0;
 function animateBackground(g) {
   clearTimeout(animTimer);
+  if (g?.egg) return eggHomeVideo(g);
   if (!g || !HERO_ANIM[g.id]) return;
   animTimer = setTimeout(() => {
     if (game()?.id !== g.id || !S.artBg) return;
@@ -883,6 +884,7 @@ async function openEmulatorFor(g) {
 }
 async function launchGame(g) {
   if (S.busy || !g) return;
+  if (g.egg) return eggPlay(g);
   if (RUN.has(g.id)) return resumeGame(g);  // never a second copy
   window.addonEmit?.('game:start', { game: { id: g.id, title: g.title, platform: g.platform, cover: g.cover } });
   // The game's own logo alone in the middle, over its art dimmed behind; its name in large type until (or unless) a
@@ -1160,7 +1162,8 @@ function schedulePrefetch(g) { clearTimeout(prefetchTimer); prefetchTimer = setT
 async function openDetails(g, from = null) {  // from: the Library or Search page it was opened on, which B goes back to
   if (!g) return;
   Object.assign(D, { open: true, game: g, data: null, col: 0, row: 0, a: 0, m: 0, n: 0, menu: false, mi: 0, from });
-  window.addonEmit?.('game:details', { game: { id: g.id, title: g.title, platform: g.platform, cover: g.cover } });
+  if (g.egg) eggDetails(g);  // its own theme (an add-on's theme music doesn't pick one for it)
+  else window.addonEmit?.('game:details', { game: { id: g.id, title: g.title, platform: g.platform, cover: g.cover } });
   document.body.classList.add('details-open');
   tick(520, .09);
   const c = detailsFor(g);
@@ -1189,7 +1192,7 @@ async function openDetails(g, from = null) {  // from: the Library or Search pag
     renderNews();
   });
 }
-function closeDetails() { if (D.open) window.addonEmit?.('game:details:close', { game: D.game ? { id: D.game.id, title: D.game.title } : null }); D.open = false; document.body.classList.remove('details-open'); tick(420, .06); }
+function closeDetails() { eggStop(); if (D.open) window.addonEmit?.('game:details:close', { game: D.game ? { id: D.game.id, title: D.game.title } : null }); D.open = false; document.body.classList.remove('details-open'); tick(420, .06); }
 function renderDetails() {
   const g = D.game, d = D.data, root = $('#details');
   const logo = root.querySelector('.d-logo');
@@ -1204,7 +1207,7 @@ function renderDetails() {
       if (im) im.onload = () => { if (D.game === g && logo.dataset.for === g.id + '|' + wantLogo) { logo.innerHTML = ''; logo.appendChild(im); } };
     }
   }
-  root.querySelector('.d-meta').textContent = [g.system || g.group, ...(d?.genres || []), d?.developer].filter(Boolean).join('   ·   ');
+  root.querySelector('.d-meta').textContent = [g.system || g.group, ...(d?.genres || []), d?.developer, g.egg && eggLeft(g, true)].filter(Boolean).join('   ·   ');
   root.querySelector('.d-desc').textContent = d?.description || '';
   const shots = mediaItems().map((m, i) => `<div class="d-media${m.kind === 'video' ? ' video' : ''}" data-i="${i}"><img src="${esc(m.thumb)}" alt="" loading="lazy">${m.kind === 'video' ? `<span class="pb">${ICON_PLAY}</span>` : ''}</div>`).join('');
   if (root.querySelector('.d-shots').dataset.html !== shots) { root.querySelector('.d-shots').dataset.html = shots; root.querySelector('.d-shots').innerHTML = shots; }  // unchanged: left alone
@@ -3977,6 +3980,109 @@ W.raf = requestAnimationFrame(drawWorld);
 requestAnimationFrame(poll);
 // The helper quits a while after the UI is closed (when started by Start Frontend.bat); the ping also picks up new games.
 if (API) setInterval(watchLibrary, 5000);
+
+// ---------- a tile for a game that's nearly out ----------
+// At the front of the row with a countdown to its release (local midnight). Its page plays its theme and its trailer
+// behind, silent, as does the home screen once the selection rests on it; Play has a sound of its own.
+const EGG = { theme: null, bg: null, sound: null };
+function eggOut(g) { const [y, m, d] = g.egg.release.split('-').map(Number); return new Date(y, m - 1, d); }
+function eggLeft(g, long) {
+  const ms = eggOut(g) - Date.now();
+  if (ms <= 0) return 'Out now';
+  const s = Math.floor(ms / 1000), d = Math.floor(s / 86400), pad = n => String(n).padStart(2, '0');
+  const clock = `${pad(Math.floor(s / 3600) % 24)}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`;
+  const when = eggOut(g).toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+  return long ? `Out ${when} · ${d ? `${d} day${d === 1 ? '' : 's'} ` : ''}${clock}` : `${d ? `${d}d ` : ''}${clock}`;
+}
+setInterval(() => {
+  const g = LIB.find(x => x.egg);
+  if (!g) return;
+  document.querySelectorAll('.egg-count').forEach(el => { el.textContent = eggLeft(g); });
+  if (D.open && D.game?.egg) { const d = D.data; $('#details .d-meta').textContent = [g.system || g.group, ...(d?.genres || []), d?.developer, eggLeft(g, true)].filter(Boolean).join('   ·   '); }
+}, 1000);
+// one hidden YouTube player: a song or a sound, faded in, and faded out when stopped
+function eggAudio(id, { volume, loop, start = 0 }) {
+  const host = document.createElement('div');
+  host.style.cssText = 'position:fixed;left:-9999px;top:0;width:200px;height:120px;opacity:0;pointer-events:none';
+  document.body.appendChild(host);
+  const slot = document.createElement('div');
+  host.appendChild(slot);
+  const it = { host, player: null, gone: false, fade: 0 };
+  loadYouTubePlayer().then(() => {
+    if (it.gone) return;
+    it.player = new YT.Player(slot, { host: 'https://www.youtube-nocookie.com', videoId: id, width: 200, height: 120,
+      playerVars: { autoplay: 1, controls: 0, disablekb: 1, playsinline: 1, rel: 0, start, origin: location.origin, ...(loop ? { loop: 1, playlist: id } : {}) },
+      events: { onReady: e => { if (it.gone) return e.target.destroy(); e.target.setVolume(0); e.target.playVideo(); eggRamp(it, 0, volume); } } });
+  }).catch(() => {});
+  return it;
+}
+function eggRamp(it, from, to, done) {
+  clearInterval(it.fade);
+  let i = 0;
+  it.fade = setInterval(() => {
+    i++;
+    try { it.player?.setVolume(from + (to - from) * Math.min(1, i / 20)); } catch {}
+    if (i >= 20) { clearInterval(it.fade); done?.(); }
+  }, 50);
+}
+function eggQuiet(it, fast) {
+  if (!it) return;
+  it.gone = true;
+  const end = () => { try { it.player?.destroy(); } catch {} it.host.remove(); };
+  if (fast || !it.player) return end();
+  let v = 30; try { v = it.player.getVolume(); } catch {}
+  eggRamp(it, v, 0, end);
+}
+// the trailer, silent and looping, filling a box: the details page's background, or the home screen's
+function eggVideo(box, id) {
+  const layer = document.createElement('div');
+  layer.className = 'egg-video';
+  const slot = document.createElement('div');
+  layer.appendChild(slot);
+  box.appendChild(layer);
+  loadYouTubePlayer().then(() => {
+    if (!layer.isConnected) return;
+    new YT.Player(slot, { host: 'https://www.youtube-nocookie.com', videoId: id,
+      playerVars: { autoplay: 1, mute: 1, controls: 0, disablekb: 1, playsinline: 1, rel: 0, loop: 1, playlist: id, iv_load_policy: 3, origin: location.origin },
+      events: { onReady: e => { e.target.mute(); e.target.playVideo(); },
+        onStateChange: e => { if (e.data === 1) layer.classList.add('on'); } } });  // shown once it's playing: the still until then
+  }).catch(() => {});
+  return layer;
+}
+function eggDetails(g) {
+  eggStop();
+  EGG.theme = eggAudio(g.egg.theme, { volume: 30, loop: true });
+  detailsFor(g)?.info.then(d => {
+    if (!D.open || D.game !== g || !d?.egg?.background) return;
+    setTimeout(() => { if (D.open && D.game === g) EGG.bg = eggVideo($('#details .d-hero'), d.egg.background); }, 1000);
+  }).catch(() => {});
+}
+function eggStop() {
+  eggQuiet(EGG.theme); EGG.theme = null;
+  EGG.bg?.remove(); EGG.bg = null;
+}
+let eggHomeTimer = 0;
+function eggHomeVideo(g) {
+  clearTimeout(eggHomeTimer);
+  eggHomeTimer = setTimeout(() => {
+    if (game()?.id !== g.id || !S.artBg || D.open) return;
+    const box = $('#gamebg'), last = box.lastChild;
+    if (!last || last.querySelector('.egg-video')) return;
+    detailsFor(g)?.info.then(d => { if (d?.egg?.background && game()?.id === g.id && last.isConnected) eggVideo(last, d.egg.background); }).catch(() => {});
+  }, 1500);  // once the selection rests on it (the layer goes with the next game's background)
+}
+// Play: it isn't out (and not on a PC), so a sound and the screen drained of colour for a moment
+function eggPlay(g) {
+  eggQuiet(EGG.theme, true); EGG.theme = null;
+  eggQuiet(EGG.sound, true);
+  EGG.sound = eggAudio(g.egg.play, { volume: 80, loop: false });
+  document.body.classList.add('egg-wasted');
+  setTimeout(() => {
+    document.body.classList.remove('egg-wasted');
+    eggQuiet(EGG.sound); EGG.sound = null;
+    if (D.open && D.game?.egg && !EGG.theme) EGG.theme = eggAudio(g.egg.theme, { volume: 30, loop: true });  // and the theme again
+  }, 5000);
+}
 if (API) setInterval(watchRunning, 3000);
 // A quiet warning when the controller runs low, once per charge
 let lowWarned = false;

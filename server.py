@@ -2502,7 +2502,7 @@ def sgdb_fill_missing(key, games):
     misses = load("sgdb-misses.json", {})  # title -> when SteamGridDB last had nothing for it (a miss from before this was kept: 0)
     reachable = True
     for g in games:
-        if g["cover"] or g.get("isFolder"):  # (a folder tile named "Movies" isn't a game called Movies)
+        if g["cover"] or g.get("isFolder") or g.get("egg"):  # (a folder tile named "Movies" isn't a game called Movies)
             continue
         k = norm(g["title"])
         if reachable and lookups < 40 and (k not in cache or not cache[k] and time.time() - misses.get(k, 0) > SGDB_RETRY):
@@ -2693,8 +2693,16 @@ def wiki_summary(title):
 HEROES = {}  # game id -> wide background URL ("" when none), for the "game art" home background
 
 
+def egg_hero():
+    return f"https://i.ytimg.com/vi/{EGG['trailers'][0]}/maxresdefault.jpg"
+
+
 def hero_for(g):
     """A wide background for a game, without the slower details lookup (news, store text)."""
+    if g.get("egg"):
+        custom = load("overrides.json", {}).get(g["id"], {}).get("hero")
+        if not (custom and os.path.isfile(os.path.join(ART_DIR, custom))):
+            return egg_hero()
     if g["id"] in HEROES:
         return HEROES[g["id"]]
     hit = DETAILS.get(g["id"])
@@ -3589,7 +3597,7 @@ def game_details(g):
     """Everything the details screen shows except news (fetched separately so the screen fills in at once)."""
     cfg = config()
     look = g
-    appid = steam_appid_for(look) if g.get("appid") or (cfg["onlineCovers"] and not g.get("isFolder")) else None
+    appid = steam_appid_for(look) if g.get("appid") or (cfg["onlineCovers"] and not g.get("isFolder") and not g.get("egg")) else None
     local = local_steam_art(g, appid)
     ach_f = POOL.submit(achievements, g)
     d = dict(remote_info(look, appid, local))
@@ -3613,6 +3621,12 @@ def game_details(g):
     d["news"] = news[1] if news and time.time() - news[0] < 1800 else None
     if g.get("source") == "Emulators":
         d["raConnected"] = bool(ra_account())
+    if g.get("egg"):  # the official trailers first (what YouTube's search found too, after them), and a frame as the background
+        pinned = [{"youtube": v, "name": f"{g['title']} — Trailer {i + 1}", "thumb": f"https://i.ytimg.com/vi/{v}/hqdefault.jpg"} for i, v in enumerate(EGG["trailers"])]
+        d["trailers"] = pinned + [t for t in d.get("trailers") or [] if t.get("youtube") not in EGG["trailers"]][:2]
+        if not custom:
+            d["hero"], d["heroSoft"] = egg_hero(), False
+        d["egg"] = {**g["egg"], "background": EGG["trailers"][0]}
     DETAILS[g["id"]] = (time.time(), d)
     return d
 
@@ -3764,6 +3778,45 @@ def game_news(g):
 
 
 # ---------------------------------------------------------------- library scan
+# A tile for a game that's nearly out, at the front of the row with a countdown. Left out of every changelog on purpose.
+EGG = {"id": "egg-gta6", "title": "Grand Theft Auto VI", "release": "2026-11-19", "wiki": "Grand_Theft_Auto_VI",
+       "theme": "O3vUm7ftFR0", "play": "K3kFQHKE0LA", "trailers": ["QdBZY2fkU-0", "VQRLujxTm3c"], "platforms": "PS5 · Xbox Series X|S"}
+EGG_DAYS_AFTER = 30  # it stays this long once it's out ("Out now"), then goes by itself
+
+
+def egg_game():
+    out = calendar.timegm(time.strptime(EGG["release"], "%Y-%m-%d"))
+    if time.time() > out + (EGG_DAYS_AFTER + 1) * 86400:
+        return None
+    return {"id": EGG["id"], "title": EGG["title"], "group": EGG["platforms"], "source": "Coming soon", "installed": True,
+            "minutes": 0, "lastPlayed": 0, "added": 0, "cover": egg_cover(),
+            "launch": {"type": "none", "message": ""}, "egg": {k: EGG[k] for k in ("release", "theme", "play")}}
+
+
+def egg_cover():
+    """The game's official cover, as its Wikipedia article shows it: looked up once a week, in the background."""
+    saved = load("egg.json", {})
+    if time.time() - saved.get("t", 0) > 7 * 86400 and not EGG_LOOKUP[0]:
+        EGG_LOOKUP[0] = True
+        def look():
+            try:
+                page = http_json("https://en.wikipedia.org/api/rest_v1/page/summary/" + EGG["wiki"], headers=WIKI_UA, timeout=10)
+                url = (page.get("originalimage") or page.get("thumbnail") or {}).get("source", "")
+                if url.startswith("https://upload.wikimedia.org/"):
+                    store("egg.json", {"t": time.time(), "cover": url})
+                    g = STATE["byId"].get(EGG["id"])
+                    if g and not g.get("custom") and g["cover"] != url:  # on the tile now, not at the next scan
+                        g["cover"] = url
+                        STATE["scanned"] = time.time()
+            except (urllib.error.URLError, ValueError, KeyError, TimeoutError, OSError):
+                pass
+            finally:
+                EGG_LOOKUP[0] = False
+        threading.Thread(target=look, daemon=True).start()
+    return saved.get("cover", "")
+
+
+EGG_LOOKUP = [False]
 STATE = {"games": [], "byId": {}, "errors": [], "counts": {}, "scanned": 0}
 SCAN_LOCK = threading.Lock()
 # How far a scan has got, for the app's progress window (a big batch of ROMs can take a while to read and find covers for):
@@ -3846,6 +3899,10 @@ def scan_all():
             add(f"ROMs/{s['system']}", lambda lib=lib: scan_library(lib, cfg))
     elif root:
         errors.append(f"ROMs folder {root} isn't available")
+
+    egg = egg_game()
+    if egg:
+        games[egg["id"]] = egg
 
     remote = [g for g in games.values() if g.get("appid") and g["cover"].startswith(STEAM_CDN.split("{")[0])]
     if remote:

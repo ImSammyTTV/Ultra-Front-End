@@ -1321,3 +1321,13 @@ body.trim-open.quick-open #quick { z-index: 10; }
 .prow.sel .pv { background: rgba(56, 189, 248, .18); }
 .prow .pic svg { width: 3vh; height: 3vh; opacity: .85; }
 .prow .pl { font-weight: 500; }
+
+/* a tile for a game that's nearly out: its countdown, its trailer behind, and Play's moment */
+.tile .egg-count { position: absolute; left: 50%; bottom: 6%; transform: translateX(-50%); z-index: 2; padding: .5vh 1.3vh; border-radius: 99px; white-space: nowrap;
+  font-style: normal; font-weight: 700; font-size: max(1.5vh, 10px); letter-spacing: .04em; font-variant-numeric: tabular-nums; color: #fff;
+  background: rgba(0, 0, 0, .62); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .25); backdrop-filter: blur(6px); pointer-events: none; }
+.egg-video { position: absolute; inset: 0; overflow: hidden; opacity: 0; transition: opacity 1.2s ease; pointer-events: none; }
+.egg-video.on { opacity: 1; }
+.egg-video iframe { position: absolute; left: 50%; top: 50%; width: max(100%, 177.78vh); height: max(100%, 56.25vw); transform: translate(-50%, -50%) scale(1.2); border: 0; }
+#world, main, header, footer, #details { transition: filter .4s ease; }
+body.egg-wasted #world, body.egg-wasted main, body.egg-wasted header, body.egg-wasted footer, body.egg-wasted #details { filter: grayscale(1) brightness(.7); }
