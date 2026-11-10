@@ -2552,15 +2552,37 @@ const pageMode = () => !P.game && !P.setup;
 const subReturn = () => P.returnTo || SUB_VIEW[P.view] || 'accounts';
 const catOf = v => SUB_VIEW[v] && SETTINGS.some(c => c.id === P.returnTo) ? P.returnTo : SUB_VIEW[v] || v;  // SteamGridDB from Artwork & info is under Artwork & info
 // Settings > About: this version, and the newer one from the GitHub project's releases when there is one
+// While an update is checked for, downloads or installs, About keeps asking how far it is, so its bar moves (whether
+// it was started here or found by itself in the background)
+let aboutWatching = false;
+async function watchUpdate() {
+  if (aboutWatching) return;
+  aboutWatching = true;
+  try {
+    while (P.open && P.view === 'about') {
+      await new Promise(r => setTimeout(r, 500));
+      let u;
+      try { u = await api('/api/update'); } catch { break; }
+      if (P.data) P.data.update = u;
+      if (P.open && P.view === 'about') renderPanel();
+      if (!['checking', 'downloading', 'installing'].includes(u.state)) break;
+    }
+  } finally { aboutWatching = false; }
+}
 function updateRows(u) {
   if (!u) return [];
+  if (['checking', 'downloading', 'installing'].includes(u.state)) setTimeout(watchUpdate);
   const ready = u.latest && u.state === 'ready';
-  const note = u.off || u.error || { checking: 'Checking for a new version…', downloading: `Downloading version ${u.latest}…`,
+  const mb = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0);
+  const note = u.off || u.error || { checking: 'Checking for a new version…',
+    downloading: u.progress != null ? `Downloading version ${u.latest}… ${u.progress}% (${mb(u.got)} of ${mb(u.size)} MB)` : `Downloading version ${u.latest}…`,
     ready: `Version ${u.latest} is ready. It installs by itself when the frontend is closed or left alone for a few minutes.`, installing: `Installing version ${u.latest}…`,
     installed: `Version ${u.latest} is installed and takes over the next time the frontend opens` }[u.state]
     || (u.latest ? `Version ${u.latest} is available` : u.state === 'current' ? 'This is the newest version' : 'Looks for new versions every few hours');
   const nightly = u.channel === 'nightly';
-  return [{ kind: 'info', label: `Version ${u.version}`, sub: note },
+  // a bar while it works: how far the download is, or a sliding one while it checks or installs
+  const bar = u.error ? null : u.state === 'downloading' ? u.progress ?? 'busy' : ['checking', 'installing'].includes(u.state) ? 'busy' : null;
+  return [{ kind: 'info', label: `Version ${u.version}`, sub: note, ...(bar != null ? { bar } : {}) },
     // a once-a-day anonymous check-in, so the project can count how many copies are in use
     ...(u.off || !P.data?.options ? [] : [{ kind: 'row', label: 'Count this copy', value: onOff(P.data.options.usageCheckin),
       sub: 'Checks in once a day to show roughly how many people are using Ultra Front End. It only counts copies: nothing about you or your games is included',
@@ -2607,10 +2629,10 @@ async function updateNow(action) {
   let u;
   try { u = await api('/api/update', { action }); } catch (e) { return toast(e.message); }
   if (action === 'install') toast(u.latest ? `Updating to version ${u.latest}…` : 'Checking for a new version…', 4000);
-  for (let i = 0; i < 120 && P.open && P.view === 'about' && ['checking', 'downloading', 'installing'].includes(u.state); i++) {  // show progress while About is open
+  for (let i = 0; i < 480 && P.open && P.view === 'about' && ['checking', 'downloading', 'installing'].includes(u.state); i++) {  // show progress while About is open
     if (P.data) P.data.update = u;
     renderPanel();
-    await new Promise(r => setTimeout(r, 2000));
+    await new Promise(r => setTimeout(r, 500));  // often enough for the bar to move smoothly
     try { u = await api('/api/update'); } catch { break; }
   }
   if (P.data) P.data.update = u;

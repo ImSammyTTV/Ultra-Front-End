@@ -11301,7 +11301,8 @@ class Handler(SimpleHTTPRequestHandler):
 # the newest release's exe is downloaded beside this one and checked against GitHub's SHA-256, then swapped in once nothing is
 # open or running. The new copy takes over from this one (frontend.py replace_old_helper); if it never starts, the old exe goes
 # back and that version waits a day.
-UPDATE = {"state": "", "latest": None, "error": "", "checked": 0.0, "retry": 0.0, "done": None, "quick": 0.0}
+UPDATE = {"state": "", "latest": None, "error": "", "checked": 0.0, "retry": 0.0, "done": None, "quick": 0.0,
+          "got": 0, "size": 0}  # (got / size: how far the download is, for Settings › About's bar)
 QUICK_EVERY = 60  # how often github.com is asked which release is the latest: a tiny request, not the API (no hourly limit)
 
 
@@ -11551,10 +11552,12 @@ def download_update(release):
             get = urllib.request.build_opener(GitHubOnlyAuth).open(dev_request(asset["url"], "application/octet-stream"), timeout=60)
         else:
             get = urllib.request.urlopen(urllib.request.Request(asset["url"], headers={"User-Agent": UA}), timeout=60)
+        UPDATE["got"], UPDATE["size"] = 0, asset["size"]
         with get as r, open(part, "wb") as f:
-            while chunk := r.read(1 << 20):
+            while chunk := r.read(1 << 18):  # (a quarter of a megabyte at a time, so the bar moves smoothly)
                 digest.update(chunk)
                 f.write(chunk)
+                UPDATE["got"] += len(chunk)
         with open(part, "rb") as f:
             head = f.read(2)
         if head != (b"PK" if MAC else b"\x7fE" if LINUX else b"MZ") or os.path.getsize(part) != asset["size"] or digest.hexdigest() != asset["sha256"]:
@@ -11787,6 +11790,8 @@ def update_view():
     newer = wanted_release(rel)
     return {"version": VERSION, "channel": update_channel(), "off": updates_off(), "state": UPDATE["state"], "error": UPDATE["error"],
             **({"devToken": bool(dev_token())} if is_dev(VERSION) else {}),
+            **({"progress": min(100, round(UPDATE["got"] * 100 / UPDATE["size"])), "got": UPDATE["got"], "size": UPDATE["size"]}
+               if UPDATE["state"] == "downloading" and UPDATE["size"] else {}),
             "latest": rel.get("version") if newer else None, "notes": rel.get("notes", "") if newer else "", "updated": saved.get("updated")}
 
 
