@@ -894,7 +894,7 @@ FIXED_ARGS = {"Blizzard.BattleNet": ["--location", os.path.join(os.environ.get("
 GITHUB_EMUS = {
     "RPCS3": ("RPCS3/rpcs3-binaries-win", r"_win64.*\.7z$", "rpcs3.exe"),
     "KytyPS5": ("KytyPS5/KytyPS5", r"-Windows-x64\.zip$", "kyty_emulator.exe"),
-    "Eglantine": ("Djihads80/Eglantine", r"^eglantine-windows-x86_64\.zip$", "eglantine.exe"),
+    "Eglantine": ("Djihads80/eglantine", r"^eglantine-windows-x86_64\.zip$", "eglantine.exe"),
     "Mesen": ("nesdev-org/MesenCE", r"^Mesen_[0-9.]+_Windows\.zip$", "Mesen.exe"),  # MesenCE: Mesen2 is archived
     "Xenia Canary": ("xenia-canary/xenia-canary", r"^xenia_canary_windows\.7z$", "xenia_canary.exe"),
     "Ymir": ("StrikerX3/Ymir", r"^ymir-windows-x86_64-(AVX2|SSE2)-v[0-9.]+\.zip$", "ymir-sdl3.exe"),  # AVX2 build when the CPU has it
@@ -1079,13 +1079,19 @@ def github_latest(name):
     return (found[0][1], found[0][0]) if found else (None, "")
 
 
+def on_project(url, repo):
+    """A download from the project's own releases. GitHub's names ignore letter case (Eglantine's project is now
+    Djihads80/eglantine), and no two projects differ only by it, so neither does this."""
+    return url.lower().startswith(f"https://github.com/{repo}/releases/download/".lower())
+
+
 def install_from_github(name, target=None):
     repo, pattern, program_name = GITHUB_EMUS[name]
     asset, published = github_latest(name)
     if not asset:
         raise ValueError(f"{name} has no Windows download right now. Its project page may have one.")
     url = asset["browser_download_url"]
-    if not url.startswith(f"https://github.com/{repo}/releases/download/"):
+    if not on_project(url, repo):
         raise ValueError(f"{name}'s download isn't on its own project")
     # GitHub's SHA-256 of the file, on everything uploaded since mid-2025
     exe = install_download(name, url, asset["name"], program_name, asset.get("digest") or "", asset.get("size") or 0, target)
@@ -10064,7 +10070,7 @@ def install_presentmon():
     if not asset:
         raise ValueError("PresentMon has no Windows download right now. Try again later.")
     url, digest = asset["browser_download_url"], str(asset.get("digest") or "").lower()
-    if not url.startswith(f"https://github.com/{PRESENTMON_REPO}/releases/download/"):
+    if not on_project(url, PRESENTMON_REPO):
         raise ValueError("PresentMon's download isn't on its own project")
     if not digest.startswith("sha256:"):  # a lone exe: never kept without GitHub's checksum
         raise ValueError("PresentMon's download has no checksum to check it against. Try again later.")
@@ -10423,7 +10429,7 @@ def install_recorder():
         raise ValueError("FFmpeg has no Windows download right now. Try again later.")
     asset = pick[1]
     url, digest = asset["browser_download_url"], str(asset.get("digest") or "").lower()
-    if not url.startswith(f"https://github.com/{RECORDER_REPO}/releases/download/") or not digest.startswith("sha256:"):
+    if not on_project(url, RECORDER_REPO) or not digest.startswith("sha256:"):
         raise ValueError("FFmpeg's download couldn't be checked. Try again later.")
     os.makedirs(os.path.dirname(RECORDER_DIR), exist_ok=True)
     part = RECORDER_DIR + ".zip.part"
@@ -11659,7 +11665,7 @@ def fetch_release(api_url, key):
     asset = next((a for a in rel.get("assets") or [] if a.get("name") == UPDATE_ASSET), None) or {}
     url, digest = asset.get("browser_download_url", ""), str(asset.get("digest") or "").lower()
     # only this project's own download, and only with a SHA-256 to check it against
-    ok = digest.startswith("sha256:") and asset.get("size") and (test or url.startswith(f"https://github.com/{UPDATE_REPO}/releases/download/"))
+    ok = digest.startswith("sha256:") and asset.get("size") and (test or on_project(url, UPDATE_REPO))
     # a nightly or dev build's version is in its release title or notes (its tag, "nightly" or "dev", stays the same)
     kind = {"nightlyRelease": "nightly"}.get(key, "")
     version = str(rel.get("name") if key != "release" else rel.get("tag_name") or "").strip().lstrip("vV")
@@ -12276,7 +12282,7 @@ MAC_DOWNLOADS = {
     "KytyPS5": ("KytyPS5/KytyPS5", None, r"-macOS-x86_64\.zip$", "Kyty*"),
     "PPSSPP": ("hrydgard/ppsspp", r"^PPSSPPSDL-macOS-v[\d.]+\.zip$", None, "PPSSPP*.app"),
     "Vita3K": ("Vita3K/Vita3K", r"^macos-arm64-latest\.dmg$", r"^macos-latest\.dmg$", "Vita3K.app"),
-    "Eglantine": ("Djihads80/Eglantine", r"^eglantine-macos-arm64\.zip$", None, "Eglantine*.app"),
+    "Eglantine": ("Djihads80/eglantine", r"^eglantine-macos-arm64\.zip$", None, "Eglantine*.app"),
     "Cemu": ("cemu-project/Cemu", None, r"^cemu-[\d.]+-macos-\d+-x64\.dmg$", "Cemu.app"),
     "Dolphin": ("https://dl.dolphin-emu.org/releases/2609a/dolphin-2609a-universal.dmg", None, None, "Dolphin.app"),  # its own site, as on Windows
     "ares": ("ares-emulator/ares", r"^ares-macos-universal\.zip$", None, "ares.app"),
@@ -12355,7 +12361,7 @@ def mac_asset(name):
         if found:
             a = found[0][1]
             url = a["browser_download_url"]
-            if not url.startswith(f"https://github.com/{r}/releases/download/"):
+            if not on_project(url, r):
                 raise ValueError(f"{name}'s download isn't on its own project")
             return url, a["name"], str(a.get("digest") or ""), a.get("size") or 0
     raise ValueError(f"{name} has no Mac download right now. Its project page may have one.")
