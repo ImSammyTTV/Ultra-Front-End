@@ -6712,7 +6712,7 @@ def watch_controller():
         get_state = xinput.XInputGetState
     user32 = ctypes.windll.user32
     held, last_fire, last_fg, last_open, front, repeat, combo, zoom_at = {}, 0.0, 0.0, 0.0, False, {}, {}, 0.0
-    keys_down = set()
+    keys_down, keys_checked, keys_on = set(), 0.0, False
     while True:
         time.sleep(0.016 if front or DESK[0] else 0.04)
         now = time.time()
@@ -6721,8 +6721,12 @@ def watch_controller():
         user32.GetWindowTextW(user32.GetForegroundWindow(), title, n + 1)
         front = title.value.startswith("Ultra Front End") and frontend_in_front()
         DESK[0] = not front and wallpaper_live() and desktop_in_front(user32)
-        # (the keyboard isn't read for the wallpaper: keys typed in another window reached it and went through to the
-        # power menu, 2026-11-11. Off until "the desktop is in front" can be trusted for it)
+        # The keyboard, for the wallpaper: only if it's switched on (Settings › General › Type on the wallpaper), and only
+        # while the desktop is truly in front (desktop_in_front: Windows and the pointer both say so). Keys Wallpaper Engine
+        # passes on itself are never used: those reached it from other windows and went through to Shut down, 2026-11-11
+        if now - keys_checked > 1:
+            keys_checked, keys_on = now, bool(config().get("wallpaperKeys"))
+        keys_down = wallpaper_keys(user32, keys_down) if DESK[0] and keys_on else set()
         if front and now - last_fg > 2:  # the frontend is in front again: a game started through a link has ended
             last_fg = now
             session = open_session()
@@ -8315,7 +8319,7 @@ LOCAL_PROVIDERS = {"ea": "EA app", "ubisoft": "Ubisoft Connect", "gog": "GOG", "
 # each launcher has installed on this PC from the entries it writes to Windows' installed-programs list, and starts
 # games through the launcher so sign-in, updates and cloud saves still work.
 SERVICE_SCANS = ("ea", "ubisoft", "gog", "battlenet")   # each has an on/off option "<id>Local" (on by default)
-OPTION_KEYS = ("steamLocal", "onlineCovers", "showUninstalled", "artBackground", "guideOpens", "wiiMotion", "keepOnScreen", "usageCheckin", "dndWhilePlaying") + tuple(p + "Local" for p in SERVICE_SCANS)
+OPTION_KEYS = ("steamLocal", "onlineCovers", "showUninstalled", "artBackground", "guideOpens", "wiiMotion", "keepOnScreen", "usageCheckin", "dndWhilePlaying", "wallpaperKeys") + tuple(p + "Local" for p in SERVICE_SCANS)
 SERVICE_APPS = {
     "ea": [r"C:\Program Files\Electronic Arts\EA Desktop\EA Desktop\EADesktop.exe"],
     "ubisoft": [r"C:\Program Files (x86)\Ubisoft\Ubisoft Game Launcher\UbisoftConnect.exe", r"C:\Program Files (x86)\Ubisoft\Ubisoft Game Launcher\upc.exe"],
@@ -8582,7 +8586,8 @@ def settings_view():
     chosen = set(cfg.get("systems") or []) | set(extra)
     platforms = [system_view(p, cfg, chosen) for p in ROM_FOLDERS + extra]
     services = {p: {"detected": bool(service_app(p)), "count": STATE["counts"].get(f"{LOCAL_PROVIDERS[p]} (installed)", 0)} for p in SERVICE_SCANS}
-    return {"options": {**{k: cfg.get(k, True) for k in OPTION_KEYS}, "dndWhilePlaying": cfg.get("dndWhilePlaying", False), "startup": cfg.get("startup")}, "services": services, "libraries": libs, "accounts": acc,
+    return {"options": {**{k: cfg.get(k, True) for k in OPTION_KEYS}, "dndWhilePlaying": cfg.get("dndWhilePlaying", False),
+                        "wallpaperKeys": cfg.get("wallpaperKeys", False), "startup": cfg.get("startup")}, "services": services, "libraries": libs, "accounts": acc,
             "errors": STATE["errors"], "steamDetected": bool(steam_path()), "steamSuggestedId": steam_suggested_id(),
             "localSteamCount": STATE["counts"].get("Steam (installed)", 0), "romRoot": cfg.get("romRoot") or "", "platforms": platforms,
             "emuUpdates": {"checked": EMU_UPDATES["checked"], "list": [{"name": n, "to": i.get("to", ""), "systems": i["systems"], "installer": k == "winget"}
