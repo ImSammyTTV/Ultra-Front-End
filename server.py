@@ -6504,7 +6504,7 @@ PAD = {"seq": 0, "events": [], "cond": threading.Condition(), "pads": 0, "seen":
 # and no keyboard. While the desktop is the window in front and a wallpaper page has checked in lately, the helper reads
 # both itself and sends each press marked for the desktop: only the wallpaper acts on those, never the frontend's window.
 # Nothing is read from the keyboard while any other window is in front, or with no wallpaper showing.
-WALLPAPER = {"seen": 0.0}
+WALLPAPER = {"seen": 0.0, "desk": 0.0, "fronts": []}  # (desk, fronts: when the desktop was last in front, and the windows seen in front, for /api/wallpaper)
 DESK = [False]  # the desktop is in front and a wallpaper is showing (watch_controller keeps it up to date)
 
 
@@ -6546,7 +6546,13 @@ def desktop_in_front(user32):
     import ctypes
     name = ctypes.create_unicode_buffer(64)
     user32.GetClassNameW(user32.GetForegroundWindow(), name, 64)
-    return name.value in ("Progman", "WorkerW")
+    fronts = WALLPAPER["fronts"]  # the last few kinds of window seen in front, for /api/wallpaper
+    if not fronts or fronts[-1] != name.value:
+        WALLPAPER["fronts"] = (fronts + [name.value])[-8:]
+    desk = name.value in ("Progman", "WorkerW")
+    if desk:
+        WALLPAPER["desk"] = time.time()
+    return desk
 
 
 # The keys a wallpaper gets: letters, numbers, a little punctuation, and the keys the frontend moves with
@@ -10891,6 +10897,11 @@ class Handler(SimpleHTTPRequestHandler):
             except ValueError:
                 after = 0
             return self.reply(pad_wait(after, bool(q.get("overlay"))))
+        if path == "/api/wallpaper":  # how Wallpaper mode is doing, to see why a wallpaper gets no controller or keys
+            ago = lambda t: round(time.time() - t, 1) if t else None
+            return self.reply({"version": VERSION, "wallpaperCheckedIn": ago(WALLPAPER["seen"]), "showing": wallpaper_live(),
+                               "desktopInFrontAgo": ago(WALLPAPER["desk"]), "desktopInFrontNow": DESK[0],
+                               "windowsInFront": WALLPAPER["fronts"], "wheelWatching": bool(WALLPAPER.get("wheel")), "controllers": PAD["pads"]})
         if path == "/api/ping":
             if "wallpaper=1" in (urllib.parse.urlparse(self.path).query or ""):
                 WALLPAPER["seen"] = time.time()  # a wallpaper is showing: it gets the controller and keys on the desktop
