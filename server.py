@@ -7,6 +7,7 @@ Run: python server.py [--auto-exit]   then open http://127.0.0.1:8137
 User data (libraries, accounts, play log) lives in data/ and is never committed.
 """
 import base64
+import http.client
 import glob
 import hashlib
 import html
@@ -35,7 +36,8 @@ def shipped(name):
     return here if os.path.isdir(here) else os.path.join(BUNDLE, name)
 
 
-WIN, MAC = os.name == "nt", sys.platform == "darwin"
+WIN, MAC, LINUX = os.name == "nt", sys.platform == "darwin", sys.platform.startswith("linux")
+POSIX = MAC or LINUX  # the pieces a Mac and Linux do alike, each through its own platform module (PLAT)
 # Games made with SDL (Hades II, many ports and emulators) minimize when they lose the focus, which the in-game menu takes:
 # every program started from here is told not to (Steam too, when started from here, and so its games). A value you set
 # yourself stays.
@@ -47,6 +49,10 @@ EMU_HOME = os.path.join(UFE_HOME, "Emulators")  # (on a Mac, ~/Emulators: apps t
 OLD_EMU_HOME = os.path.join(os.path.expanduser("~"), "Emulators")  # where installs went before 1.2.5
 if MAC:
     import plat_mac  # the Mac side of every Windows-only piece below
+    PLAT = plat_mac
+elif LINUX:
+    import plat_linux  # the Linux side (the Steam Deck first), with the same names as plat_mac
+    PLAT = plat_linux
 if WIN and not getattr(subprocess.Popen.__init__, "no_window", False):
     # No console window flashing over the frontend or a game: a child started with no flags of its own (subprocess.run and
     # check_output too) gets CREATE_NO_WINDOW. One that sets any (DETACHED_PROCESS, CREATE_NEW_CONSOLE...) keeps them.
@@ -116,6 +122,8 @@ def data_folder():
     Application Support."""
     if MAC and getattr(sys, "frozen", False):
         return os.path.expanduser("~/Library/Application Support/Ultra Front End")
+    if LINUX and getattr(sys, "frozen", False):  # an AppImage is read-only inside: ~/.local/share
+        return os.path.join(plat_linux.DATA_HOME, "Ultra Front End")
     here = os.path.join(ROOT, "data")
     if WIN and getattr(sys, "frozen", False) and "--port" not in sys.argv and not set_up_in(here):
         try:
@@ -142,9 +150,10 @@ DATA = data_folder()
 note_data_folder(DATA)
 PORT = int(sys.argv[sys.argv.index("--port") + 1]) if "--port" in sys.argv else 8137  # --port: a second copy for testing
 # This copy's build, noted at start: an update swaps the exe while the old build can still be running in the tray
-BUILD = "%d-%d" % (int(os.path.getmtime(sys.executable)), os.path.getsize(sys.executable)) if getattr(sys, "frozen", False) else "source"
+SELF_FILE = (LINUX and plat_linux.appimage()) or sys.executable  # (on Linux the AppImage, which an update replaces, not the program inside it)
+BUILD = "%d-%d" % (int(os.path.getmtime(SELF_FILE)), os.path.getsize(SELF_FILE)) if getattr(sys, "frozen", False) else "source"
 QUIT = [lambda: os._exit(0)]  # how this helper leaves when a newer build takes over; Game Frontend.exe takes its tray icon down too
-VERSION = "1.2.9"  # the release this is; tools/release.py publishes it as tag v<VERSION>
+VERSION = "1.2.10"  # the release this is; tools/release.py publishes it as tag v<VERSION>
 UPDATE_REPO = "ImSammyTTV/Ultra-Front-End"  # whose GitHub releases a copy of the exe keeps itself current from
 os.makedirs(DATA, exist_ok=True)
 
@@ -199,8 +208,17 @@ UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) GameFrontend/0.1"
 
 def http_json(url, data=None, headers=None, timeout=15):
     req = urllib.request.Request(url, data=data, headers={"User-Agent": UA, **(headers or {})})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read().decode("utf-8"))
+    except (http.client.HTTPException, ConnectionError, TimeoutError) as e:
+        # the connection dropped part way (reset, cut off, timed out reading): the same "couldn't reach it" every caller handles
+        raise urllib.error.URLError(e) from e
+
+
+def offline(e):
+    """True for "couldn't reach the site" (no internet, DNS, timeout), not for the site answering with an error."""
+    return isinstance(e, urllib.error.URLError) and not isinstance(e, urllib.error.HTTPError)
 
 
 def read(path):
@@ -245,6 +263,8 @@ def open_target(target):
     """Open a link, folder or file with the system (steam:// links start games)."""
     if WIN:
         os.startfile(target)
+    elif LINUX:
+        plat_linux.open_target(target)
     else:
         subprocess.Popen(["open", target])
 
@@ -405,6 +425,8 @@ def steam_path():
     if MAC:
         p = os.path.expanduser("~/Library/Application Support/Steam")
         return p if os.path.isdir(p) else None
+    if LINUX:
+        return plat_linux.steam_path()
     try:
         import winreg
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam") as k:
@@ -872,7 +894,7 @@ FIXED_ARGS = {"Blizzard.BattleNet": ["--location", os.path.join(os.environ.get("
 GITHUB_EMUS = {
     "RPCS3": ("RPCS3/rpcs3-binaries-win", r"_win64.*\.7z$", "rpcs3.exe"),
     "KytyPS5": ("KytyPS5/KytyPS5", r"-Windows-x64\.zip$", "kyty_emulator.exe"),
-    "Eglantine": ("Djihads80/Eglantine", r"^eglantine-windows-x86_64\.zip$", "eglantine.exe"),
+    "Eglantine": ("Djihads80/eglantine", r"^eglantine-windows-x86_64\.zip$", "eglantine.exe"),
     "Mesen": ("nesdev-org/MesenCE", r"^Mesen_[0-9.]+_Windows\.zip$", "Mesen.exe"),  # MesenCE: Mesen2 is archived
     "Xenia Canary": ("xenia-canary/xenia-canary", r"^xenia_canary_windows\.7z$", "xenia_canary.exe"),
     "Ymir": ("StrikerX3/Ymir", r"^ymir-windows-x86_64-(AVX2|SSE2)-v[0-9.]+\.zip$", "ymir-sdl3.exe"),  # AVX2 build when the CPU has it
@@ -1057,13 +1079,19 @@ def github_latest(name):
     return (found[0][1], found[0][0]) if found else (None, "")
 
 
+def on_project(url, repo):
+    """A download from the project's own releases. GitHub's names ignore letter case (Eglantine's project is now
+    Djihads80/eglantine), and no two projects differ only by it, so neither does this."""
+    return url.lower().startswith(f"https://github.com/{repo}/releases/download/".lower())
+
+
 def install_from_github(name, target=None):
     repo, pattern, program_name = GITHUB_EMUS[name]
     asset, published = github_latest(name)
     if not asset:
         raise ValueError(f"{name} has no Windows download right now. Its project page may have one.")
     url = asset["browser_download_url"]
-    if not url.startswith(f"https://github.com/{repo}/releases/download/"):
+    if not on_project(url, repo):
         raise ValueError(f"{name}'s download isn't on its own project")
     # GitHub's SHA-256 of the file, on everything uploaded since mid-2025
     exe = install_download(name, url, asset["name"], program_name, asset.get("digest") or "", asset.get("size") or 0, target)
@@ -1096,10 +1124,11 @@ def install_core(retroarch, core):
     import io
     import zipfile
     dll = (os.path.expanduser(f"~/Library/Application Support/RetroArch/cores/{core}_libretro.dylib") if MAC
+           else plat_linux.retroarch_core_dest(retroarch, core) if LINUX
            else os.path.join(os.path.dirname(retroarch), "cores", f"{core}_libretro.dll"))
     if os.path.isfile(dll):
         return dll
-    with urllib.request.urlopen(urllib.request.Request(CORE_URL.format(core), headers={"User-Agent": UA}), timeout=120) as response:
+    with urllib.request.urlopen(urllib.request.Request((plat_linux.core_url() if LINUX else CORE_URL).format(core), headers={"User-Agent": UA}), timeout=120) as response:
         if not response.geturl().startswith("https://buildbot.libretro.com/"):
             raise ValueError("The core download went somewhere other than libretro's build server")
         buffer = io.BytesIO()
@@ -1107,10 +1136,10 @@ def install_core(retroarch, core):
         data = buffer.getvalue()
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as z:
-            body = z.read(f"{core}_libretro{CORE_EXT}")  # that one file, at the top: nothing else in the zip is used
+            body = z.read(f"{core}_libretro{'.so' if LINUX else CORE_EXT}")  # that one file, at the top: nothing else in the zip is used
     except (zipfile.BadZipFile, KeyError):
         raise ValueError(f"The {core} core download was damaged. Try again.")
-    if body[:2] != b"MZ" and not MAC or MAC and body[:4] not in (b"\xcf\xfa\xed\xfe", b"\xca\xfe\xba\xbe"):
+    if LINUX and body[:4] != b"\x7fELF" or WIN and body[:2] != b"MZ" or MAC and body[:4] not in (b"\xcf\xfa\xed\xfe", b"\xca\xfe\xba\xbe"):
         raise ValueError(f"The {core} core download isn't a program for this computer")
     job_progress("Setting up")
     os.makedirs(os.path.dirname(dll), exist_ok=True)
@@ -1537,8 +1566,12 @@ def install_emulator(system):
         source = package[1]
         if source == "mac":  # from the emulator's own project, into ~/Applications
             cfg = connect_emulator(package, install_mac_app(package[0]))
+        elif source.startswith("flatpak:"):  # Linux: from Flathub, for this user
+            cfg = connect_emulator(package, flatpak_emulator(source.split(":", 1)[1]))
         elif source.startswith("retroarch:"):  # RetroArch once, then this console's core into its cores folder
             ra = find_emulators(keep_retroarch=True).get("_retroarch")
+            if not ra and LINUX:
+                ra = flatpak_emulator("org.libretro.RetroArch")
             if not ra and MAC:
                 raise ValueError("Download RetroArch from retroarch.com into Applications first, then try again")
             if not ra:
@@ -1607,11 +1640,37 @@ def find_emulators_mac():
     return found
 
 
+def find_emulators_linux():
+    """Known emulators on Linux: Flathub apps (RetroArch, Dolphin, PCSX2... as Flatpak installs them), AppImages in
+    ~/Applications and the like (where EmuDeck puts them), and programs from the distribution (/usr/bin). Matched by the
+    same names as on Windows (plat_linux.emu_name). A Flatpak wins over the rest: on a Steam Deck that's how most come."""
+    import fnmatch
+    found = {}
+    for name, path in plat_linux.emulator_candidates():
+        if EXE_SKIP.search(name) or re.search(r"[-_](cli|cmd|nogui|room)\b", name):
+            continue
+        for platform, pats in EMU_FIND.items():
+            if platform not in found and any(fnmatch.fnmatch(name, p) for p in pats):
+                found[platform] = path
+        if name.startswith("retroarch"):
+            found.setdefault("_retroarch", path)
+    return found
+
+
+def flatpak_emulator(app_id):
+    """Install a Flathub emulator (if it isn't already) and return the program that starts it."""
+    have = next((os.path.join(d, app_id) for d in plat_linux.FLATPAK_BIN if os.path.exists(os.path.join(d, app_id))), None)
+    if have:
+        return have
+    job_progress("Downloading", percent=0, force=True)
+    return plat_linux.flatpak_install(app_id, lambda p: job_progress("Downloading", percent=p))
+
+
 def find_emulators(keep_retroarch=False):
     """Look in the usual install places for known emulators. Returns {platform: exe path} (and RetroArch as "_retroarch")."""
     import fnmatch
-    if MAC:
-        found = find_emulators_mac()
+    if POSIX:
+        found = find_emulators_mac() if MAC else find_emulators_linux()
         ra = found.pop("_retroarch", None)
         for name in ROM_FOLDERS if ra else []:
             info = system_info(name)
@@ -1683,10 +1742,11 @@ RA_BIOS = {"3DO", "Pokemon Mini"}  # RetroArch systems whose core reads its BIOS
 
 
 def emulator_args(emu, cores, system=None):
-    name = os.path.basename(emu).lower()
+    name = plat_linux.emu_name(emu) if LINUX else os.path.basename(emu).lower()  # (on Linux a Flatpak's id or an AppImage, by its Windows name)
     if "retroarch" in name:
         for core in cores:
             dll = (os.path.expanduser(f"~/Library/Application Support/RetroArch/cores/{core}_libretro.dylib") if MAC
+                   else plat_linux.retroarch_core(emu, core) or "" if LINUX
                    else os.path.join(os.path.dirname(emu), "cores", f"{core}_libretro.dll"))
             if os.path.isfile(dll):
                 return ["-f", "-L", dll, *(["--appendconfig", "{bioscfg}"] if system in RA_BIOS else []), "{rom}"]
@@ -1729,6 +1789,37 @@ def best_exe(folder, exts=(".exe",)):
     # Prefer an exe named like the folder, then the shallowest, then the biggest.
     return max(exes, key=lambda p: (bool(want) and (norm(os.path.splitext(os.path.basename(p))[0]) in want or want in norm(os.path.basename(p))),
                                     -p.count(os.sep), os.path.getsize(p)))
+
+
+LINUX_SKIP = re.compile(r"\.(so(\.\d+)*|dll|exe|txt|md|json|ini|cfg|py|pyc)$|^(lib|uninstall|crash)", re.I)
+
+
+def linux_program(path):
+    """Whether a file is a program a game starts from on Linux: an AppImage, a start script or a native program (ELF)."""
+    name = os.path.basename(path)
+    if not os.access(path, os.X_OK) or LINUX_SKIP.search(name) or EXE_SKIP.search(name):
+        return False
+    if name.lower().endswith((".appimage", ".sh", ".x86_64", ".x86", ".aarch64", ".arm64")):
+        return True
+    try:
+        with open(path, "rb") as f:
+            return f.read(4) == b"\x7fELF"
+    except OSError:
+        return False
+
+
+def best_linux_program(folder):
+    """A native game in a folder: a program named like the folder first (GOG's start.sh counts), then the shallowest, then the biggest."""
+    found, base = [], folder.rstrip("/").count(os.sep)
+    for dirpath, dirs, files in os.walk(folder):
+        if dirpath.count(os.sep) - base >= 3:
+            dirs[:] = []
+        found += [p for p in (os.path.join(dirpath, f) for f in files) if linux_program(p)]
+    if not found:
+        return None
+    want = norm(os.path.basename(folder))
+    return max(found, key=lambda p: (os.path.basename(p) == "start.sh", bool(want) and (norm(os.path.splitext(os.path.basename(p))[0]) in want
+                                     or want in norm(os.path.basename(p))), -p.count(os.sep), os.path.getsize(p)))
 
 
 def online_cover(title):
@@ -2117,6 +2208,15 @@ def scan_library(lib, cfg):
                 games.append(exe_game(clean_title(os.path.splitext(sub)[0] if sub.lower().endswith(".app") else sub), app, lib["name"], cfg,
                                       None if app == full else full))
         return games
+    if kind == "pc" and LINUX:  # a folder of native games: each in its own folder, or an AppImage on its own
+        games = []
+        for sub in sorted(os.listdir(path)):
+            full = os.path.join(path, sub)
+            prog = full if os.path.isfile(full) and linux_program(full) else os.path.isdir(full) and best_linux_program(full)
+            if prog:
+                games.append(exe_game(clean_title(re.sub(r"(?i)[-_.]?(x86_64|amd64|aarch64|x64|linux)?\.appimage$", "", sub) if prog == full else sub),
+                                      prog, lib["name"], cfg, None if prog == full else full))
+        return games
     if kind == "pc":
         games = []
         for sub in sorted(os.listdir(path)):
@@ -2169,7 +2269,9 @@ def scan_library(lib, cfg):
                 files.append(os.path.join(dirpath, n))
     games, pkgs, tids, cids = [], {}, {}, {}
     names = {os.path.basename(f).lower() for f in files}
+    SCAN_PROG["total"] += len(files)
     for f in sorted(files):
+        scan_step()
         stem = os.path.splitext(os.path.basename(f))[0]
         disc = re.search(r"\(disc ?(\d+)\)", os.path.basename(f), re.I)
         if disc and int(disc.group(1)) > 1 and re.sub(r"\(disc ?\d+\)", "(Disc 1)", os.path.basename(f), flags=re.I).lower() in names:
@@ -2237,6 +2339,8 @@ def scan_library(lib, cfg):
 SGDB = "https://www.steamgriddb.com/api/v2"
 SGDB_KEY_PAGE = "https://www.steamgriddb.com/profile/preferences/api"
 GRID_DIMS = "600x900,342x482,660x930"  # tall covers only
+SGDB_RETRY = 3 * 86400  # a game SteamGridDB had no cover for is looked up again after this long
+SGDB_UNREACHABLE = "Couldn't reach SteamGridDB. Check your internet connection and try again."
 ART_DIR = os.path.join(DATA, "art")
 
 
@@ -2248,10 +2352,32 @@ def sgdb(path, key, **params):
     return r.get("data")
 
 
-def sgdb_search(key, term):
+def sgdb_search(key, term, limit=6):
     hits = sgdb("/search/autocomplete/" + urllib.parse.quote(term, safe=""), key) or []
     return [{"id": h["id"], "name": h["name"], "year": time.gmtime(h["release_date"]).tm_year if h.get("release_date") else None}
-            for h in hits[:6]]
+            for h in hits[:limit]]
+
+
+def art_search(key, g, query):
+    """SteamGridDB's games for the art picker, the likeliest first, and the words a hit needs to count as this game.
+    The search is also tried without a console name typed after it ("... Switch 2": SteamGridDB's names don't have
+    one) and as the game's own title, and hits with every word come first, so a longer title isn't pushed out by a
+    shorter one it starts with ("Nintendo Switch Sports" for "Nintendo Switch Sports Resort")."""
+    wanted = query or g["title"]
+    bare = wanted
+    for name in sorted({g.get("system") or "", g.get("group") or "", *platform_words(g.get("system"))} - {""}, key=len, reverse=True):
+        bare = re.sub(rf"[\s:,-]+{re.escape(name)}\s*$", "", bare, flags=re.I).strip() or bare
+    words = title_words(bare)
+    found, seen = [], set()
+    for term in dict.fromkeys([wanted, bare, g["title"]]):
+        for h in sgdb_search(key, term, 10):
+            if h["id"] not in seen:
+                seen.add(h["id"])
+                found.append(h)
+        if any(words <= title_words(h["name"]) for h in found):
+            break  # the game is among them: no need to ask again
+    found.sort(key=lambda h: not words <= title_words(h["name"]))  # (a stable sort: SteamGridDB's order within each)
+    return found, words
 
 
 def sgdb_game_for(key, game):
@@ -2266,19 +2392,25 @@ def sgdb_game_for(key, game):
         return {"id": known["sgdbId"], "name": known["title"], "year": int(known["released"])}
     # The top search hit can be another game ("Nintendo Switch Sports" for "Nintendo Switch Sports Resort"), whose art would
     # then show this game as that one: only a hit with every word of the title counts.
-    words = title_words(game["title"])
-    return next((h for h in sgdb_search(key, game["title"]) if words <= title_words(h["name"])), None)
+    name = metadata_title(game["title"])  # "... Switch 2 Edition" is the game's own art
+    words = title_words(name)
+    return next((h for h in sgdb_search(key, name) if words <= title_words(h["name"])), None)
 
 
 ROMAN = {"ii": "2", "iii": "3", "iv": "4", "v": "5", "vi": "6", "vii": "7", "viii": "8", "ix": "9", "x": "10"}
 
 
 def title_words(title):
-    """A title's words for telling games apart: accents, apostrophes and little words dropped, numerals as digits, so
-    "The Legend of Zelda - Majora's Mask" and "Legend of Zelda: Majoras Mask" have the same words."""
+    """A title's words for telling games apart: accents, apostrophes and little words dropped, numerals as digits, and a
+    plural's s (a file named "Super Mario Bros Wonders" is Super Mario Bros. Wonder), so "The Legend of Zelda - Majora's
+    Mask" and "Legend of Zelda: Majoras Mask" have the same words."""
     import unicodedata
     plain = unicodedata.normalize("NFKD", title).encode("ascii", "ignore").decode().lower().replace("'", "")
-    return {ROMAN.get(w, w) for w in re.findall(r"[a-z0-9]+", plain)} - {"the", "a", "an", "of", "and"}
+    return {singular(ROMAN.get(w, w)) for w in re.findall(r"[a-z0-9]+", plain)} - {"the", "a", "an", "of", "and"}
+
+
+def singular(word):
+    return word[:-1] if len(word) > 3 and word.endswith("s") and not word.endswith(("ss", "us", "is")) else word
 
 
 def sgdb_grids(key, sgdb_id, kind="cover"):
@@ -2312,9 +2444,12 @@ def set_art(game_id, url, kind="cover"):
                                                              or host == "thumbnails.libretro.com"):
         raise ValueError("Artwork must come from SteamGridDB or libretro")
     limit = 60 * 1024 * 1024  # animated covers and backgrounds run to tens of megabytes
-    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=60) as r:
-        data = r.read(limit + 1)
-        ctype = (r.headers.get("Content-Type") or "").split(";")[0]
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=60) as r:
+            data = r.read(limit + 1)
+            ctype = (r.headers.get("Content-Type") or "").split(";")[0]
+    except (urllib.error.URLError, http.client.HTTPException, ConnectionError, TimeoutError) as e:
+        raise ValueError("That artwork couldn't be downloaded. Check your internet connection and try again.") from e
     if len(data) > limit or not ctype.startswith("image/"):
         raise ValueError("That artwork couldn't be downloaded")
     os.makedirs(ART_DIR, exist_ok=True)
@@ -2373,26 +2508,35 @@ def reset_art(game_id, kind="cover"):
 
 
 def sgdb_fill_missing(key, games):
-    """Give games without any cover the top SteamGridDB grid (cached by title; a few new lookups per scan)."""
+    """Give games without any cover the top SteamGridDB grid (cached by title; a few new lookups per scan). A title it had
+    nothing for is asked about again after a few days: a new game often has no art for its first weeks."""
     cache, changed, lookups = load("sgdb-cache.json", {}), False, 0
+    misses = load("sgdb-misses.json", {})  # title -> when SteamGridDB last had nothing for it (a miss from before this was kept: 0)
+    reachable = True
     for g in games:
-        if g["cover"] or g.get("isFolder"):  # (a folder tile named "Movies" isn't a game called Movies)
+        if g["cover"] or g.get("isFolder") or g.get("egg"):  # (a folder tile named "Movies" isn't a game called Movies)
             continue
         k = norm(g["title"])
-        if k not in cache:
-            if lookups >= 40:
-                continue
+        if reachable and lookups < 40 and (k not in cache or not cache[k] and time.time() - misses.get(k, 0) > SGDB_RETRY):
+            scan_step()
             lookups += 1
             try:
                 hit = sgdb_game_for(key, g)
                 grids = sgdb_grids(key, hit["id"]) if hit else []
                 cache[k] = grids[0]["url"] if grids else ""
+                if grids:
+                    misses.pop(k, None)
+                else:
+                    misses[k] = time.time()
                 changed = True
-            except (urllib.error.URLError, ValueError, KeyError, TimeoutError):
-                continue
-        g["cover"] = cache[k]
+            except (urllib.error.URLError, ValueError, KeyError, TimeoutError) as e:
+                # no internet or SteamGridDB is down: no more lookups (they'd only wait out their timeouts too; the next
+                # scan tries again), but the covers already found still go on their games
+                reachable = not offline(e)
+        g["cover"] = cache.get(k, "")
     if changed:
         store("sgdb-cache.json", cache)
+        store("sgdb-misses.json", misses)
 
 
 # ---------------------------------------------------------------- game details (news, store info, hero art)
@@ -2521,6 +2665,8 @@ def wiki_match_rank(page, game):
     base = simple(re.split(r"\s+-\s+", game)[0])
     if base != g and len(base) >= 4 and flat(p) == flat(base) and not re.search(r"series|franchise", page, re.I):
         return 3                                                 # "Donkey Kong Country 2 - Diddy's Kong Quest" ~ "Donkey Kong Country 2"
+    if not dated and len(flat(g)) >= 4 and title_words(p) == title_words(g):
+        return 3                                                 # "Super Mario Bros. Wonder" ~ "Super Mario Bros Wonders"
     return None
 
 
@@ -2536,12 +2682,12 @@ def wiki_summary(title):
         text = ""
         try:
             q = urllib.parse.urlencode({"action": "query", "list": "search", "srsearch": f"{clean} video game", "srlimit": 6, "format": "json"})
-            hits = http_json("https://en.wikipedia.org/w/api.php?" + q, headers=WIKI_UA, timeout=6)["query"]["search"]
+            hits = wiki_json("https://en.wikipedia.org/w/api.php?" + q, timeout=6)["query"]["search"]
             ranked = sorted(((wiki_match_rank(h["title"], title), i, h) for i, h in enumerate(hits)), key=lambda x: (x[0] is None, x[0] or 0, x[1]))
             for rank, _, h in ranked:
                 if rank is None:
                     break
-                s = http_json("https://en.wikipedia.org/api/rest_v1/page/summary/" + urllib.parse.quote(h["title"].replace(" ", "_"), safe=""), headers=WIKI_UA, timeout=6)
+                s = wiki_json("https://en.wikipedia.org/api/rest_v1/page/summary/" + urllib.parse.quote(h["title"].replace(" ", "_"), safe=""), timeout=6)
                 extract = s.get("extract", "")
                 if s.get("type") == "standard" and "game" in extract.lower():
                     sentences = re.split(r"(?<=[.!?])\s+", extract)
@@ -2561,8 +2707,196 @@ def wiki_summary(title):
 HEROES = {}  # game id -> wide background URL ("" when none), for the "game art" home background
 
 
+def wiki_page_info(page):
+    """A game's details from one Wikipedia article we already know is it (no search to match): the opening, and the
+    genre, developer and year Wikidata keeps for it. Kept for a month; {} while Wikipedia can't be reached."""
+    cache, key = load("wiki-info-cache.json", {}), "page:" + page
+    hit = cache.get(key)
+    if hit and time.time() - hit["t"] < 30 * 86400:
+        return hit["d"]
+    try:
+        summary = wiki_json("https://en.wikipedia.org/api/rest_v1/page/summary/" + urllib.parse.quote(page.replace(" ", "_"), safe=""), timeout=8)
+        bio = ""
+        for sentence in re.split(r"(?<=[.!?])\s+", summary.get("extract", "")):
+            if bio and len(bio) + len(sentence) > 650:
+                break
+            bio = (bio + " " + sentence).strip()
+        info = {"description": bio, "descSource": "Wikipedia", "sourceTitle": summary.get("title") or page}
+        entity_id = summary.get("wikibase_item", "")
+        if re.fullmatch(r"Q\d+", entity_id):
+            claims = wiki_json(f"https://www.wikidata.org/wiki/Special:EntityData/{entity_id}.json", timeout=8)["entities"][entity_id].get("claims", {})
+            def values(prop):
+                return [c["mainsnak"]["datavalue"]["value"] for c in claims.get(prop, [])
+                        if c.get("rank") != "deprecated" and "datavalue" in c.get("mainsnak", {})]
+            genres = [v["id"] for v in values("P136") if isinstance(v, dict) and "id" in v][:3]
+            developers = [v["id"] for v in values("P178") if isinstance(v, dict) and "id" in v][:2]
+            years = [v["time"][1:5] for v in values("P577") if isinstance(v, dict) and str(v.get("time", "")).startswith("+")]
+            if years:
+                info["released"] = min(years)
+            if genres or developers:
+                q = urllib.parse.urlencode({"action": "wbgetentities", "ids": "|".join(genres + developers), "props": "labels", "languages": "en", "format": "json"})
+                entities = wiki_json("https://www.wikidata.org/w/api.php?" + q, timeout=8).get("entities", {})
+                label = lambda i: entities.get(i, {}).get("labels", {}).get("en", {}).get("value", "")
+                info["genres"] = [label(i) for i in genres if label(i)]
+                info["developer"] = ", ".join(label(i) for i in developers if label(i))
+    except (urllib.error.URLError, ValueError, KeyError, TypeError, TimeoutError, OSError):
+        return (hit or {}).get("d") or {}  # the last copy will do
+    if info["description"]:
+        cache = load("wiki-info-cache.json", {})
+        cache[key] = {"t": time.time(), "d": info}
+        store("wiki-info-cache.json", cache)
+    return info
+
+
+def wiki_game_choices(query):
+    """Wikipedia's games for a name, for picking which one a game is when it's renamed: [{page, title, about}], the
+    closest names first. Only articles whose short description says it's a game ("2023 video game"), not a studio,
+    an awards show or a series. Searched as typed and without plurals ("Wonders" finds Wonder), then with "video game"
+    added if neither finds any."""
+    want = title_words(query)
+    plain = " ".join(singular(w) for w in re.findall(r"[\w']+", query))
+    found = {}
+    for term in dict.fromkeys([query, plain, f"{query} video game"]):
+        q = urllib.parse.urlencode({"action": "query", "generator": "search", "gsrsearch": term, "gsrlimit": 15,
+                                    "prop": "description", "format": "json", "formatversion": 2})
+        for p in wiki_json("https://en.wikipedia.org/w/api.php?" + q, timeout=8).get("query", {}).get("pages", []):
+            about = (p.get("description") or "").strip()
+            if re.search(r"\bgame$", about, re.I) and p["title"] not in found:
+                found[p["title"]] = (len(found), about)
+        if found and term != f"{query} video game":
+            break
+    def close(page):  # how much of the name typed it shares, then Wikipedia's order
+        words = title_words(re.sub(r"\s*\([^)]*\)$", "", page))
+        return (-len(want & words) / max(1, len(want | words)), found[page][0])
+    return [{"page": page, "title": re.sub(r"\s*\([^)]*\)$", "", page), "about": found[page][1]} for page in sorted(found, key=close)[:8]]
+
+
+def egg_info():
+    """Its Wikipedia article, read straight from the page it is (no search to match)."""
+    return wiki_page_info(EGG["wiki"].replace("_", " "))
+
+
+EGG_GALLERY = "https://www.rockstargames.com/VI/launch-gallery"
+# its gallery's screenshots by their names (the codes after them change whenever the site is rebuilt): not the editions'
+# extras, the box art or the phone-sized copies
+EGG_SHOT = re.compile(r"/VI/_next/static/media/((?:Jason_and_Lucia|Jason_Duval|Lucia_Caminos|Vice_City|Port_Gellhorn|Leonida_Keys|Grassrivers)_\d+)\.[A-Za-z0-9_.~-]+\.jpg")
+EGG_SHOTS_LOCK = threading.Lock()
+
+
+def egg_shots():
+    """The official screenshots, read off the game's gallery page once a week, as [{thumb, full}] served from here: each
+    picture (4K, a megabyte) is fetched once when it's first shown and kept, with a small copy for the strip. [] while
+    the page can't be read (the trailer frames stand in)."""
+    saved = load("egg.json", {})
+    urls = saved.get("shots") or []
+    if not urls or time.time() - saved.get("shotsT", 0) > 7 * 86400:
+        try:
+            req = urllib.request.Request(EGG_GALLERY, headers={"User-Agent": UA})
+            with urllib.request.urlopen(req, timeout=15) as r:
+                page = r.read(8 << 20).decode("utf-8", "replace")
+            found = list(dict.fromkeys("https://www.rockstargames.com" + m.group(0) for m in EGG_SHOT.finditer(page)))
+            if found:
+                urls = found
+                store("egg.json", {**load("egg.json", {}), "shots": urls, "shotsT": time.time()})
+        except (urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError, ValueError):
+            pass  # last week's list will do
+    return [{"thumb": f"/api/egg/shot?i={i}&small=1", "full": f"/api/egg/shot?i={i}"} for i in range(len(urls))]
+
+
+def egg_shot_file(i, small):
+    """One screenshot on disk (fetched the first time), or its small copy for the strip; None if it can't be had."""
+    urls = load("egg.json", {}).get("shots") or []
+    if not 0 <= i < len(urls) or not urls[i].startswith("https://www.rockstargames.com/VI/_next/static/media/"):
+        return None
+    folder = os.path.join(ART_DIR, "egg")
+    name = EGG_SHOT.search(urls[i]).group(1)
+    full, thumb = os.path.join(folder, name + ".jpg"), os.path.join(folder, name + "-small.jpg")
+    with EGG_SHOTS_LOCK:  # (the strip asks for several at once: each is fetched once)
+        if not os.path.isfile(full):
+            os.makedirs(folder, exist_ok=True)
+            try:
+                with urllib.request.urlopen(urllib.request.Request(urls[i], headers={"User-Agent": UA}), timeout=60) as r:
+                    data = r.read(20 << 20)
+                    if not (r.headers.get("Content-Type") or "").startswith("image/"):
+                        return None
+            except (urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError):
+                return None
+            with open(full + ".part", "wb") as f:
+                f.write(data)
+            os.replace(full + ".part", full)
+        if small and not os.path.isfile(thumb):
+            try:
+                from PIL import Image
+                with Image.open(full) as im:
+                    im.thumbnail((640, 360))
+                    im.convert("RGB").save(thumb, "JPEG", quality=82)
+            except Exception:
+                return full  # the big one will do
+    return thumb if small else full
+
+
+EGG_PAGE = "https://www.rockstargames.com/VI"
+EGG_ART = re.compile(r"/VI/_next/static/media/featured\.[A-Za-z0-9_.~-]+\.jpg")  # the official key art, 4K
+EGG_ART_LOOKUP = [False]
+
+
+def egg_hero():
+    """The background: Rockstar's own key art (looked up on the game's page once a week, in the background, and kept on
+    this PC), or the picture from SteamGridDB until that's known."""
+    saved = load("egg.json", {})
+    if time.time() - saved.get("artT", 0) > 7 * 86400 and not EGG_ART_LOOKUP[0]:
+        EGG_ART_LOOKUP[0] = True
+        def look():
+            try:
+                with urllib.request.urlopen(urllib.request.Request(EGG_PAGE, headers={"User-Agent": UA}), timeout=15) as r:
+                    m = EGG_ART.search(r.read(8 << 20).decode("utf-8", "replace"))
+                if m:
+                    store("egg.json", {**load("egg.json", {}), "art": "https://www.rockstargames.com" + m.group(0), "artT": time.time()})
+                egg_art_file()  # fetched now, so it's on this PC before it's shown
+            except (urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError, ValueError):
+                pass
+            finally:
+                EGG_ART_LOOKUP[0] = False
+        threading.Thread(target=look, daemon=True).start()
+    art = saved.get("art", "")
+    on_disk = art and os.path.isfile(egg_art_path(art))
+    return f"/api/egg/art?v={hashlib.sha1(art.encode()).hexdigest()[:8]}" if on_disk else EGG["hero"]
+
+
+def egg_art_path(url):
+    return os.path.join(ART_DIR, "egg", "art-" + hashlib.sha1(url.encode()).hexdigest()[:8] + ".jpg")
+
+
+def egg_art_file():
+    """The key art on disk, fetched the first time it's asked for; None if it can't be had."""
+    url = load("egg.json", {}).get("art", "")
+    if not EGG_ART.search(url) or not url.startswith("https://www.rockstargames.com/"):
+        return None
+    f = egg_art_path(url)
+    with EGG_SHOTS_LOCK:
+        if not os.path.isfile(f):
+            os.makedirs(os.path.dirname(f), exist_ok=True)
+            try:
+                with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=60) as r:
+                    if not (r.headers.get("Content-Type") or "").startswith("image/"):
+                        return None
+                    data = r.read(30 << 20)
+            except (urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError):
+                return None
+            for old in glob.glob(os.path.join(os.path.dirname(f), "art-*.jpg")):  # a newer key art replaces the last
+                os.remove(old)
+            with open(f + ".part", "wb") as out:
+                out.write(data)
+            os.replace(f + ".part", f)
+    return f
+
+
 def hero_for(g):
     """A wide background for a game, without the slower details lookup (news, store text)."""
+    if g.get("egg"):
+        custom = load("overrides.json", {}).get(g["id"], {}).get("hero")
+        if not (custom and os.path.isfile(os.path.join(ART_DIR, custom))):
+            return egg_hero()
     if g["id"] in HEROES:
         return HEROES[g["id"]]
     hit = DETAILS.get(g["id"])
@@ -2592,8 +2926,9 @@ def hero_for(g):
             m = sgdb_game_for(accounts["sgdb"]["key"], g)
             heroes = sgdb(f"/heroes/game/{m['id']}", accounts["sgdb"]["key"], types="static", nsfw="false") if m else []
             url = heroes[0]["url"] if heroes else ""
-        except (urllib.error.URLError, ValueError, KeyError, TimeoutError):
-            pass
+        except (urllib.error.URLError, ValueError, KeyError, TimeoutError) as e:
+            if offline(e):
+                return url  # not remembered, so it's looked up again once the connection is back
     HEROES[g["id"]] = url
     return url
 
@@ -2858,6 +3193,7 @@ def theme_save(video_id):
 
 
 LR_INDEX, LR_LOCK = {}, threading.Lock()
+LR_DOWN = {}  # index -> when it last couldn't be fetched: not asked again for a few minutes (a scan asks once per ROM)
 
 
 def libretro_index(thumbs, kind):
@@ -2870,14 +3206,27 @@ def libretro_index(thumbs, kind):
         hit = load("libretro-index.json", {}).get(key)
         if hit and time.time() - hit["t"] < 30 * 86400:
             names = hit["names"]
+        elif time.time() - LR_DOWN.get(key, 0) < 300:  # unreachable a moment ago: not waited on again for every ROM
+            if not hit:
+                raise urllib.error.URLError("libretro was unreachable a moment ago")
+            names = hit["names"]  # an older list will do until it can be reached
         else:
             req = urllib.request.Request("https://thumbnails.libretro.com/" + urllib.parse.quote(f"{thumbs}/{kind}/"), headers={"User-Agent": UA})
-            with urllib.request.urlopen(req, timeout=30) as r:
-                page = r.read().decode("utf-8", "replace")
-            names = [urllib.parse.unquote(n)[:-4] for n in re.findall(r'href="([^"?/][^"]*\.png)"', page)]
-            cache = load("libretro-index.json", {})
-            cache[key] = {"t": time.time(), "names": names}
-            store("libretro-index.json", cache)
+            try:
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    page = r.read().decode("utf-8", "replace")
+            except (OSError, http.client.HTTPException) as e:
+                LR_DOWN[key] = time.time()
+                if not hit:
+                    raise urllib.error.URLError(e) from e
+                page = None
+            if page is None:
+                names = hit["names"]
+            else:
+                names = [urllib.parse.unquote(n)[:-4] for n in re.findall(r'href="([^"?/][^"]*\.png)"', page)]
+                cache = load("libretro-index.json", {})
+                cache[key] = {"t": time.time(), "names": names}
+                store("libretro-index.json", cache)
         index = {}
         for n in names:
             index.setdefault(metadata_key(n), []).append(n)
@@ -2981,6 +3330,43 @@ def trailer_stills(trailers):
 
 
 WIKI_PAUSE = [0.0]  # Wikipedia said "too many requests": leave it alone until then instead of making it worse
+WIKI_LOCK, WIKI_LAST = threading.Lock(), [0.0]
+WIKI_BG = threading.local()  # .on in the startup lookups (warm_details): they never make someone waiting wait longer
+WIKI_WAITING = [0]  # requests someone is waiting on (a game's page, the rename picker)
+WIKI_GAP = 0.35  # at least this long between requests to Wikipedia and Wikidata, from every lookup together
+
+
+def wiki_json(url, timeout=8):
+    """A Wikipedia or Wikidata request, spaced out from the others. Wikipedia often says "too many requests" for a few
+    seconds (a burst of lookups after a scan, or a busy network): then it waits as long as asked (up to half a
+    minute) and asks again, rather than leaving the game with no description for minutes."""
+    background = getattr(WIKI_BG, "on", False)
+    for attempt in range(3):
+        if background and (WIKI_WAITING[0] or WIKI_PAUSE[0] > time.time()):
+            raise urllib.error.URLError("left for later")  # someone's waiting, or Wikipedia wants a break: not now
+        if not background:
+            WIKI_WAITING[0] += 1
+        try:
+            with WIKI_LOCK:
+                wait = max(WIKI_PAUSE[0] - time.time(), WIKI_LAST[0] + WIKI_GAP - time.time())
+                if wait > 30:
+                    raise urllib.error.URLError("Wikipedia asked for a longer break")
+                if wait > 0:
+                    time.sleep(wait)
+                WIKI_LAST[0] = time.time()
+        finally:
+            if not background:
+                WIKI_WAITING[0] -= 1
+        try:
+            return http_json(url, headers=WIKI_UA, timeout=timeout)
+        except urllib.error.HTTPError as e:
+            if e.code != 429 or attempt == 2 or background:
+                if e.code == 429:
+                    asked = (e.headers.get("Retry-After") or "").strip()
+                    WIKI_PAUSE[0] = max(WIKI_PAUSE[0], time.time() + min(int(asked) if asked.isdigit() else 5, 300))
+                raise
+            asked = (e.headers.get("Retry-After") or "").strip()
+            WIKI_PAUSE[0] = max(WIKI_PAUSE[0], time.time() + min(int(asked) if asked.isdigit() else 5, 300))
 
 
 def platform_words(system):
@@ -2999,16 +3385,17 @@ def wiki_game_info(title, system=None):
     hit = cache.get(f"{key}|{system}") if system else cache.get(key)
     if hit and time.time() - hit["t"] < 30 * 86400 and hit.get("v") == 4:
         return hit["d"]
-    if time.time() < WIKI_PAUSE[0]:
+    if WIKI_PAUSE[0] - time.time() > 30:  # a long break asked for: not now (a short one is waited out by wiki_json)
         return {}
     out = {}
     try:
         hits = []
         # ROM names put the subtitle after " - "; search as written, then for the part before it ("Rust - Staging Branch")
         # with the console too, so a remake with its own page ("Ocarina of Time (2026 video game)" on Switch 2) is among them
-        for q in dict.fromkeys([title.replace(" - ", ": "), re.split(r"\s+-\s+", title)[0]] + ([f"{title.replace(' - ', ': ')} {system}"] if system else [])):
+        plain = " ".join(singular(w) for w in re.findall(r"[\w']+", title))  # "...Wonders" is searched as "...Wonder" too
+        for q in dict.fromkeys([title.replace(" - ", ": "), re.split(r"\s+-\s+", title)[0], plain] + ([f"{title.replace(' - ', ': ')} {system}"] if system else [])):
             query = urllib.parse.urlencode({"action": "query", "list": "search", "srsearch": q if system and q.endswith(system) else f"{q} video game", "srlimit": 6, "format": "json"})
-            hits += [h for h in http_json("https://en.wikipedia.org/w/api.php?" + query, headers=WIKI_UA, timeout=8)["query"]["search"]
+            hits += [h for h in wiki_json("https://en.wikipedia.org/w/api.php?" + query, timeout=8)["query"]["search"]
                      if h["title"] not in {x["title"] for x in hits}]
             if any(wiki_match_rank(h["title"], title) is not None for h in hits) and not system:
                 break
@@ -3017,7 +3404,7 @@ def wiki_game_info(title, system=None):
         for rank, _, hit in ranked:
             if rank is None:
                 break
-            summary = http_json("https://en.wikipedia.org/api/rest_v1/page/summary/" + urllib.parse.quote(hit["title"].replace(" ", "_"), safe=""), headers=WIKI_UA, timeout=8)
+            summary = wiki_json("https://en.wikipedia.org/api/rest_v1/page/summary/" + urllib.parse.quote(hit["title"].replace(" ", "_"), safe=""), timeout=8)
             text = summary.get("extract", "")
             if summary.get("type") != "standard" or "game" not in text.lower():
                 continue
@@ -3041,7 +3428,7 @@ def wiki_game_info(title, system=None):
             out = {"description": bio, "descSource": "Wikipedia", "sourceTitle": summary.get("title") or hit["title"], "_dated": dated}
             entity_id = summary.get("wikibase_item", "")
             if re.fullmatch(r"Q\d+", entity_id):
-                entity = http_json(f"https://www.wikidata.org/wiki/Special:EntityData/{entity_id}.json", headers=WIKI_UA, timeout=8)["entities"][entity_id]
+                entity = wiki_json(f"https://www.wikidata.org/wiki/Special:EntityData/{entity_id}.json", timeout=8)["entities"][entity_id]
                 claims = entity.get("claims", {})
                 def values(prop):
                     return [c["mainsnak"]["datavalue"]["value"] for c in claims.get(prop, []) if c.get("rank") != "deprecated" and "datavalue" in c.get("mainsnak", {})]
@@ -3059,7 +3446,7 @@ def wiki_game_info(title, system=None):
                 labels = {}
                 if ids:
                     q = urllib.parse.urlencode({"action": "wbgetentities", "ids": "|".join(ids), "props": "labels", "languages": "en", "languagefallback": 1, "format": "json"})
-                    entities = http_json("https://www.wikidata.org/w/api.php?" + q, headers=WIKI_UA, timeout=8).get("entities", {})
+                    entities = wiki_json("https://www.wikidata.org/w/api.php?" + q, timeout=8).get("entities", {})
                     labels = {k: v.get("labels", {}).get("en", {}).get("value", "") for k, v in entities.items()}
                     out["genres"] = [labels[i] for i in genres if labels.get(i)]
                     out["developer"] = ", ".join(labels[i] for i in developers if labels.get(i))
@@ -3076,7 +3463,7 @@ def wiki_game_info(title, system=None):
     except urllib.error.HTTPError as e:
         if e.code == 429:
             wait = e.headers.get("Retry-After", "")
-            WIKI_PAUSE[0] = time.time() + (int(wait) if wait.isdigit() else 900)
+            WIKI_PAUSE[0] = max(WIKI_PAUSE[0], time.time() + min(int(wait) if wait.isdigit() else 60, 900))
         out.pop("_dated", None)
         return out
     except (urllib.error.URLError, ValueError, KeyError, TimeoutError):
@@ -3150,11 +3537,11 @@ def quiet(fut, default):
 
 def info_fresh(hit, g):
     """A cached details entry still holds: same name (a renamed ROM looks again), saved with a studio or by this version,
-    and not expired (entries without a description retry after 5 minutes)."""
-    return (bool(hit) and hit.get("title", g["title"]) == g["title"]
+    and not expired (entries without a description retry after a minute)."""
+    return (bool(hit) and hit.get("title", g["title"]) == g["title"] and hit.get("wiki", "") == g.get("wikiPage", "")
             and (hit.get("version") == 10 or (hit.get("version") in (7, 8, 9) and g.get("source") != "Emulators")
                  or (hit.get("version") in (5, 6) and g.get("source") != "Emulators" and hit["d"].get("developer") and hit["d"].get("screenshots")))
-            and time.time() - hit["t"] < (INFO_TTL if hit.get("d", {}).get("description") else 300))
+            and time.time() - hit["t"] < (INFO_TTL if hit.get("d", {}).get("description") else 60))
 
 
 def remote_info(g, appid, local):
@@ -3186,7 +3573,7 @@ def remote_info(g, appid, local):
         if known.get("logo"):
             d["logo"] = known["logo"]
     if not d["description"] and cfg["onlineCovers"]:
-        bio = wiki_game_info(g["title"], g.get("system"))
+        bio = wiki_page_info(g["wikiPage"]) if g.get("wikiPage") else wiki_game_info(g["title"], g.get("system"))
         for field in ("description", "descSource", "sourceTitle", "genres", "developer", "released"):
             if not d.get(field) and bio.get(field):
                 d[field] = bio[field]
@@ -3196,13 +3583,14 @@ def remote_info(g, appid, local):
         if not d["screenshots"] and g.get("contentId"):
             d["screenshots"] = ps_store_shots(g["contentId"])
         if not d["trailers"]:  # delisted Steam games, Epic games and ROMs: look for an official trailer on YouTube
-            d["trailers"] = trailer_for_game(g, known)
+            # by the name Wikipedia knows it by, when it found it ("Super Mario Bros. Wonder" for "...Wonders Switch 2 Edition")
+            d["trailers"] = trailer_for_game({**g, "title": d.get("sourceTitle") or g["title"]} if d.get("descSource") == "Wikipedia" else g, known)
         if not d["screenshots"]:  # still nothing (delisted games, add-on-only packages): stills from the trailer
             d["screenshots"] = trailer_stills(d["trailers"])
     if not d["hero"] and "hero" not in local and d["screenshots"]:  # no background art anywhere: a screenshot, shown softened
         d["hero"], d["heroSoft"] = d["screenshots"][0]["full"], True
     cache = load("info-cache.json", {})
-    cache[g["id"]] = {"t": time.time(), "d": d, "version": 10, "title": g["title"]}
+    cache[g["id"]] = {"t": time.time(), "d": d, "version": 10, "title": g["title"], **({"wiki": g["wikiPage"]} if g.get("wikiPage") else {})}
     store("info-cache.json", cache)
     return d
 
@@ -3422,6 +3810,7 @@ def ra_progress(g):
 
 def warm_details():
     """After startup, quietly fetch details for games not cached yet (most recently played first), so details open instantly."""
+    WIKI_BG.on = True  # (its Wikipedia requests step aside for anything someone's waiting on)
     time.sleep(5)
     try:
         all_news()  # so the News page opens instantly
@@ -3442,7 +3831,7 @@ def game_details(g):
     """Everything the details screen shows except news (fetched separately so the screen fills in at once)."""
     cfg = config()
     look = g
-    appid = steam_appid_for(look) if g.get("appid") or (cfg["onlineCovers"] and not g.get("isFolder")) else None
+    appid = steam_appid_for(look) if g.get("appid") or (cfg["onlineCovers"] and not g.get("isFolder") and not g.get("egg")) else None
     local = local_steam_art(g, appid)
     ach_f = POOL.submit(achievements, g)
     d = dict(remote_info(look, appid, local))
@@ -3466,6 +3855,21 @@ def game_details(g):
     d["news"] = news[1] if news and time.time() - news[0] < 1800 else None
     if g.get("source") == "Emulators":
         d["raConnected"] = bool(ra_account())
+    if g.get("egg"):  # the official trailers first (what YouTube's search found too, after them), and its own background
+        pinned = [{"youtube": v, "name": f"{g['title']} — Trailer {i + 1}", "thumb": f"https://i.ytimg.com/vi/{v}/hqdefault.jpg"} for i, v in enumerate(EGG["trailers"])]
+        d["trailers"] = pinned + [t for t in d.get("trailers") or [] if t.get("youtube") not in EGG["trailers"]][:2]
+        # Rockstar's own screenshots (its launch gallery); while that can't be read, frames from its trailers (three from
+        # each), not a fan video's
+        d["screenshots"] = egg_shots() or [shot for v in EGG["trailers"] for shot in trailer_stills([{"youtube": v}])]
+        if not custom:
+            d["hero"], d["heroSoft"] = egg_hero(), False
+        d["egg"] = g["egg"]
+        info = egg_info()  # its own article, whatever the search for its name found (or didn't)
+        for field in ("description", "descSource", "sourceTitle", "developer"):
+            if info.get(field):
+                d[field] = info[field]
+        if info.get("genres"):  # shown as "Action-adventure", like Wikipedia's other games
+            d["genres"] = list(dict.fromkeys((tidy_genres([x]) or [(lambda y: y[:1].upper() + y[1:])(re.sub(r"\s+video games?$", "", x, flags=re.I))])[0] for x in info["genres"]))
     DETAILS[g["id"]] = (time.time(), d)
     return d
 
@@ -3598,8 +4002,8 @@ def whats_new_unseen():
     if not saved.get("seen"):
         store("whatsnew.json", {**saved, "seen": VERSION})
         return False
-    if is_nightly(VERSION):
-        return False  # nightly builds have no notes of their own in News: only the releases do
+    if is_nightly(VERSION) or is_dev(VERSION):
+        return False  # nightly and dev builds have no notes of their own in News: only the releases do
     return version_key(saved["seen"]) < version_key(VERSION)
 
 
@@ -3617,149 +4021,220 @@ def game_news(g):
 
 
 # ---------------------------------------------------------------- library scan
+# A tile for a game that's nearly out, at the front of the row with a countdown. Left out of every changelog on purpose.
+EGG = {"id": "egg-gta6", "title": "Grand Theft Auto VI", "release": "2026-11-19", "wiki": "Grand_Theft_Auto_VI",
+       "theme": "O3vUm7ftFR0", "play": "K3kFQHKE0LA", "trailers": ["QdBZY2fkU-0", "VQRLujxTm3c"], "platforms": "PS5 · Xbox Series X|S",
+       "hero": "https://cdn2.steamgriddb.com/hero_thumb/2bb2d7cd82fbb47f72d832d9500a3751.jpg"}
+EGG_DAYS_AFTER = 2  # it stays this long once it's out ("Out now"), then goes by itself
+
+
+def egg_game():
+    out = calendar.timegm(time.strptime(EGG["release"], "%Y-%m-%d"))
+    if time.time() > out + (EGG_DAYS_AFTER + 1) * 86400:
+        return None
+    return {"id": EGG["id"], "title": EGG["title"], "group": EGG["platforms"], "source": "Coming soon", "installed": True,
+            "minutes": 0, "lastPlayed": 0, "added": 0, "cover": egg_cover(),
+            "launch": {"type": "none", "message": ""}, "egg": {k: EGG[k] for k in ("release", "theme", "play")}}
+
+
+def egg_cover():
+    """The game's official cover, as its Wikipedia article shows it: looked up once a week, in the background."""
+    saved = load("egg.json", {})
+    if time.time() - saved.get("t", 0) > 7 * 86400 and not EGG_LOOKUP[0]:
+        EGG_LOOKUP[0] = True
+        def look():
+            try:
+                page = wiki_json("https://en.wikipedia.org/api/rest_v1/page/summary/" + EGG["wiki"], timeout=10)
+                url = (page.get("originalimage") or page.get("thumbnail") or {}).get("source", "")
+                if url.startswith("https://upload.wikimedia.org/"):
+                    store("egg.json", {"t": time.time(), "cover": url})
+                    g = STATE["byId"].get(EGG["id"])
+                    if g and not g.get("custom") and g["cover"] != url:  # on the tile now, not at the next scan
+                        g["cover"] = url
+                        STATE["scanned"] = time.time()
+            except (urllib.error.URLError, ValueError, KeyError, TimeoutError, OSError):
+                pass
+            finally:
+                EGG_LOOKUP[0] = False
+        threading.Thread(target=look, daemon=True).start()
+    return saved.get("cover", "")
+
+
+EGG_LOOKUP = [False]
 STATE = {"games": [], "byId": {}, "errors": [], "counts": {}, "scanned": 0}
 SCAN_LOCK = threading.Lock()
+# How far a scan has got, for the app's progress window (a big batch of ROMs can take a while to read and find covers for):
+# phase "games" counts files read, phase "covers" counts covers looked up online
+SCAN_PROG = {"active": False, "phase": "", "done": 0, "total": 0, "started": 0.0}
+
+
+def scan_progress():
+    p = SCAN_PROG
+    return {"active": p["active"], "phase": p["phase"], "done": min(p["done"], p["total"]), "total": p["total"],
+            "seconds": round(time.time() - p["started"], 1) if p["active"] else 0}
+
+
+def scan_step(n=1):
+    SCAN_PROG["done"] += n
 
 
 def scan():
     with SCAN_LOCK:
-        cfg, accounts = config(), load("accounts.json", {})
-        ART_SEEN.clear()
-        games, errors, counts = {}, [], {}
+        SCAN_PROG.update(active=True, phase="games", done=0, total=0, started=time.time())
+        try:
+            scan_all()
+        finally:
+            SCAN_PROG.update(active=False, phase="")
 
-        def add(label, fn, key=None):
-            try:
-                found = fn()
-            except Exception as e:  # one broken source shouldn't hide the rest
-                rejected = isinstance(e, urllib.error.HTTPError) and e.code in (401, 403)
-                errors.append(f"{label}: the saved key was rejected. Reconnect it in Settings › Accounts." if rejected else f"{label}: {e}")
-                return
-            counts[key or label] = len(found)
-            for g in found:
-                old = games.get(g["id"])
-                if old and g.get("shortcut"):  # a Steam shortcut to a game Steam has listed: Steam's entry stays as it is
-                    continue
-                if old:  # e.g. Steam account + local install: keep install state and best stats
-                    g["launch"] = (g if g["installed"] else old)["launch"]
-                    g["installed"] = g["installed"] or old["installed"]
-                    g["minutes"] = max(g["minutes"], old["minutes"])
-                    g["lastPlayed"] = max(g["lastPlayed"], old["lastPlayed"])
-                    if g["cover"].startswith("http") and not old["cover"].startswith("http"):
-                        g["cover"] = old["cover"]
-                games[g["id"]] = g
 
-        if "steam" in accounts:
-            add("Steam account", lambda: scan_steam_account(accounts["steam"]))
-        if cfg["steamLocal"]:
-            add("Steam (installed)", scan_steam_local)
-        if WIN and any(cfg.get(p + "Local", True) for p in SERVICE_SCANS):
-            try:
-                programs = installed_programs()
-            except Exception as e:
-                programs = []
-                errors.append(f"Installed programs: {e}")
-            for prov, fn in (("ea", scan_ea), ("ubisoft", scan_ubisoft), ("gog", scan_gog), ("battlenet", scan_battlenet)):
-                if cfg.get(prov + "Local", True):
-                    add(f"{LOCAL_PROVIDERS[prov]} (installed)", lambda fn=fn: fn(programs, cfg))
-        if "epic" in accounts:
-            add("Epic account", lambda: scan_epic(accounts))
-        for lib in cfg["libraries"]:
-            add(lib["name"], lambda lib=lib: scan_library(lib, cfg), "lib:" + lib["id"])
-        root = cfg.get("romRoot")
-        if root and os.path.isdir(root):  # ROMs folder: every platform subfolder is a library
-            for sub in sorted(os.listdir(root)):
-                path = os.path.join(root, sub)
-                if not os.path.isdir(path):
-                    continue
-                s = detect_system(path)
-                emu = cfg.get("emulators", {}).get(s["system"], {})
-                lib = {"type": "roms", "path": path, "name": s["system"], "emulator": emu.get("path", ""), "args": emu.get("args"),
-                       "exts": s["exts"], "thumbs": s["thumbs"]}
-                add(f"ROMs/{s['system']}", lambda lib=lib: scan_library(lib, cfg))
-        elif root:
-            errors.append(f"ROMs folder {root} isn't available")
+def scan_all():
+    cfg, accounts = config(), load("accounts.json", {})
+    ART_SEEN.clear()
+    games, errors, counts = {}, [], {}
 
-        remote = [g for g in games.values() if g.get("appid") and g["cover"].startswith(STEAM_CDN.split("{")[0])]
-        if remote:
-            art = steam_store_art([g["appid"] for g in remote])
-            for g in remote:
-                g["cover"] = art.get(g["appid"]) or g["cover"]
+    def add(label, fn, key=None):
+        try:
+            found = fn()
+        except Exception as e:  # one broken source shouldn't hide the rest
+            rejected = isinstance(e, urllib.error.HTTPError) and e.code in (401, 403)
+            errors.append(f"{label}: the saved key was rejected. Reconnect it in Settings › Accounts." if rejected else f"{label}: {e}")
+            return
+        counts[key or label] = len(found)
+        for g in found:
+            old = games.get(g["id"])
+            if old and g.get("shortcut"):  # a Steam shortcut to a game Steam has listed: Steam's entry stays as it is
+                continue
+            if old:  # e.g. Steam account + local install: keep install state and best stats
+                g["launch"] = (g if g["installed"] else old)["launch"]
+                g["installed"] = g["installed"] or old["installed"]
+                g["minutes"] = max(g["minutes"], old["minutes"])
+                g["lastPlayed"] = max(g["lastPlayed"], old["lastPlayed"])
+                if g["cover"].startswith("http") and not old["cover"].startswith("http"):
+                    g["cover"] = old["cover"]
+            games[g["id"]] = g
 
-        for game_id, o in load("overrides.json", {}).items():  # artwork the user picked
-            g, f = games.get(game_id), o.get("cover") and os.path.join(ART_DIR, o["cover"])
-            if g and f and os.path.isfile(f):
-                still = o.get("coverStill") and os.path.join(ART_DIR, o["coverStill"])
-                if still and os.path.isfile(still):
-                    g["cover"] = local_art(game_id, still)
-                    if light_anim(f):  # animated once its light copy is made (asked for here if it isn't)
-                        g["coverAnim"] = local_art(game_id + "--anim", f)
-                else:
-                    g["cover"] = local_art(game_id, f)
-                g["custom"] = True
-            if g and o.get("hero") and os.path.isfile(os.path.join(ART_DIR, o["hero"])):
-                g["customHero"] = True
-            if g and o.get("appPath"):
-                g["launch"] = {"type": "exe", "exe": o["appPath"], "args": []}
-                g["appPath"] = o["appPath"]
-                g["installed"] = True
-            if g and o.get("logo") and os.path.isfile(os.path.join(ART_DIR, o["logo"])):
-                g["customLogo"] = True
-            if g and o.get("hidden"):
-                g["hidden"] = True
-            if g and o.get("title"):
-                g["renameTo"] = o["title"]  # applied after the duplicate merge below, which goes by the game's own name
-            if g and o.get("favorite"):
-                g["favorite"] = True
-            if g and o.get("collections"):
-                g["collections"] = o["collections"]
-        if cfg["onlineCovers"] and "sgdb" in accounts:
-            try:
-                sgdb_fill_missing(accounts["sgdb"]["key"], list(games.values()))
-            except Exception as e:
+    if "steam" in accounts:
+        add("Steam account", lambda: scan_steam_account(accounts["steam"]))
+    if cfg["steamLocal"]:
+        add("Steam (installed)", scan_steam_local)
+    if WIN and any(cfg.get(p + "Local", True) for p in SERVICE_SCANS):
+        try:
+            programs = installed_programs()
+        except Exception as e:
+            programs = []
+            errors.append(f"Installed programs: {e}")
+        for prov, fn in (("ea", scan_ea), ("ubisoft", scan_ubisoft), ("gog", scan_gog), ("battlenet", scan_battlenet)):
+            if cfg.get(prov + "Local", True):
+                add(f"{LOCAL_PROVIDERS[prov]} (installed)", lambda fn=fn: fn(programs, cfg))
+    if "epic" in accounts:
+        add("Epic account", lambda: scan_epic(accounts))
+    for lib in cfg["libraries"]:
+        add(lib["name"], lambda lib=lib: scan_library(lib, cfg), "lib:" + lib["id"])
+    root = cfg.get("romRoot")
+    if root and os.path.isdir(root):  # ROMs folder: every platform subfolder is a library
+        for sub in sorted(os.listdir(root)):
+            path = os.path.join(root, sub)
+            if not os.path.isdir(path):
+                continue
+            s = detect_system(path)
+            emu = cfg.get("emulators", {}).get(s["system"], {})
+            lib = {"type": "roms", "path": path, "name": s["system"], "emulator": emu.get("path", ""), "args": emu.get("args"),
+                   "exts": s["exts"], "thumbs": s["thumbs"]}
+            add(f"ROMs/{s['system']}", lambda lib=lib: scan_library(lib, cfg))
+    elif root:
+        errors.append(f"ROMs folder {root} isn't available")
+
+    egg = egg_game()
+    if egg:
+        games[egg["id"]] = egg
+
+    remote = [g for g in games.values() if g.get("appid") and g["cover"].startswith(STEAM_CDN.split("{")[0])]
+    if remote:
+        art = steam_store_art([g["appid"] for g in remote])
+        for g in remote:
+            g["cover"] = art.get(g["appid"]) or g["cover"]
+
+    for game_id, o in load("overrides.json", {}).items():  # artwork the user picked
+        g, f = games.get(game_id), o.get("cover") and os.path.join(ART_DIR, o["cover"])
+        if g and f and os.path.isfile(f):
+            still = o.get("coverStill") and os.path.join(ART_DIR, o["coverStill"])
+            if still and os.path.isfile(still):
+                g["cover"] = local_art(game_id, still)
+                if light_anim(f):  # animated once its light copy is made (asked for here if it isn't)
+                    g["coverAnim"] = local_art(game_id + "--anim", f)
+            else:
+                g["cover"] = local_art(game_id, f)
+            g["custom"] = True
+        if g and o.get("hero") and os.path.isfile(os.path.join(ART_DIR, o["hero"])):
+            g["customHero"] = True
+        if g and o.get("appPath"):
+            g["launch"] = {"type": "exe", "exe": o["appPath"], "args": []}
+            g["appPath"] = o["appPath"]
+            g["installed"] = True
+        if g and o.get("logo") and os.path.isfile(os.path.join(ART_DIR, o["logo"])):
+            g["customLogo"] = True
+        if g and o.get("hidden"):
+            g["hidden"] = True
+        if g and o.get("title"):
+            g["renameTo"] = o["title"]  # applied after the duplicate merge below, which goes by the game's own name
+        if g and o.get("wiki"):
+            g["wikiPage"] = o["wiki"]  # the Wikipedia article picked for it when it was renamed
+        if g and o.get("favorite"):
+            g["favorite"] = True
+        if g and o.get("collections"):
+            g["collections"] = o["collections"]
+    need = [g for g in games.values() if not g["cover"] and not g.get("isFolder")]
+    SCAN_PROG.update(phase="covers", done=0, total=len(need) if cfg["onlineCovers"] and ("sgdb" in accounts or any(g.get("fallbackCover") for g in need)) else 0)
+    if cfg["onlineCovers"] and "sgdb" in accounts:
+        try:
+            sgdb_fill_missing(accounts["sgdb"]["key"], list(games.values()))
+        except Exception as e:  # SteamGridDB only fills in missing covers: unreachable is not worth a warning
+            if not offline(e):
                 errors.append(f"SteamGridDB: {e}")
-        for g in games.values():
-            if not g["cover"] and g.get("fallbackCover"):
-                g["cover"] = libretro_cover(g) or g["fallbackCover"]
+    for g in games.values():
+        if not g["cover"] and g.get("fallbackCover"):
+            g["cover"] = libretro_cover(g) or g["fallbackCover"]
+            scan_step()
 
-        log, sessions, fixed = load("playlog.json", {}), load("sessions.json", []), False
-        for g in games.values():
-            p = log.get(g["id"])
-            if p:
-                if "seconds" not in p:  # a log from before 1.2.7: counted again from its sessions, once
-                    p["minutes"], fixed = played_seconds(p, g["id"], sessions) // 60, True
-                g["lastPlayed"] = max(g["lastPlayed"], p.get("lastPlayed", 0))
-                g["minutes"] = max(g["minutes"], p.get("minutes", 0))
-        if fixed:
-            store("playlog.json", log)
-        # A game found by a launcher (EA app, Ubisoft, Battle.net) and again in a games folder added by hand is the same
-        # game: keep the launcher's entry (it starts through the launcher) with the better playtime of the two.
-        folders = {os.path.normcase(os.path.normpath(g["folder"])): g for g in games.values() if g.get("folder")}
-        for game_id, g in list(games.items()):
-            exe = os.path.normcase((g.get("launch") or {}).get("exe", ""))
-            owner = not g.get("folder") and exe and next((o for f, o in folders.items() if exe.startswith(f + os.sep)), None)
-            if owner:
-                owner["minutes"], owner["lastPlayed"] = max(owner["minutes"], g["minutes"]), max(owner["lastPlayed"], g["lastPlayed"])
-                del games[game_id]
-        # A PC game owned twice (on two stores, or two Steam versions of it) shows once: the installed copy, else the one
-        # played most, else the latest played, else Steam's; it keeps the better playtime and last-played of the copies.
-        copies = {}
-        for g in games.values():
-            if g.get("source") != "Emulators":
-                copies.setdefault(re.sub(r"[^a-z0-9]", "", re.sub(r"[™®©]", "", g["title"].lower())), []).append(g)
-        for same in copies.values():
-            if len(same) > 1:
-                keep = max(same, key=lambda c: (c["installed"], c["minutes"], c["lastPlayed"], c.get("source") == "Steam"))
-                for c in same:
-                    if c is not keep:
-                        keep["minutes"], keep["lastPlayed"] = max(keep["minutes"], c["minutes"]), max(keep["lastPlayed"], c["lastPlayed"])
-                        del games[c["id"]]
-        for g in games.values():
-            if g.get("renameTo"):
-                g["title"], g["renamed"] = g.pop("renameTo"), True
-        for k in [k for k in ART if k not in ART_SEEN]:
-            ART.pop(k, None)
-        STATE.update(games=list(games.values()), byId=games, errors=errors, counts=counts, scanned=time.time())
-        sync_systems(counts)
+    log, sessions, fixed = load("playlog.json", {}), load("sessions.json", []), False
+    for g in games.values():
+        p = log.get(g["id"])
+        if p:
+            if "seconds" not in p:  # a log from before 1.2.7: counted again from its sessions, once
+                p["minutes"], fixed = played_seconds(p, g["id"], sessions) // 60, True
+            g["lastPlayed"] = max(g["lastPlayed"], p.get("lastPlayed", 0))
+            g["minutes"] = max(g["minutes"], p.get("minutes", 0))
+    if fixed:
+        store("playlog.json", log)
+    # A game found by a launcher (EA app, Ubisoft, Battle.net) and again in a games folder added by hand is the same
+    # game: keep the launcher's entry (it starts through the launcher) with the better playtime of the two.
+    folders = {os.path.normcase(os.path.normpath(g["folder"])): g for g in games.values() if g.get("folder")}
+    for game_id, g in list(games.items()):
+        exe = os.path.normcase((g.get("launch") or {}).get("exe", ""))
+        owner = not g.get("folder") and exe and next((o for f, o in folders.items() if exe.startswith(f + os.sep)), None)
+        if owner:
+            owner["minutes"], owner["lastPlayed"] = max(owner["minutes"], g["minutes"]), max(owner["lastPlayed"], g["lastPlayed"])
+            del games[game_id]
+    # A PC game owned twice (on two stores, or two Steam versions of it) shows once: the installed copy, else the one
+    # played most, else the latest played, else Steam's; it keeps the better playtime and last-played of the copies.
+    copies = {}
+    for g in games.values():
+        if g.get("source") != "Emulators":
+            copies.setdefault(re.sub(r"[^a-z0-9]", "", re.sub(r"[™®©]", "", g["title"].lower())), []).append(g)
+    for same in copies.values():
+        if len(same) > 1:
+            keep = max(same, key=lambda c: (c["installed"], c["minutes"], c["lastPlayed"], c.get("source") == "Steam"))
+            for c in same:
+                if c is not keep:
+                    keep["minutes"], keep["lastPlayed"] = max(keep["minutes"], c["minutes"]), max(keep["lastPlayed"], c["lastPlayed"])
+                    del games[c["id"]]
+    for g in games.values():
+        if g.get("renameTo"):
+            g["title"], g["renamed"] = g.pop("renameTo"), True
+    for k in [k for k in ART if k not in ART_SEEN]:
+        ART.pop(k, None)
+    STATE.update(games=list(games.values()), byId=games, errors=errors, counts=counts, scanned=time.time())
+    sync_systems(counts)
 
 
 # ---------------------------------------------------------------- watching for new games
@@ -3978,7 +4453,7 @@ def add_capture(entry):
 
 def take_capture(mode):
     """The frontend's own screenshots and video, kept in data/captures. Nothing here touches Still or any other capture tool."""
-    if MAC:
+    if POSIX:
         return None  # screenshots and recording from the in-game menu: not on a Mac yet
     session = open_session()
     if not session:
@@ -4153,6 +4628,8 @@ def recycle(path):
     """To the Recycle Bin, so anything deleted from the album can be brought back."""
     if MAC:
         return trash_mac(path)
+    if LINUX:
+        return plat_linux.trash(path)
     import ctypes
     import ctypes.wintypes as W
 
@@ -4580,6 +5057,8 @@ XINPUT_START, XINPUT_BACK, XINPUT_LB, XINPUT_RB, XINPUT_GUIDE = 0x0010, 0x0020, 
 
 
 def frontend_exe():
+    if LINUX and plat_linux.appimage():
+        return plat_linux.appimage()  # the program inside it lives only while it runs
     return sys.executable if getattr(sys, "frozen", False) else os.path.join(ROOT, "Game Frontend.exe")
 
 
@@ -4596,7 +5075,7 @@ def startup_command(mode):
 def autostart_copy():
     """Only the copy that's really used writes the sign-in entry: not a source run, a build in the project folder or a
     test copy on another port, which would take the entry from it."""
-    return (WIN or MAC) and getattr(sys, "frozen", False) and not os.path.isdir(os.path.join(ROOT, ".git")) and PORT == 8137
+    return (WIN or POSIX) and getattr(sys, "frozen", False) and not os.path.isdir(os.path.join(ROOT, ".git")) and PORT == 8137
 
 
 SETUP_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\UltraFrontEnd"  # Settings > Apps entry (setup_ui.py)
@@ -4626,6 +5105,8 @@ def set_autostart(mode):
         return
     if MAC:
         return set_autostart_mac(mode)
+    if LINUX:  # like a Mac: no tray or background helper, so "open at sign-in" opens the window (the desktop's autostart folder)
+        return plat_linux.set_autostart(frontend_exe() if mode == "open" else None)
     import winreg
     command = startup_command(mode)
     with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
@@ -4727,7 +5208,7 @@ def sync_autostart():
     """Keep the sign-in entry pointing at this exe, wherever it has been moved since, once setup has been through it."""
     if not autostart_copy() or not profile().get("setupDone"):
         return
-    if MAC:
+    if POSIX:
         return set_autostart(config().get("startup"))
     import winreg
     mode = config().get("startup")
@@ -4746,8 +5227,8 @@ SEEN_PIDS = {}  # that process' pid -> {every descendant seen: when it started},
 
 def process_birth(pid):
     """When this process started, or 0 if it has gone. Windows reuses pids, so a pid alone doesn't say it is still the same program."""
-    if MAC:
-        return plat_mac.process_birth(pid)
+    if POSIX:
+        return PLAT.process_birth(pid)
     import ctypes
     k32 = ctypes.WinDLL("kernel32")
     k32.OpenProcess.restype = ctypes.c_void_p
@@ -4767,8 +5248,8 @@ def process_birth(pid):
 
 def process_tree(pid):
     """The launched process and its descendants that are still running (launchers hand over to the game itself)."""
-    if MAC:
-        return plat_mac.process_tree(pid)
+    if POSIX:
+        return PLAT.process_tree(pid)
     import ctypes
     import ctypes.wintypes as W
 
@@ -4855,8 +5336,8 @@ def local_spawn(cmd, cwd):
     """Start a game. The packaged exe's unpack folder is on its DLL search path and children inherit it, so an emulator would
     load our vcruntime140.dll instead of the system's (RPCS3 refuses to run on it): clear that for the moment of starting."""
     bundle = getattr(sys, "_MEIPASS", None)
-    if MAC:
-        return subprocess.Popen(cmd, cwd=cwd, env=plat_mac.child_env() if bundle else None)
+    if POSIX:
+        return subprocess.Popen(cmd, cwd=cwd, env=PLAT.child_env() if bundle else None)
     if not (WIN and bundle):
         return start_program(cmd, cwd)
     import ctypes
@@ -4911,8 +5392,8 @@ def run_as_admin(cmd, cwd):
 
 def folder_processes(folder):
     """Running programs whose exe lives in this folder or below it."""
-    if MAC:
-        return plat_mac.folder_processes(folder)
+    if POSIX:
+        return PLAT.folder_processes(folder)
     import ctypes
     import ctypes.wintypes as W
     k32 = ctypes.windll.kernel32
@@ -4934,7 +5415,7 @@ def folder_processes(folder):
 
 def game_tree(pid):
     """Everything still running from a launch, following the game after its launcher has exited."""
-    if not WIN and not MAC:
+    if not WIN and not POSIX:
         return set()
     seen = SEEN_PIDS.setdefault(pid, {pid: process_birth(pid)})
 
@@ -5142,9 +5623,9 @@ def hud_mode(cycle=False):
 
 
 def running_resume(game_id):
-    if MAC:
+    if POSIX:
         entry = RUN_NOW.get(game_id)
-        return bool(entry) and plat_mac.activate(entry[1])
+        return bool(entry) and PLAT.activate(entry[1])
     import ctypes
     hwnd = (RUN_NOW.get(game_id) or (None, 0))[0]
     if hwnd:
@@ -5155,10 +5636,10 @@ def running_resume(game_id):
 
 
 def running_close(game_id):
-    if MAC:
+    if POSIX:
         entry = RUN_NOW.pop(game_id, None)
         if entry:
-            plat_mac.kill_tree(entry[1])
+            PLAT.kill_tree(entry[1])
         return session_end(game_id)
     entry = RUN_NOW.pop(game_id, None)
     if entry:
@@ -5221,8 +5702,8 @@ def hold_steam_launch(game_id, timeout=30):
 
 def take_foreground(hwnd):
     """Windows refuses the foreground to a background program, unless it shares input with the window that has it."""
-    if MAC:
-        return plat_mac.activate(hwnd)  # on a Mac the 'window' is the program's pid
+    if POSIX:
+        return PLAT.activate(hwnd)  # on a Mac the 'window' is the program's pid
     import ctypes
     user32, k32 = ctypes.windll.user32, ctypes.windll.kernel32
     user32.GetForegroundWindow.restype = ctypes.c_void_p
@@ -5241,7 +5722,7 @@ def take_foreground(hwnd):
 def behind_game(frontend, game):
     """Put the frontend's window just under the game's, now and again a moment later: dropping topmost lifts a window above
     every normal one, and some games make their real window after the first, so the game could end up underneath."""
-    if MAC:
+    if POSIX:
         return
     import ctypes
     user32 = ctypes.windll.user32
@@ -5257,7 +5738,7 @@ def focus_process(pid, timeout=120):
     """Bring the launched game's window to the front once it exists. The helper runs in the background (the tray), and
     Windows won't let a background process' children take the foreground by themselves, so a game would open behind the
     fullscreen frontend. Keeps watching a few seconds after the first window for launchers that hand over to the game."""
-    if MAC:
+    if POSIX:
         return focus_process_mac(pid, timeout)
     if not WIN:
         return
@@ -5423,8 +5904,8 @@ def overlay_wake(want, timeout=25):
 
 def fullscreen_process():
     """The process of the foreground window, if that window has no title bar and covers the whole screen."""
-    if MAC:
-        return plat_mac.fullscreen_pid()
+    if POSIX:
+        return PLAT.fullscreen_pid()
     import ctypes
     import ctypes.wintypes as W
     user32 = ctypes.windll.user32
@@ -5442,7 +5923,7 @@ def fullscreen_process():
 
 def toggle_overlay():
     """View + Start: open the overlay over the game being played, close it again, or just open the frontend if no game is."""
-    if MAC:
+    if POSIX:
         return open_frontend()  # no in-game menu window on a Mac yet: the frontend's own Quick Access instead
     if overlay_open():  # the overlay slides itself out, then resumes; closed here if it doesn't within a few seconds
         proc = OVERLAY["proc"]
@@ -5488,8 +5969,8 @@ def state_keys(game_id, table=None):
 
 def game_in_front(pids):
     """Make sure a save key would reach the game, which hands it the focus: the overlay holds it while it's up."""
-    if MAC:
-        return plat_mac.activate(pids[0]) if pids else False
+    if POSIX:
+        return PLAT.activate(pids[0]) if pids else False
     import ctypes
     user32 = ctypes.windll.user32
     user32.GetForegroundWindow.restype = ctypes.c_void_p
@@ -5519,7 +6000,7 @@ def game_in_front(pids):
 
 
 def press_keys(keys):
-    if MAC:
+    if POSIX:
         return None  # sending keys to another app needs macOS' Accessibility permission: not yet
     import ctypes
     user32 = ctypes.windll.user32
@@ -5716,7 +6197,7 @@ def steam_shortcut_id(running=True):
 def black_cover(timeout=12):
     """A black screen while Steam starts the frontend, hiding Steam's launching popup. It lifts once the frontend's window
     is up, whose intro starts on black too. A plain Windows window, so it's there at once, and it can never outlast timeout."""
-    if MAC:
+    if POSIX:
         return
     import ctypes
     import ctypes.wintypes as W
@@ -5764,8 +6245,8 @@ def black_cover(timeout=12):
 
 def process_image(pid):
     """The exe a process runs, or "" if it can't be read."""
-    if MAC:
-        return plat_mac.process_image(pid)
+    if POSIX:
+        return PLAT.process_image(pid)
     import ctypes
     k32 = ctypes.windll.kernel32
     k32.OpenProcess.restype = ctypes.c_void_p
@@ -5792,9 +6273,9 @@ START_ALONE = ("try { $r = Invoke-CimMethod -ClassName Win32_Process -MethodName
 def start_alone(args):
     """Start the exe as a program of its own, as if from the desktop: through WMI its parent isn't this process, so Steam
     doesn't count it as part of a window it launched, and it gets a clean environment (its own unpacked copy)."""
-    if MAC:
+    if POSIX:
         try:
-            subprocess.Popen([frontend_exe()] + list(args), start_new_session=True, env=plat_mac.child_env())
+            subprocess.Popen([frontend_exe()] + list(args), start_new_session=True, env=PLAT.child_env())
             return True
         except OSError:
             return False
@@ -5811,7 +6292,7 @@ def own_window(hwnd):
     """Whether a window belongs to this program (the exe, or Python running it from source). Windows' shell keeps windows of
     its own titled like the page (Windows.Internal.Shell.TabProxyWindow, in explorer), and they outlive the frontend's
     window: looked up by title alone, one of those passes for the frontend, which then never opens."""
-    if MAC:
+    if POSIX:
         return False
     import ctypes
     pid = ctypes.c_ulong()
@@ -5823,7 +6304,7 @@ def own_window(hwnd):
 
 def frontend_window(title="Ultra Front End"):
     """The frontend's own top-level window with this exact title, or 0."""
-    if MAC:
+    if POSIX:
         return 0
     import ctypes
     user32 = ctypes.windll.user32
@@ -5845,6 +6326,9 @@ def frontend_in_front():
     is what's on screen."""
     if MAC:
         return plat_mac.front_pid() == os.getpid()
+    if LINUX:  # where the window manager doesn't say (Game Mode's gamescope, Wayland): in front unless a game is going
+        front = plat_linux.front_pid()
+        return front == os.getpid() if front is not None else not (RUN_NOW or any(game_tree(p.pid) for p in list(RUNNING.values())))
     if time.time() - IN_FRONT[0] < 0.25:
         return IN_FRONT[1]
     import ctypes
@@ -5858,7 +6342,7 @@ def frontend_in_front():
 
 def on_screen(hwnd):
     """Whether this window is the one showing in the middle of the screen (not minimized, nothing over it)."""
-    if MAC:
+    if POSIX:
         return False
     if not hwnd:
         return False
@@ -5875,8 +6359,8 @@ def on_screen(hwnd):
 def raise_window(hwnd, seconds=10):
     """Bring the frontend's own window to the front, restoring it if it was minimized (focus_process looks for a game's biggest
     window, which a minimized one never is). Keeps at it for a few seconds: Steam's own menu can open on the same press."""
-    if MAC:
-        return plat_mac.activate(os.getpid())
+    if POSIX:
+        return PLAT.activate(os.getpid())
     import ctypes
     user32 = ctypes.windll.user32
     user32.GetForegroundWindow.restype = ctypes.c_void_p
@@ -5971,8 +6455,8 @@ def open_in_steam(target, title="Steam", timeout=8):
 
 def open_frontend():
     """The Xbox button: bring the frontend's window to the front, or open it."""
-    if MAC:
-        return plat_mac.activate(os.getpid())  # the window lives in this process
+    if POSIX:
+        return PLAT.activate(os.getpid())  # the window lives in this process
     import ctypes
     user32 = ctypes.windll.user32
     hwnd = frontend_window()
@@ -6152,8 +6636,8 @@ def playing():
 
 def audio_volume(level=None, delta=None, mute=None):
     """The default speakers through Windows' Core Audio. Returns {"volume": 0-100, "muted": bool}. level, delta and mute change it first."""
-    if MAC:
-        return plat_mac.audio_volume(level, delta, mute)
+    if POSIX:
+        return PLAT.audio_volume(level, delta, mute)
     import ctypes
     from ctypes import wintypes as W
 
@@ -6921,8 +7405,8 @@ def qa_view():
 
 def system_power(action):
     """The power menu. Restart and shut down wait a few seconds, so the frontend can say what's happening."""
-    if MAC:
-        return plat_mac.system_power(action)
+    if POSIX:
+        return PLAT.system_power(action)
     if action == "sleep":
         import ctypes
         # SetSuspendState(hibernate=False). Through rundll32 its arguments are garbage, so a PC with hibernation on hibernates.
@@ -7080,7 +7564,7 @@ def steam_button_gesture():
 
 
 def foreground_title():
-    if MAC:
+    if POSIX:
         return ""
     import ctypes
     user32 = ctypes.windll.user32
@@ -7483,8 +7967,8 @@ def unpacked_rom(game, L):
 
 def screen_size():
     """The main screen's real resolution in pixels (ignores Windows display scaling)."""
-    if MAC:
-        return plat_mac.screen_size()
+    if POSIX:
+        return PLAT.screen_size()
     try:
         import ctypes
         user32, gdi32 = ctypes.WinDLL("user32"), ctypes.WinDLL("gdi32")
@@ -7592,12 +8076,14 @@ def start_game(game, L):
 def change_app_location(game_id, reset=False):
     if game_id not in STATE["byId"]:
         raise ValueError("Game not found")
-    exe = None if reset else pick("file", "Choose the game or launcher program" + ("" if MAC else " (.exe)"))
+    exe = None if reset else pick("file", "Choose the game or launcher program" + ("" if POSIX else " (.exe)"))
     if not reset and not exe:
         return {"cancelled": True}
     if not reset and MAC and not (exe.lower().endswith(".app") or os.access(exe, os.X_OK)):
         raise ValueError("Choose an app or a program")
-    if not reset and not MAC and (not os.path.isfile(exe) or not exe.lower().endswith(".exe")):
+    if not reset and LINUX and not (os.path.isfile(exe) and os.access(exe, os.X_OK)):
+        raise ValueError("Choose a program (an AppImage, a game's start script or its program)")
+    if not reset and WIN and (not os.path.isfile(exe) or not exe.lower().endswith(".exe")):
         raise ValueError("Choose an existing Windows program (.exe)")
     overrides = load("overrides.json", {})
     entry = overrides.setdefault(game_id, {})
@@ -7614,6 +8100,7 @@ def change_app_location(game_id, reset=False):
 
 # ---------------------------------------------------------------- native file pickers
 PICK_LOCK = threading.Lock()
+WINDOW_PICK = []  # Linux: frontend.py's file dialog, for systems without zenity or kdialog
 
 
 def pick_mac(kind, title):
@@ -7628,6 +8115,11 @@ def pick(kind, title, filetypes=None):
     if MAC:
         with PICK_LOCK:
             return pick_mac(kind, title)
+    if LINUX:
+        with PICK_LOCK:
+            if plat_linux.has_picker() or not WINDOW_PICK:
+                return plat_linux.pick(kind, title, filetypes)
+            return WINDOW_PICK[0](kind, title)  # no zenity or kdialog: the window's own (Qt) file dialog
     with PICK_LOCK:
         import tkinter as tk
         from tkinter import filedialog
@@ -8973,7 +9465,7 @@ APPLY_LOCK = threading.Lock()  # guards APPLY_LOCKS and APPLY_SOON
 def apply_bios(system, wait=True):
     """Set up the BIOS files found in this system's folder for its emulator, when there are any. wait=False (at launch):
     skipped while that emulator's files are already being set up."""
-    if system not in BIOS_APPLY or MAC:  # (on a Mac the emulators' own settings hold their BIOS folders: not set up from here yet)
+    if system not in BIOS_APPLY or POSIX:  # (on a Mac the emulators' own settings hold their BIOS folders: not set up from here yet)
         return
     cfg = config()
     folder = bios_dir(cfg, system)
@@ -9207,7 +9699,7 @@ def queue_install(systems):
     with QUEUE_COND:
         for s in systems:
             package = emu_table().get(s)
-            if not (WIN or MAC) or not package or package[1] == "manual" or os.path.exists(emus.get(s, {}).get("path", "")):
+            if not (WIN or POSIX) or not package or package[1] == "manual" or os.path.exists(emus.get(s, {}).get("path", "")):
                 continue
             job = next((j for j in QUEUE["jobs"] if j["package"] == package and j["state"] in ("waiting", "installing")), None)
             if job:  # one emulator for several systems (ares, MAME...) installs once
@@ -9655,7 +10147,7 @@ def install_presentmon():
     if not asset:
         raise ValueError("PresentMon has no Windows download right now. Try again later.")
     url, digest = asset["browser_download_url"], str(asset.get("digest") or "").lower()
-    if not url.startswith(f"https://github.com/{PRESENTMON_REPO}/releases/download/"):
+    if not on_project(url, PRESENTMON_REPO):
         raise ValueError("PresentMon's download isn't on its own project")
     if not digest.startswith("sha256:"):  # a lone exe: never kept without GitHub's checksum
         raise ValueError("PresentMon's download has no checksum to check it against. Try again later.")
@@ -10014,7 +10506,7 @@ def install_recorder():
         raise ValueError("FFmpeg has no Windows download right now. Try again later.")
     asset = pick[1]
     url, digest = asset["browser_download_url"], str(asset.get("digest") or "").lower()
-    if not url.startswith(f"https://github.com/{RECORDER_REPO}/releases/download/") or not digest.startswith("sha256:"):
+    if not on_project(url, RECORDER_REPO) or not digest.startswith("sha256:"):
         raise ValueError("FFmpeg's download couldn't be checked. Try again later.")
     os.makedirs(os.path.dirname(RECORDER_DIR), exist_ok=True)
     part = RECORDER_DIR + ".zip.part"
@@ -10086,7 +10578,7 @@ def system_view(system, cfg, chosen):
     package, job = emu_table().get(system), job_for(system)
     view = {"name": system, "group": SYSTEM_GROUP.get(system, "Other"), "chosen": system in chosen, "count": STATE["counts"].get(f"ROMs/{system}", 0),
             "emulator": os.path.basename(emu), "emulatorDir": os.path.dirname(emu) if emu else "",
-            "emulatorVersion": emulator_version(emu, system) if emu and WIN else "", "install": package[0] if (WIN or MAC) and package and package[1] != "manual" else None,
+            "emulatorVersion": emulator_version(emu, system) if emu and WIN else "", "install": package[0] if (WIN or POSIX) and package and package[1] != "manual" else None,
             "recommended": emulator_for(system), "site": system_site(system), "steps": BIOS_STEPS.get(system),
             "job": job_info(job) if job else None}
     if system in chosen:  # (only these are looked through: hashing every console's folder would slow Settings down)
@@ -10108,6 +10600,8 @@ def page_version():
 
 def read_clipboard():
     """The clipboard's text, or "" when it holds none."""
+    if LINUX:
+        return plat_linux.read_clipboard()
     if not WIN:
         return subprocess.run(["pbpaste"], capture_output=True, text=True, timeout=5).stdout
     import ctypes
@@ -10262,7 +10756,9 @@ class Handler(SimpleHTTPRequestHandler):
             return self.reply(pad_wait(after, bool(q.get("overlay"))))
         if path == "/api/ping":
             return self.reply({"ok": True, "scanned": STATE["scanned"], "page": page_version(), "build": BUILD, "pid": os.getpid(), "root": ROOT,
-                               "version": VERSION})
+                               "version": VERSION, "scan": scan_progress()})
+        if path == "/api/scan":  # polled quickly while a scan is under way, for its progress window
+            return self.reply({**scan_progress(), "scanned": STATE["scanned"]})
         if path == "/api/profile":
             return self.reply(profile())
         if path == "/api/avatar":
@@ -10427,6 +10923,18 @@ class Handler(SimpleHTTPRequestHandler):
             cid = (urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("id") or [""])[0]
             f = album_file(cid) if path.endswith("file") else album_thumb(cid)
             return self.send_path(f) if f else self.send_error(404)
+        if path == "/api/egg/art":  # the nearly-out game's key art, its background
+            f = egg_art_file()
+            return self.send_path(f) if f else self.send_error(404)
+        if path == "/api/egg/shot":  # ?i=&small=: one of the nearly-out game's official screenshots
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            try:
+                f = egg_shot_file(int((q.get("i") or ["-1"])[0]), bool(q.get("small")))
+            except ValueError:
+                f = None
+            if not f:
+                return self.send_error(404)
+            return self.send_path(f)
         if path.startswith("/api/art/"):
             key = path.rsplit("/", 1)[-1]
             f = ART.get(key) or DETAIL_ART.get(key)
@@ -10491,6 +10999,14 @@ class Handler(SimpleHTTPRequestHandler):
             if path == "/api/update":  # Settings > About: check now, install now, or the page has shown "Updated"
                 if body.get("action") == "seen":
                     store("update.json", {**load("update.json", {}), "updated": None})
+                elif body.get("action") == "channel" and is_dev(VERSION):
+                    pass  # a dev build stays on the dev builds (Settings doesn't offer the choice)
+                elif body.get("action") == "devtoken" and is_dev(VERSION):  # Settings › About on a dev build: the owner's GitHub token
+                    set_dev_token(body.get("token"))
+                    UPDATE.update(latest=None, state="", error="", retry=0.0)
+                    if dev_token() and not updates_off():
+                        threading.Thread(target=update_step, args=["check"], daemon=True).start()
+                        time.sleep(1.5)  # long enough, mostly, for the page to show whether GitHub took it
                 elif body.get("action") == "channel":  # Settings › About: main releases or nightly builds, then a check on that channel
                     cfg = config()
                     cfg["updateChannel"] = "nightly" if body.get("channel") == "nightly" else "main"
@@ -10550,13 +11066,20 @@ class Handler(SimpleHTTPRequestHandler):
                 store("overrides.json", overrides)
                 g["hidden"] = bool(body.get("hidden"))
                 return self.reply({"ok": True})
+            if path == "/api/game/names":  # {query}: Wikipedia's games by that name, to pick from when renaming
+                return self.reply({"games": wiki_game_choices(" ".join(str(body.get("query") or "").split())[:120])})
             if path == "/api/game/rename":  # a name of the user's own; an empty one goes back to the game's own name
                 g = STATE["byId"].get(body.get("id"))
                 if not g:
                     raise ValueError("Game not found")
                 title = " ".join(str(body.get("title") or "").split())[:120]
+                page = " ".join(str(body.get("wiki") or "").split())[:200]
                 overrides = load("overrides.json", {})
                 o = overrides.setdefault(g["id"], {})
+                if page and title:
+                    o["wiki"] = page  # picked from Wikipedia's games: its details come from that article
+                else:
+                    o.pop("wiki", None)
                 if title:
                     o["title"] = title
                 else:
@@ -10605,10 +11128,13 @@ class Handler(SimpleHTTPRequestHandler):
                     raise ValueError("That friend couldn't be found")
                 open_in_steam("steam://friends/message/" + sid, str(body.get("name") or "")[:100] or "Steam")
                 return self.reply({"ok": True})
-            if path == "/api/introsound" and MAC:
+            if path == "/api/show" and LINUX:  # a second start of the app (frontend.py): the open window comes forward instead
+                threading.Thread(target=open_frontend, daemon=True).start()
+                return self.reply({"ok": True})
+            if path == "/api/introsound" and POSIX:
                 name = "outro.wav" if body.get("outro") else "intro.wav"  # the closing sound, or the opening one
                 own = os.path.join(DATA, name)
-                plat_mac.play_sound(own if os.path.isfile(own) else os.path.join(APP, "assets", name)) if body.get("play") else plat_mac.stop_sound()
+                PLAT.play_sound(own if os.path.isfile(own) else os.path.join(APP, "assets", name)) if body.get("play") else PLAT.stop_sound()
                 return self.reply({"ok": True})
             if path == "/api/introsound":  # played here because a page can't start sound by itself
                 import winsound
@@ -10950,13 +11476,21 @@ class Handler(SimpleHTTPRequestHandler):
                     if g.get("source") != "Emulators":
                         raise ValueError("Connect SteamGridDB first")
                     return self.reply({"current": None, "games": [], "grids": extra})
-                found = sgdb_search(key, query or g["title"])
-                current = next((f for f in found if f["id"] == body.get("sgdbId")), None)
-                if not current and not query:
-                    current = sgdb_game_for(key, g)
-                current = current or (found[0] if found and query else None)  # not this game's: let the list below choose
-                results = ([current] if current else []) + [f for f in found if not current or f["id"] != current["id"]]
-                return self.reply({"current": current, "games": results[:6], "grids": (sgdb_grids(key, current["id"], kind) if current else []) + extra})
+                try:
+                    found, words = art_search(key, g, query)
+                    current = next((f for f in found if f["id"] == body.get("sgdbId")), None)
+                    if not current and not query:
+                        current = sgdb_game_for(key, g)
+                    # a typed search shows its top hit's art only when that hit has every word of it: else the list asks
+                    current = current or (found[0] if found and query and words <= title_words(found[0]["name"]) else None)
+                    results = ([current] if current else []) + [f for f in found if not current or f["id"] != current["id"]]
+                    grids = sgdb_grids(key, current["id"], kind) if current else []
+                except urllib.error.URLError as e:
+                    if extra:  # libretro still answered: its art to choose from, and a word on why SteamGridDB's isn't there
+                        return self.reply({"current": None, "games": [], "grids": extra, "note": SGDB_UNREACHABLE})
+                    raise ValueError(SGDB_UNREACHABLE if offline(e) else f"SteamGridDB isn't answering right now ({e.code}). Try again in a little while.") from e
+                missing = not current and not any(words <= title_words(f["name"]) for f in found)  # SteamGridDB has no such game (yet)
+                return self.reply({"current": current, "games": results[:6], "grids": grids + extra, **({"missing": query or g["title"]} if missing else {})})
             if path == "/api/art/set":
                 if body.get("id") not in STATE["byId"]:
                     raise ValueError("Game not found")
@@ -10977,7 +11511,7 @@ class Handler(SimpleHTTPRequestHandler):
         except urllib.error.HTTPError as e:
             return self.reply({"error": f"The service said no ({e.code}). Check the details and try again."}, 400)
         except (urllib.error.URLError, TimeoutError):
-            return self.reply({"error": "Couldn't reach the internet service"}, 400)
+            return self.reply({"error": "Couldn't reach the internet service. Check your internet connection and try again."}, 400)
         except (ValueError, KeyError, OSError) as e:
             return self.reply({"error": str(e)}, 400)
         except Exception as e:  # a bug rather than bad input
@@ -10990,7 +11524,8 @@ class Handler(SimpleHTTPRequestHandler):
 # the newest release's exe is downloaded beside this one and checked against GitHub's SHA-256, then swapped in once nothing is
 # open or running. The new copy takes over from this one (frontend.py replace_old_helper); if it never starts, the old exe goes
 # back and that version waits a day.
-UPDATE = {"state": "", "latest": None, "error": "", "checked": 0.0, "retry": 0.0, "done": None, "quick": 0.0}
+UPDATE = {"state": "", "latest": None, "error": "", "checked": 0.0, "retry": 0.0, "done": None, "quick": 0.0,
+          "got": 0, "size": 0}  # (got / size: how far the download is, for Settings › About's bar)
 QUICK_EVERY = 60  # how often github.com is asked which release is the latest: a tiny request, not the API (no hourly limit)
 
 
@@ -11012,7 +11547,7 @@ def latest_tag():
     return ""
 UPDATE_LOCK = threading.Lock()
 UPDATE_EVERY = 3600  # GitHub is asked this often (fixes reach everyone within the hour); an unchanged answer (ETag) doesn't count against its hourly limit
-UPDATE_ASSET = "UltraFrontEnd-mac.zip" if MAC else "UltraFrontEnd.exe"  # the release file tools/release.py uploads (the Mac app zipped)
+UPDATE_ASSET = "UltraFrontEnd-mac.zip" if MAC else plat_linux.update_asset() if LINUX else "UltraFrontEnd.exe"  # the release file tools/release.py uploads (the Mac app zipped)
 
 
 NIGHTLY_TAG = "nightly"  # the pre-release the nightly build job (.github/workflows/nightly.yml) replaces each night
@@ -11021,7 +11556,7 @@ NIGHTLY_TAG = "nightly"  # the pre-release the nightly build job (.github/workfl
 def version_key(v):
     """Comparable versions: 1.2.7-nightly.202611080300 comes after 1.2.6 and before 1.2.7 (the release it leads up to)."""
     v = v or ""
-    m = re.search(r"-nightly\.(\d+)", v)
+    m = re.search(r"-(?:nightly|dev)\.(\d+)", v)
     nums = tuple(int(x) for x in re.findall(r"\d+", v[:m.start()] if m else v)[:3]) or (0,)
     return nums + (0,) * (3 - len(nums)) + ((0, int(m.group(1))) if m else (1, 0))
 
@@ -11030,8 +11565,94 @@ def is_nightly(v):
     return "-nightly." in (v or "")
 
 
+def is_dev(v):
+    """A dev build (.github/workflows/dev.yml): a branch's code, built to try out before it goes into main."""
+    return "-dev." in (v or "")
+
+
+DEV_TAG = "dev"  # the draft release the dev build job (.github/workflows/dev.yml) replaces on every push to the dev branch
+DEV_EVERY = 300  # a dev copy asks for a newer dev build this often
+
+
+# Dev builds are draft releases, which GitHub shows only to the project's owner: a dev copy reads them with the owner's
+# own GitHub token (Settings › About), kept in its data folder and sent to api.github.com only.
+def dev_token_path():
+    return os.path.join(DATA, "dev-token.txt")
+
+
+def dev_token():
+    try:
+        with open(dev_token_path(), encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def set_dev_token(token):
+    token = (token or "").strip()
+    if not token:
+        try:
+            os.remove(dev_token_path())
+        except OSError:
+            pass
+        return
+    if not re.fullmatch(r"(github_pat_|ghp_)[A-Za-z0-9_]{20,250}", token):
+        raise ValueError("That doesn't look like a GitHub token: it starts with github_pat_ (or ghp_)")
+    os.makedirs(DATA, exist_ok=True)
+    with open(dev_token_path(), "w", encoding="utf-8") as f:
+        f.write(token)
+
+
+class GitHubOnlyAuth(urllib.request.HTTPRedirectHandler):
+    """Follows a redirect without the token: GitHub sends an asset download on to its file storage, which mustn't get it."""
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is not None and urllib.parse.urlparse(newurl).hostname != "api.github.com":
+            new.remove_header("Authorization")
+        return new
+
+
+def dev_request(url, accept="application/vnd.github+json"):
+    token = dev_token()
+    if not token:
+        raise ValueError("dev builds need your GitHub token: add it below")
+    return urllib.request.Request(url, headers={"Accept": accept, "User-Agent": UA, "Authorization": f"Bearer {token}",
+                                                "X-GitHub-Api-Version": "2022-11-28"})
+
+
+def fetch_dev_release():
+    """The newest dev build (a draft release tagged dev), read with the owner's token, or None while there's none."""
+    try:
+        with urllib.request.build_opener(GitHubOnlyAuth).open(dev_request(f"https://api.github.com/repos/{UPDATE_REPO}/releases?per_page=30"), timeout=15) as r:
+            listed = json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403, 404):
+            raise ValueError("GitHub didn't accept the dev token (it may have expired, or can't see drafts): add a new one below") from e
+        raise
+    drafts = sorted((x for x in listed if x.get("draft") and x.get("tag_name") == DEV_TAG), key=lambda x: x.get("created_at") or "", reverse=True)
+    if not drafts:
+        return None
+    rel = drafts[0]
+    body = str(rel.get("body") or "")
+    m = re.search(r"\d+\.\d+\.\d+-dev\.\d+", f'{rel.get("name") or ""} {body}')
+    asset = next((a for a in rel.get("assets") or [] if a.get("name") == UPDATE_ASSET), None) or {}
+    # the SHA-256 GitHub lists for the file, else the one the build wrote in the notes
+    digest = str(asset.get("digest") or "").lower()
+    sha = digest[7:] if digest.startswith("sha256:") else (re.search(r"SHA-256: ([0-9a-f]{64})", body) or [None, ""])[1]
+    url = str(asset.get("url") or "")
+    ok = m and sha and asset.get("size") and url.startswith(f"https://api.github.com/repos/{UPDATE_REPO}/releases/assets/")
+    release = {"version": m.group(0) if m else "", "notes": body, "page": "",
+               "exe": {"url": url, "size": asset["size"], "sha256": sha, "auth": True} if ok else None}
+    store("update.json", {**load("update.json", {}), "devRelease": release})
+    return release
+
+
 def update_channel():
-    """Settings › About: "main" (the releases) or "nightly" (a build of the newest code every night, and the releases too)."""
+    """Settings › About: "main" (the releases) or "nightly" (a build of the newest code every night, and the releases too).
+    A dev build is always on "dev": it follows the dev builds, and only them, until a release is downloaded over it (its
+    settings may be shared with a normal copy, so the choice isn't saved)."""
+    if is_dev(VERSION):
+        return "dev"
     return "nightly" if config().get("updateChannel") == "nightly" else "main"
 
 
@@ -11073,6 +11694,11 @@ def updates_off():
         if "/AppTranslocation/" in bundle or bundle.startswith("/Volumes/"):
             return "Move Ultra Front End into your Applications folder to get updates"
         return "" if os.access(os.path.dirname(bundle), os.W_OK) else "macOS won't let it change the folder it's in. Move it to Applications to get updates"
+    if LINUX:
+        image = plat_linux.appimage()
+        if not image:
+            return "Only the downloaded AppImage updates itself"
+        return "" if os.access(os.path.dirname(image), os.W_OK) else "It can't change the folder its AppImage is in. Move it to a folder of your own to get updates"
     if not (WIN and getattr(sys, "frozen", False)):
         return "Only the downloaded exe updates itself"
     if os.path.isdir(os.path.join(ROOT, ".git")):
@@ -11088,6 +11714,8 @@ def updates_off():
 def latest_release():
     """The release this copy's channel offers (version, notes, and its exe with GitHub's SHA-256), or None while there's
     none: the newest main release, or on the nightly channel whichever is newer of that and the latest nightly build."""
+    if update_channel() == "dev":  # the newest dev build only: the releases would put this copy back on main
+        return fetch_dev_release()
     main = fetch_release(f"https://api.github.com/repos/{UPDATE_REPO}/releases/latest", "release")
     if update_channel() != "nightly":
         return main
@@ -11121,16 +11749,17 @@ def fetch_release(api_url, key):
     asset = next((a for a in rel.get("assets") or [] if a.get("name") == UPDATE_ASSET), None) or {}
     url, digest = asset.get("browser_download_url", ""), str(asset.get("digest") or "").lower()
     # only this project's own download, and only with a SHA-256 to check it against
-    ok = digest.startswith("sha256:") and asset.get("size") and (test or url.startswith(f"https://github.com/{UPDATE_REPO}/releases/download/"))
-    # a nightly build's version is its release title (its tag, "nightly", stays the same every night)
+    ok = digest.startswith("sha256:") and asset.get("size") and (test or on_project(url, UPDATE_REPO))
+    # a nightly or dev build's version is in its release title or notes (its tag, "nightly" or "dev", stays the same)
+    kind = {"nightlyRelease": "nightly"}.get(key, "")
     version = str(rel.get("name") if key != "release" else rel.get("tag_name") or "").strip().lstrip("vV")
-    if key != "release":  # a readable title ("Ultra Front End 1.2.7 Nightly, 6 November 2026"): the exact version is in its notes
-        m = re.search(r"\d+\.\d+\.\d+-nightly\.\d+", f'{rel.get("name") or ""} {rel.get("body") or ""}')
+    if kind:  # a readable title ("Ultra Front End 1.2.7 Nightly, 6 November 2026"): the exact version is in its notes
+        m = re.search(rf"\d+\.\d+\.\d+-{kind}\.\d+", f'{rel.get("name") or ""} {rel.get("body") or ""}')
         version = m.group(0) if m else version
     release = {"version": version, "notes": str(rel.get("body") or ""), "page": str(rel.get("html_url") or ""),
                "exe": {"url": url, "size": asset["size"], "sha256": digest[7:]} if ok else None}
-    if key != "release" and not is_nightly(version):
-        release["exe"] = None  # not a nightly build's title: never installed from here
+    if key != "release" and f"-{kind}." not in version:
+        release["exe"] = None  # not a nightly (or dev) build's title: never installed from here
     if not test:
         store("update.json", {**load("update.json", {}), etag_key: etag, key: release})
     return release
@@ -11142,13 +11771,19 @@ def download_update(release):
     part, ready = update_paths()
     digest = hashlib.sha256()
     try:
-        with urllib.request.urlopen(urllib.request.Request(asset["url"], headers={"User-Agent": UA}), timeout=60) as r, open(part, "wb") as f:
-            while chunk := r.read(1 << 20):
+        if asset.get("auth"):  # a dev build: GitHub's API hands over a draft's file to the owner's token only
+            get = urllib.request.build_opener(GitHubOnlyAuth).open(dev_request(asset["url"], "application/octet-stream"), timeout=60)
+        else:
+            get = urllib.request.urlopen(urllib.request.Request(asset["url"], headers={"User-Agent": UA}), timeout=60)
+        UPDATE["got"], UPDATE["size"] = 0, asset["size"]
+        with get as r, open(part, "wb") as f:
+            while chunk := r.read(1 << 18):  # (a quarter of a megabyte at a time, so the bar moves smoothly)
                 digest.update(chunk)
                 f.write(chunk)
+                UPDATE["got"] += len(chunk)
         with open(part, "rb") as f:
             head = f.read(2)
-        if head != (b"PK" if MAC else b"MZ") or os.path.getsize(part) != asset["size"] or digest.hexdigest() != asset["sha256"]:
+        if head != (b"PK" if MAC else b"\x7fE" if LINUX else b"MZ") or os.path.getsize(part) != asset["size"] or digest.hexdigest() != asset["sha256"]:
             raise ValueError("the download didn't match the release, so it wasn't used")
         os.replace(part, ready)
     except BaseException:
@@ -11209,6 +11844,8 @@ def install_update(ready, version, reopen=False):
     has taken over. If it never gets that far, the old exe goes back."""
     if MAC:
         return install_update_mac(ready, version)
+    if LINUX:
+        return install_update_linux(ready, version)
     exe = frontend_exe()
     base = exe[:-4] if exe.lower().endswith(".exe") else exe
     old = base + ".old.exe"
@@ -11260,7 +11897,7 @@ def update_step(action=None):
             tag = latest_tag()
             known = (UPDATE["latest"] or {}).get("version") or VERSION
             newer = bool(tag) and version_key(tag) > version_key(known)
-        if action or newer or now - UPDATE["checked"] > UPDATE_EVERY:
+        if action or newer or now - UPDATE["checked"] > (DEV_EVERY if update_channel() == "dev" else UPDATE_EVERY):
             UPDATE["checked"], UPDATE["state"] = now, "checking"
             UPDATE["latest"] = latest_release()
         rel, saved = UPDATE["latest"], load("update.json", {})
@@ -11285,13 +11922,13 @@ def update_step(action=None):
             if action == "install":
                 UPDATE["error"] = "It installs once the game, in-game menu or recording has finished"
             return
-        window = True if MAC else frontend_window()  # (on a Mac the helper lives in the window: an update goes in when asked, or when idle)
+        window = True if POSIX else frontend_window()  # (on a Mac and Linux the helper lives in the window: an update goes in when asked, or when idle)
         if window and action != "install":
             return  # it goes in once the frontend is closed
         if file_sha256(ready) != digest:  # changed since it was downloaded
             os.remove(ready)
             raise ValueError("the downloaded update changed on disk, so it will be fetched again")
-        if window and not MAC and not close_window(window):
+        if window and not POSIX and not close_window(window):
             raise ValueError("the frontend didn't close")
         UPDATE["state"] = "installing"
         install_update(ready, rel["version"], reopen=bool(window))
@@ -11308,6 +11945,14 @@ def clean_after_update():
         bundle = mac_bundle()
         for f in ([bundle[:-4] + ".old.app", bundle[:-4] + ".new.app"] if bundle else []) + list(update_paths()[:1]):
             (shutil.rmtree if os.path.isdir(f) else os.remove)(f) if os.path.exists(f) else None
+        return
+    if LINUX:
+        image = plat_linux.appimage()
+        for f in [image + ".old", image + ".download"] if image else []:
+            try:
+                os.remove(f)
+            except OSError:
+                pass
         return
     exe = frontend_exe()
     base = exe[:-4] if exe.lower().endswith(".exe") else exe
@@ -11348,7 +11993,7 @@ def watch_updates():
     if saved.get("installing") == VERSION:  # this copy is the update: the page says so once, and reopens if it was open
         store("update.json", {**saved, "installing": None, "reopen": False,
                               "updated": {"version": VERSION, "from": saved.get("from"),
-                                          "notes": (saved.get("nightlyRelease" if is_nightly(VERSION) else "release") or {}).get("notes", "")}})
+                                          "notes": (saved.get("nightlyRelease" if is_nightly(VERSION) else "devRelease" if is_dev(VERSION) else "release") or {}).get("notes", "")}})
         if saved.get("reopen"):
             threading.Thread(target=open_frontend, daemon=True).start()
     elif saved.get("installing"):  # the release said one version but its exe is another: don't install it over and over
@@ -11367,6 +12012,9 @@ def update_view():
     rel = UPDATE["latest"] or (saved.get("release") if update_channel() == "main" else None) or {}
     newer = wanted_release(rel)
     return {"version": VERSION, "channel": update_channel(), "off": updates_off(), "state": UPDATE["state"], "error": UPDATE["error"],
+            **({"devToken": bool(dev_token())} if is_dev(VERSION) else {}),
+            **({"progress": min(100, round(UPDATE["got"] * 100 / UPDATE["size"])), "got": UPDATE["got"], "size": UPDATE["size"]}
+               if UPDATE["state"] == "downloading" and UPDATE["size"] else {}),
             "latest": rel.get("version") if newer else None, "notes": rel.get("notes", "") if newer else "", "updated": saved.get("updated")}
 
 
@@ -11378,9 +12026,9 @@ def watch_running_mac():
     while True:
         time.sleep(3)
         try:
-            wins = plat_mac.windows()
+            wins = PLAT.windows()
             folders, now = game_folders(), {}
-            paths = {pid: plat_mac.process_image(pid) for pid in {w[1] for w in wins} if pid != me}
+            paths = {pid: PLAT.process_image(pid) for pid in {w[1] for w in wins} if pid != me}
             for pid, path in paths.items():
                 hit = max((d for d in folders if path.startswith(d)), key=len, default=None)
                 if hit:
@@ -11404,10 +12052,10 @@ def focus_process_mac(pid, timeout=120):
     def run():
         deadline = time.time() + timeout
         while time.time() < deadline and FOCUS[0] == token:
-            tree = game_tree(pid) or plat_mac.process_tree(pid)
-            hit = next((w[1] for w in plat_mac.windows() if w[1] in tree), None)
+            tree = game_tree(pid) or PLAT.process_tree(pid)
+            hit = next((w[1] for w in PLAT.windows() if w[1] in tree), None)
             if hit:
-                plat_mac.activate(hit)
+                PLAT.activate(hit)
                 return
             time.sleep(0.5)
     threading.Thread(target=run, daemon=True).start()
@@ -11485,6 +12133,31 @@ def install_update_mac(ready, version):
         pass
     UPDATE["done"], UPDATE["state"] = version, "installed"
     subprocess.Popen(["/bin/sh", "-c", 'sleep 1.5; open -n "$0"', bundle], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    threading.Timer(0.3, lambda: os._exit(0)).start()  # the window lives in this process: it goes, and the new copy opens
+
+
+def install_update_linux(ready, version):
+    """Put the new AppImage where this one is (a running AppImage can be replaced: it runs from its own mount), then open it
+    and leave. This one stays beside it as <name>.old until the new one has run (clean_after_update). In the Deck's Game Mode
+    the new copy isn't opened from here (gamescope only shows what Steam starts): Steam's library opens it next time."""
+    image = plat_linux.appimage()
+    if not image:
+        raise ValueError("this copy doesn't run from an AppImage")
+    os.chmod(ready, 0o755)
+    old = image + ".old"
+    try:
+        os.remove(old)
+    except OSError:
+        pass
+    try:  # (a second name for the same file: the replace below then leaves it as the old version)
+        os.link(image, old)
+    except OSError:
+        shutil.copy2(image, old)
+    os.replace(ready, image)
+    store("update.json", {**load("update.json", {}), "installing": version, "from": VERSION, "reopen": True})
+    UPDATE["done"], UPDATE["state"] = version, "installed"
+    if not plat_linux.game_mode():
+        plat_linux.popen(["/bin/sh", "-c", 'sleep 1.5; exec "$0"', image], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     threading.Timer(0.3, lambda: os._exit(0)).start()  # the window lives in this process: it goes, and the new copy opens
 
 
@@ -11617,6 +12290,50 @@ def watch_controller_mac():
                 pad_emit(d, "mac")
 
 
+# The controller on Linux, read from evdev (plat_linux.Pads): any pad the kernel knows, and on a Steam Deck the one Steam
+# Input presents (Game Mode starts the frontend as a non-Steam game, so Steam gives it a virtual Xbox pad). As on a Mac:
+# the frontend's menus while it's in front, the home button (or View + Menu) to bring it forward.
+def watch_controller_linux():
+    pads = plat_linux.Pads()
+    held, repeat, combo, last_open = {}, {}, {}, 0.0
+    while True:
+        front = frontend_in_front()
+        time.sleep(0.016 if front else 0.05)
+        now = time.time()
+        dirs = set()
+        try:
+            states = pads.states()
+        except Exception:
+            states = []
+        for i, (_, b, d) in enumerate(states):
+            was = held.get(i, {})
+            held[i] = b
+            pressed = {k for k, v in b.items() if v and not was.get(k)}
+            if not front and config().get("guideOpens") and ("home" in pressed or (b["view"] and b["menu"])) and now - last_open > 2:
+                last_open = now
+                open_frontend()
+            if b["view"] and pressed - {"view"}:
+                combo[i] = True
+            if was.get("view") and not b["view"] and not combo.pop(i, False) and front:
+                pad_emit("system", "evdev")  # View on its own: Quick Access
+            if not front or b["view"]:
+                continue
+            for k, action in MAC_BUTTONS.items():
+                if k in pressed:
+                    pad_emit(action, "evdev")
+            dirs |= {k for k, v in d.items() if v}
+        PAD["pads"] = len(states)
+        for d in ("up", "down", "left", "right"):  # held directions repeat like a key: once, then steadily after a pause
+            if d not in dirs:
+                repeat.pop(d, None)
+            elif d not in repeat:
+                repeat[d] = now + 0.38
+                pad_emit(d, "evdev")
+            elif now >= repeat[d]:
+                repeat[d] = now + 0.09
+                pad_emit(d, "evdev")
+
+
 # Emulators on a Mac: each from its own project's downloads (GitHub releases, or Dolphin's own site), into ~/Applications.
 # (emulator, "mac") installs from MAC_DOWNLOADS; "manual" only shows the project page (Homebrew or the site has it).
 _MAC_MANUAL = lambda name: (name, "manual")
@@ -11649,7 +12366,7 @@ MAC_DOWNLOADS = {
     "KytyPS5": ("KytyPS5/KytyPS5", None, r"-macOS-x86_64\.zip$", "Kyty*"),
     "PPSSPP": ("hrydgard/ppsspp", r"^PPSSPPSDL-macOS-v[\d.]+\.zip$", None, "PPSSPP*.app"),
     "Vita3K": ("Vita3K/Vita3K", r"^macos-arm64-latest\.dmg$", r"^macos-latest\.dmg$", "Vita3K.app"),
-    "Eglantine": ("Djihads80/Eglantine", r"^eglantine-macos-arm64\.zip$", None, "Eglantine*.app"),
+    "Eglantine": ("Djihads80/eglantine", r"^eglantine-macos-arm64\.zip$", None, "Eglantine*.app"),
     "Cemu": ("cemu-project/Cemu", None, r"^cemu-[\d.]+-macos-\d+-x64\.dmg$", "Cemu.app"),
     "Dolphin": ("https://dl.dolphin-emu.org/releases/2609a/dolphin-2609a-universal.dmg", None, None, "Dolphin.app"),  # its own site, as on Windows
     "ares": ("ares-emulator/ares", r"^ares-macos-universal\.zip$", None, "ares.app"),
@@ -11671,8 +12388,38 @@ MAC_DOWNLOADS = {
 }
 
 
+# Emulators on Linux (a Steam Deck first): from Flathub for this user ("flatpak:<app id>", no password asked), RetroArch from
+# Flathub plus one core where there's no standalone emulator there, "manual" where only the project's page has it.
+_LINUX_MANUAL = lambda name: (name, "manual")
+EMU_INSTALL_LINUX = {
+    "PS1": ("RetroArch", "retroarch:swanstation"), "PS2": ("PCSX2", "flatpak:net.pcsx2.PCSX2"), "PS3": ("RPCS3", "flatpak:net.rpcs3.RPCS3"),
+    "PS4": _LINUX_MANUAL("shadPS4"), "PS5": _LINUX_MANUAL("KytyPS5"), "PSP": ("PPSSPP", "flatpak:org.ppsspp.PPSSPP"),
+    "PS Vita": _LINUX_MANUAL("Vita3K"), "Switch 2": _LINUX_MANUAL("Eglantine"), "Switch": _LINUX_MANUAL("Eden"),
+    "Wii U": ("Cemu", "flatpak:info.cemu.Cemu"), "Wii": ("Dolphin", "flatpak:org.DolphinEmu.dolphin-emu"),
+    "GameCube": ("Dolphin", "flatpak:org.DolphinEmu.dolphin-emu"), "N64": ("ares", "flatpak:dev.ares.ares"),
+    "SNES": ("Snes9x", "flatpak:com.snes9x.Snes9x"), "3DS": ("Azahar", "flatpak:org.azahar_emu.Azahar"),
+    "DS": ("melonDS", "flatpak:net.kuribo64.melonDS"), **{s: ("mGBA", "flatpak:io.mgba.mGBA") for s in ("GBA", "GBC", "Game Boy")},
+    "Xbox 360": _LINUX_MANUAL("Xenia Canary"), "Xbox": ("xemu", "flatpak:app.xemu.xemu"),
+    "NES": ("RetroArch", "retroarch:mesen"), "FDS": ("RetroArch", "retroarch:mesen"),
+    **{s: _LINUX_MANUAL("Mesen") for s in ("PC Engine", "PC Engine CD", "WonderSwan", "SG-1000")},
+    **{s: _LINUX_MANUAL("Mednafen") for s in ("Virtual Boy", "Neo Geo Pocket", "Atari Lynx", "PC-FX")},
+    **{s: ("ares", "flatpak:dev.ares.ares") for s in ("Genesis", "Sega CD", "32X", "Master System", "Game Gear", "64DD")},
+    **{s: ("Flycast", "flatpak:org.flycast.Flycast") for s in ("Dreamcast", "NAOMI", "NAOMI 2", "Atomiswave")},
+    **{s: ("MAME", "flatpak:org.mamedev.MAME") for s in ("Atari 7800", "Arcade", "Neo Geo", "Neo Geo CD", "CD-i", "Intellivision", "Vectrex", "Odyssey 2", "Game & Watch")},
+    **{s: _LINUX_MANUAL("openMSX") for s in ("ColecoVision", "MSX")},
+    **{s: _LINUX_MANUAL("Atari800") for s in ("Atari 5200", "Atari 8-bit")},
+    **{s: _LINUX_MANUAL("VICE") for s in ("C64", "VIC-20")},
+    "Saturn": ("RetroArch", "retroarch:mednafen_saturn"), "Model 3": _LINUX_MANUAL("Supermodel"),
+    "Atari 2600": ("Stella", "flatpak:io.github.stella_emu.Stella"), "Atari Jaguar": _LINUX_MANUAL("BigPEmu"), "Atari ST": _LINUX_MANUAL("Hatari"),
+    "3DO": ("RetroArch", "retroarch:opera"), "Pokemon Mini": ("RetroArch", "retroarch:pokemini"), "Amstrad CPC": ("RetroArch", "retroarch:cap32"),
+    "N-Gage": _LINUX_MANUAL("EKA2L1"), "Amiga": _LINUX_MANUAL("Amiberry"), "ZX Spectrum": _LINUX_MANUAL("ZEsarUX"),
+    "DOS": ("DOSBox Staging", "flatpak:io.github.dosbox-staging"), "ScummVM": ("ScummVM", "flatpak:org.scummvm.ScummVM"),
+    "Apple II": _LINUX_MANUAL("AppleWin"), "Flash": _LINUX_MANUAL("Ruffle"),
+}
+
+
 def emu_table():
-    return EMU_INSTALL_MAC if MAC else EMU_INSTALL
+    return EMU_INSTALL_MAC if MAC else EMU_INSTALL_LINUX if LINUX else EMU_INSTALL
 
 
 def mac_asset(name):
@@ -11698,7 +12445,7 @@ def mac_asset(name):
         if found:
             a = found[0][1]
             url = a["browser_download_url"]
-            if not url.startswith(f"https://github.com/{r}/releases/download/"):
+            if not on_project(url, r):
                 raise ValueError(f"{name}'s download isn't on its own project")
             return url, a["name"], str(a.get("digest") or ""), a.get("size") or 0
     raise ValueError(f"{name} has no Mac download right now. Its project page may have one.")
@@ -11787,6 +12534,10 @@ def main():
         if PORT == 8137 and MAC:
             threading.Thread(target=watch_running_mac, daemon=True).start()
             threading.Thread(target=watch_controller_mac, daemon=True).start()
+            sync_autostart()
+        if PORT == 8137 and LINUX:
+            threading.Thread(target=watch_running_mac, daemon=True).start()  # (the same watcher: windows through plat_linux)
+            threading.Thread(target=watch_controller_linux, daemon=True).start()
             sync_autostart()
         if PORT == 8137 and WIN:  # only the real helper (a test copy would fire every shortcut twice); XInput is Windows-only
             threading.Thread(target=watch_controller, daemon=True).start()

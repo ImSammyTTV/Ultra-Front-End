@@ -31,15 +31,43 @@ def webview_args():
     """Trailers start with sound, like they do in Edge, and no pinch zoom on touch screens. For this process's WebView2 only
     (games started from here inherit the environment), added to any value of the user's own. Returns the undo, for once
     WebView2 has started."""
-    own = os.environ.get(WEBVIEW_ARGS)
-    os.environ[WEBVIEW_ARGS] = " ".join(filter(None, [own, "--autoplay-policy=no-user-gesture-required --disable-pinch"]))
+    var = "QTWEBENGINE_CHROMIUM_FLAGS" if server.LINUX else WEBVIEW_ARGS  # (Linux builds show the page in Qt's Chromium)
+    own = os.environ.get(var)
+    os.environ[var] = " ".join(filter(None, [own, "--autoplay-policy=no-user-gesture-required --disable-pinch"]))
 
     def undo():
         if own is None:
-            os.environ.pop(WEBVIEW_ARGS, None)
+            os.environ.pop(var, None)
         else:
-            os.environ[WEBVIEW_ARGS] = own
+            os.environ[var] = own
     return undo
+
+
+def linux_already_open():
+    """Linux has no single-instance rule of its own: a second start brings the open window forward and leaves. The window
+    holds a lock on data/window.lock while it's open."""
+    import fcntl
+    try:
+        LOCK["file"] = open(os.path.join(server.DATA, "window.lock"), "w")
+        fcntl.flock(LOCK["file"], fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return False
+    except OSError:
+        try:
+            req = urllib.request.Request(URL + "/api/show", data=b"{}", headers={"X-Frontend": "1", "Content-Type": "application/json"})
+            urllib.request.urlopen(req, timeout=3).close()
+        except OSError:
+            pass
+        return True
+
+
+LOCK = {}
+
+
+def window_pick(window, kind):
+    """A file or folder picker from the window itself (Qt's), where Linux has no zenity or kdialog."""
+    found = window.create_file_dialog(webview.FileDialog.FOLDER if kind == "dir" else webview.FileDialog.OPEN, directory=os.path.expanduser("~"))
+    path = (found[0] if isinstance(found, (list, tuple)) else found) if found else None
+    return path.rstrip("/") or "/" if path else None
 
 
 def helper_up():
@@ -964,6 +992,8 @@ def main():
         return
     if server.MAC and move_to_applications_mac():
         return
+    if server.LINUX and linux_already_open():
+        return window_log("already open: brought it forward")
     took_over = helper_up() and replace_old_helper()
     own = not helper_up()  # one already running (in the background, or pythonw server.py) is reused, unless it was an older build
     if own and server.WIN and getattr(sys, "frozen", False) and (start_helper() or helper_up()):
@@ -988,16 +1018,25 @@ def main():
         window = webview.create_window("Ultra Front End", URL, frameless=True, easy_drag=False, background_color="#070c1a", hidden=True, js_api=Api())
         webview.start(cover_screen_mac, window, private_mode=False, storage_path=os.path.join(server.DATA, "webview"))
     else:
-        window = webview.create_window("Ultra Front End", URL, fullscreen=full, background_color="#070c1a", js_api=Api())
+        # on Linux also the screen's size and corner: a session with no window manager to honour full screen (a kiosk, or
+        # some Game Mode set-ups) still gets the whole screen
+        size = dict(zip(("width", "height"), server.screen_size()), x=0, y=0) if server.LINUX and full else {}
+        window = webview.create_window("Ultra Front End", URL, fullscreen=full, background_color="#070c1a", js_api=Api(), **size)
         window.events.loaded += lambda: (undo_args(), window_log("page loaded"))
-        webview.start(private_mode=False, storage_path=os.path.join(server.DATA, "webview"))
+        if server.LINUX:
+            server.WINDOW_PICK[:] = [lambda kind, title: window_pick(window, kind)]
+        # the Linux build carries Qt's web engine (SteamOS has no WebKitGTK to rely on); from source, whichever is installed
+        gui = "qt" if server.LINUX and getattr(sys, "frozen", False) else None
+        if gui:  # X11 first (on a Wayland desktop through XWayland), so plat_linux can see and raise windows; Wayland if that's all there is
+            os.environ.setdefault("QT_QPA_PLATFORM", "xcb;wayland")
+        webview.start(gui=gui, private_mode=False, storage_path=os.path.join(server.DATA, "webview"))
     window_log("window closed")
     if server.WIN and TRAY.get("mutex"):  # window closed: if this stays in the tray, the next start must be free to open one
         import ctypes
         ctypes.windll.kernel32.CloseHandle(ctypes.c_void_p(TRAY["mutex"]))
     if own and TRAY["icon"] and not TRAY["quit"].is_set():  # window closed: stay in the tray until Exit there
         TRAY["quit"].wait()
-    elif own and server.config().get("guideOpens") and not server.MAC:  # keep listening for the Xbox button after the window closes (a Mac app just quits)
+    elif own and server.config().get("guideOpens") and server.WIN:  # keep listening for the Xbox button after the window closes (a Mac or Linux app just quits)
         threading.Event().wait()
     os._exit(0)  # window closed: stop the helper threads too
 

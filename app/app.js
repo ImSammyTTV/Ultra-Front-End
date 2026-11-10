@@ -1,6 +1,7 @@
 // Home screen: one row of covers, round shortcut buttons, source tabs.
 const ON_MAC = /Macintosh|Mac OS X/.test(navigator.userAgent), ON_ANDROID = /Android/.test(navigator.userAgent),
   HERE = ON_MAC ? 'this Mac' : ON_ANDROID ? 'this device' : 'this PC';  // the page's word for the computer
+const ON_LINUX = /Linux|X11/.test(navigator.userAgent) && !ON_ANDROID, UNIX = ON_MAC || ON_LINUX;  // (Linux: the Steam Deck first)
 // Focus zones (up/down): 0 = game row, 1 = buttons, 2 = source tabs.
 const $ = q => document.querySelector(q);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -146,7 +147,7 @@ const PLATFORM_ORDER = ['PC', 'PS5', 'PS4', 'PS3', 'PS2', 'PS1', 'PSP', 'PS Vita
   'PC Engine', 'PC Engine CD', 'PC-FX', 'Neo Geo', 'Neo Geo CD', 'Neo Geo Pocket', 'Atari Jaguar', 'Atari Lynx', 'Atari 7800', 'Atari 5200', 'Atari 2600',
   'Atari ST', 'Atari 8-bit', 'WonderSwan', 'Arcade', '3DO', 'CD-i', 'ColecoVision', 'Intellivision', 'Vectrex', 'Odyssey 2', 'N-Gage',
   'DOS', 'ScummVM', 'C64', 'VIC-20', 'Amiga', 'ZX Spectrum', 'Amstrad CPC', 'MSX', 'Apple II', 'Flash'];
-const platformOf = g => g.source === 'Emulators' ? (g.system || g.group) : g.source === 'Android' ? 'Android' : 'PC';
+const platformOf = g => g.egg ? '' : g.source === 'Emulators' ? (g.system || g.group) : g.source === 'Android' ? 'Android' : 'PC';
 // Platform logos (Simple Icons, Wikimedia Commons) for the tab bar; consoles without a free logo of their own use their maker's.
 const SGDB_LOGO = 'steamgriddb.png';  // white-on-transparent version of SteamGridDB's logo
 const PLATFORM_LOGO = { PC: 'windows11', PS5: 'playstation5', PS4: 'playstation4', PS3: 'playstation3', PS2: 'playstation2', PS1: 'playstation',
@@ -178,14 +179,15 @@ function tabIcon(name) {
 }
 async function loadLibrary() {
   if (API) {
-    try { const r = await api('/api/library'); LIB = r.games; libStamp = r.scanned; window.addonEmit?.('library', LIB.length); } catch (e) { toast(e.message); }
+    // (the tile for a game that's nearly out goes once it's been out two days, even with the app left open)
+    try { const r = await api('/api/library'); LIB = r.games.filter(g => !g.egg || Date.now() < eggOut(g).getTime() + 3 * 864e5); libStamp = r.scanned; window.addonEmit?.('library', LIB.length); } catch (e) { toast(e.message); }
   } else {
     LIB = (window.LIBRARY || []).map(g => ({ ...g, group: g.source === 'Ports' ? 'PC Ports' : g.source, installed: true, lastPlayed: Date.now() / 1000 - g.lastPlayed * 86400 }));
   }
   // Tabs are platforms, in console-family order; only platforms with games get a tab.
   // Hidden games stay out of every tab; they're listed under Settings > Hidden games.
   const rank = n => (PLATFORM_ORDER.indexOf(n) + 1) || 99;
-  const platforms = [...new Set(LIB.filter(g => !g.hidden).map(platformOf))].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+  const platforms = [...new Set(LIB.filter(g => !g.hidden && !g.egg).map(platformOf))].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
   TABS = [{ name: 'All Games', has: g => !g.hidden },
     ...(LIB.some(g => !g.hidden && g.favorite) ? [{ name: 'Favourites', has: g => !g.hidden && g.favorite }] : []),
     ...platforms.map(n => ({ name: n, has: g => !g.hidden && platformOf(g) === n }))];
@@ -379,7 +381,7 @@ const strip = $('#strip');
 // played since counts as played when it arrived, so new games show at the front.
 const NEW_FOR = 3 * 86400;
 const recency = g => Math.max(g.lastPlayed || 0, g.added && Date.now() / 1000 - g.added < NEW_FOR ? g.added : 0);
-const byRecent = (a, b) => recency(b) - recency(a) || (b.installed !== false) - (a.installed !== false) || a.title.localeCompare(b.title);
+const byRecent = (a, b) => !!b.egg - !!a.egg || recency(b) - recency(a) || (b.installed !== false) - (a.installed !== false) || a.title.localeCompare(b.title);
 // ---------- games that are already running ----------
 let RUN = new Set();
 async function watchRunning() {
@@ -441,7 +443,7 @@ function tileHTML(g, i, animate) {
     <div class="art"><div class="ph"><span>${esc(g.title)}</span></div>
     ${g.cover ? `<img src="${esc(g.cover)}" alt="" draggable="false" loading="lazy" onerror="coverRetry(this)">` : ''}</div>
     ${g.coverAnim ? `<img class="anim-cover" data-anim="${esc(g.coverAnim)}" alt="" draggable="false" onerror="this.remove()">` : ''}
-    ${g.favorite ? `<i class="fav">${icon('star')}</i>` : ''}${RUN.has(g.id) ? '<i class="runtag">Running</i>' : ''}<div class="frame"></div></div>`;
+    ${g.favorite ? `<i class="fav">${icon('star')}</i>` : ''}${RUN.has(g.id) ? '<i class="runtag">Running</i>' : ''}${g.egg ? `<i class="egg-count">${esc(eggLeft(g))}</i>` : ''}<div class="frame"></div></div>`;
 }
 let rowKey = '';
 function buildRow(animate) {
@@ -602,6 +604,7 @@ const heroOf = g => HERO_CACHE[g.id] ??= (API ? api('/api/hero?id=' + encodeURIC
 let animTimer = 0;
 function animateBackground(g) {
   clearTimeout(animTimer);
+  if (g?.egg) return;  // its background is a still picture
   if (!g || !HERO_ANIM[g.id]) return;
   animTimer = setTimeout(() => {
     if (game()?.id !== g.id || !S.artBg) return;
@@ -882,6 +885,7 @@ async function openEmulatorFor(g) {
 }
 async function launchGame(g) {
   if (S.busy || !g) return;
+  if (g.egg) return eggPlay(g);
   if (RUN.has(g.id)) return resumeGame(g);  // never a second copy
   window.addonEmit?.('game:start', { game: { id: g.id, title: g.title, platform: g.platform, cover: g.cover } });
   // The game's own logo alone in the middle, over its art dimmed behind; its name in large type until (or unless) a
@@ -949,9 +953,52 @@ addEventListener('focus', async () => {
 let libStamp = 0;
 let pageStamp = 0;
 let sysStamp = 0;
+// ---------- library update progress ----------
+// A big batch of ROMs takes a while to read and find covers for, and browsing meanwhile stutters (the helper is busy, and the
+// library reloads at the end): a scan running over 2 seconds shows a window with how far it has got. B or A tucks it into a
+// small pill in the corner, to keep browsing; the library reloads once, when the scan is done.
+const SC = { polling: false, shown: false, mini: false };
+const SC_PHASE = { games: 'Reading your games', covers: 'Finding covers' };
+function scanTick() {
+  if (SC.polling) return;
+  SC.polling = true;
+  const step = async () => {
+    let p;
+    try { p = await api('/api/scan'); } catch { p = { active: false }; }
+    if (!p.active) { SC.polling = false; scanHide(); return watchLibrary(); }
+    scanShow(p);
+    setTimeout(step, 400);
+  };
+  step();
+}
+function scanShow(p) {
+  // only over the home screen: a menu, a game launching or the intro has the screen to itself (a settings change scans while it says "Working…")
+  const blocked = P.open || Q.open || SP.open || V.open || S.busy || INTRO.open || PT.open;
+  if (p.seconds < 2 || blocked && !SC.shown) return;
+  let box = $('#scanbox');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'scanbox';
+    box.innerHTML = `<div class="sc-card"><h2>Updating your library</h2><div class="sc-line"></div><div class="sc-bar"><i></i></div>
+      <div class="sc-foot">Press A or B to keep browsing while it finishes</div></div><div class="sc-pill"><span></span><div class="sc-bar"><i></i></div></div>`;
+    box.addEventListener('click', e => { e.stopPropagation(); SC.mini = !SC.mini; box.classList.toggle('mini', SC.mini); });
+    document.body.appendChild(box);
+  }
+  SC.shown = true;
+  box.classList.toggle('mini', SC.mini);
+  const frac = p.total ? p.done / p.total : 0;
+  box.querySelector('.sc-line').textContent = `${SC_PHASE[p.phase] || 'Working'}${p.total ? ` · ${p.done} of ${p.total}` : '…'}`;
+  box.querySelector('.sc-pill span').textContent = `Updating library${p.total ? ` · ${Math.round(frac * 100)}%` : '…'}`;
+  box.querySelectorAll('.sc-bar').forEach(b => { b.classList.toggle('wait', !p.total); b.firstChild.style.width = `${frac * 100}%`; });
+}
+function scanHide() {
+  SC.shown = false; SC.mini = false;
+  $('#scanbox')?.remove();
+}
 async function watchLibrary() {
   let r;
   try { r = await api('/api/ping'); } catch { return; }
+  if (r.scan?.active) scanTick();
   // New page files: refresh by itself, but only on the plain home screen so nothing is interrupted
   if (r.page && pageStamp && r.page !== pageStamp) {
     if (!S.busy && S.zone === 0 && !document.body.className.match(/-open/)) return location.reload();
@@ -1019,13 +1066,29 @@ async function afterLibraryChange() {
   if (D.open) D.game = LIB.find(x => x.id === D.game.id) || D.game;  // the ⋯ and Y menus read it
 }
 // A name of your own for a game, typed on the on-screen keyboard (or a real one), starting from the name it has now
+// then, which game it is: Wikipedia's games by that name to pick from, so its details come from the right article
 function renameGame(g) {
-  openSearch(null, text => setGameName(g, text.trim()), { id: 'rename', label: `New name for ${g.title}`, max: 120 });
+  openSearch(null, text => pickGameName(g, text.trim()), { id: 'rename', label: `New name for ${g.title}`, max: 120 });
   $('#srq').value = g.title; searchRun();
 }
-async function setGameName(g, title) {
-  if (title === g.title) return;
-  try { await api('/api/game/rename', { id: g.id, title }); } catch (e) { return toast(e.message); }
+async function pickGameName(g, typed) {
+  if (!typed) return setGameName(g, '');  // empty: back to the game's own name
+  toast('Looking for games by that name…', 2500);
+  let found = [], why = '';
+  try { found = (await api('/api/game/names', { query: typed })).games || []; } catch { why = 'Couldn’t reach Wikipedia'; }
+  if (!found.length) {  // nothing found (or no internet): the name as typed, and it says why there's no list
+    if (typed === g.title) return toast(`${why || 'No games found by that name'}. The name is unchanged.`, 4000);
+    await setGameName(g, typed);
+    return toast(`${why || 'No games found by that name'}: renamed to ${typed} as typed`, 4000);
+  }
+  sysMenu('Which game is it?', [
+    ...found.map(f => ({ label: f.about ? `${f.title} · ${f.about}` : f.title, ic: icon('pad'), run: () => setGameName(g, f.title, f.page) })),
+    { label: `Just call it “${typed}”`, ic: icon('keyboard'), run: () => setGameName(g, typed) },
+  ]);
+}
+async function setGameName(g, title, wiki = '') {
+  if (title === g.title && wiki === (g.wikiPage || '')) return;
+  try { await api('/api/game/rename', { id: g.id, title, wiki }); } catch (e) { return toast(e.message); }
   delete DCACHE[g.id];  // a new name can find other details
   await afterLibraryChange();
   if (D.open) renderDetails();  // its title, now
@@ -1116,7 +1179,8 @@ function schedulePrefetch(g) { clearTimeout(prefetchTimer); prefetchTimer = setT
 async function openDetails(g, from = null) {  // from: the Library or Search page it was opened on, which B goes back to
   if (!g) return;
   Object.assign(D, { open: true, game: g, data: null, col: 0, row: 0, a: 0, m: 0, n: 0, menu: false, mi: 0, from });
-  window.addonEmit?.('game:details', { game: { id: g.id, title: g.title, platform: g.platform, cover: g.cover } });
+  if (g.egg) eggDetails(g);  // its own theme (an add-on's theme music doesn't pick one for it)
+  else window.addonEmit?.('game:details', { game: { id: g.id, title: g.title, platform: g.platform, cover: g.cover } });
   document.body.classList.add('details-open');
   tick(520, .09);
   const c = detailsFor(g);
@@ -1145,7 +1209,7 @@ async function openDetails(g, from = null) {  // from: the Library or Search pag
     renderNews();
   });
 }
-function closeDetails() { if (D.open) window.addonEmit?.('game:details:close', { game: D.game ? { id: D.game.id, title: D.game.title } : null }); D.open = false; document.body.classList.remove('details-open'); tick(420, .06); }
+function closeDetails() { eggStop(); if (D.open) window.addonEmit?.('game:details:close', { game: D.game ? { id: D.game.id, title: D.game.title } : null }); D.open = false; document.body.classList.remove('details-open'); tick(420, .06); }
 function renderDetails() {
   const g = D.game, d = D.data, root = $('#details');
   const logo = root.querySelector('.d-logo');
@@ -1160,7 +1224,7 @@ function renderDetails() {
       if (im) im.onload = () => { if (D.game === g && logo.dataset.for === g.id + '|' + wantLogo) { logo.innerHTML = ''; logo.appendChild(im); } };
     }
   }
-  root.querySelector('.d-meta').textContent = [g.system || g.group, ...(d?.genres || []), d?.developer].filter(Boolean).join('   ·   ');
+  root.querySelector('.d-meta').textContent = [g.system || g.group, ...(d?.genres || []), d?.developer, g.egg && eggLeft(g, true)].filter(Boolean).join('   ·   ');
   root.querySelector('.d-desc').textContent = d?.description || '';
   const shots = mediaItems().map((m, i) => `<div class="d-media${m.kind === 'video' ? ' video' : ''}" data-i="${i}"><img src="${esc(m.thumb)}" alt="" loading="lazy">${m.kind === 'video' ? `<span class="pb">${ICON_PLAY}</span>` : ''}</div>`).join('');
   if (root.querySelector('.d-shots').dataset.html !== shots) { root.querySelector('.d-shots').dataset.html = shots; root.querySelector('.d-shots').innerHTML = shots; }  // unchanged: left alone
@@ -1373,6 +1437,7 @@ function showMedia(i) {
   V.i = (i + V.items.length) % V.items.length;
   const m = V.items[V.i], stage = $('#viewer .v-stage');
   stopVideo();
+  themesQuiet(m.kind === 'video');  // a trailer has its own sound: theme music waits
   if (m.youtube) {
     stage.innerHTML = '<div id="youtube-trailer"></div>';
     loadYouTubePlayer().then(() => {
@@ -1408,7 +1473,15 @@ function stopVideo() {
   const v = $('#viewer video');
   if (v) { v.onerror = null; v.pause(); v.removeAttribute('src'); v.load(); }
 }
-function closeViewer() { stopVideo(); $('#viewer .v-stage').innerHTML = ''; V.open = false; document.body.classList.remove('viewer-open'); tick(420, .06); }
+function closeViewer() { stopVideo(); $('#viewer .v-stage').innerHTML = ''; V.open = false; document.body.classList.remove('viewer-open'); themesQuiet(false); tick(420, .06); }
+// Theme music (the add-on's, and the nearly-out tile's) is silent while a video plays here or while any game is running
+function themesQuiet(video) {
+  const was = document.body.classList.contains('video-playing');
+  document.body.classList.toggle('video-playing', video);
+  if (was !== video) window.addonEmit?.(video ? 'video:start' : 'video:stop');
+  eggCheck();
+}
+const musicMayPlay = () => !document.body.classList.contains('video-playing') && !RUN.size;
 function viewerToggle() { if (V.youtube?.getPlayerState) { V.youtube.getPlayerState() === 1 ? V.youtube.pauseVideo() : V.youtube.playVideo(); return; } const v = $('#viewer video'); if (v) v.paused ? v.play() : v.pause(); }
 $('#viewer').addEventListener('click', e => {
   const th = e.target.closest('.v-thumb');
@@ -2504,21 +2577,55 @@ const pageMode = () => !P.game && !P.setup;
 const subReturn = () => P.returnTo || SUB_VIEW[P.view] || 'accounts';
 const catOf = v => SUB_VIEW[v] && SETTINGS.some(c => c.id === P.returnTo) ? P.returnTo : SUB_VIEW[v] || v;  // SteamGridDB from Artwork & info is under Artwork & info
 // Settings > About: this version, and the newer one from the GitHub project's releases when there is one
+// While an update is checked for, downloads or installs, About keeps asking how far it is, so its bar moves (whether
+// it was started here or found by itself in the background)
+let aboutWatching = false;
+async function watchUpdate() {
+  if (aboutWatching) return;
+  aboutWatching = true;
+  try {
+    while (P.open && P.view === 'about') {
+      await new Promise(r => setTimeout(r, 500));
+      let u;
+      try { u = await api('/api/update'); } catch { break; }
+      if (P.data) P.data.update = u;
+      if (P.open && P.view === 'about') renderPanel();
+      if (!['checking', 'downloading', 'installing'].includes(u.state)) break;
+    }
+  } finally { aboutWatching = false; }
+}
 function updateRows(u) {
   if (!u) return [];
+  if (['checking', 'downloading', 'installing'].includes(u.state)) setTimeout(watchUpdate);
   const ready = u.latest && u.state === 'ready';
-  const note = u.off || u.error || { checking: 'Checking for a new version…', downloading: `Downloading version ${u.latest}…`,
+  const mb = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0);
+  const note = u.off || u.error || { checking: 'Checking for a new version…',
+    downloading: u.progress != null ? `Downloading version ${u.latest}… ${u.progress}% (${mb(u.got)} of ${mb(u.size)} MB)` : `Downloading version ${u.latest}…`,
     ready: `Version ${u.latest} is ready. It installs by itself when the frontend is closed or left alone for a few minutes.`, installing: `Installing version ${u.latest}…`,
     installed: `Version ${u.latest} is installed and takes over the next time the frontend opens` }[u.state]
     || (u.latest ? `Version ${u.latest} is available` : u.state === 'current' ? 'This is the newest version' : 'Looks for new versions every few hours');
   const nightly = u.channel === 'nightly';
-  return [{ kind: 'info', label: `Version ${u.version}`, sub: note },
+  // a bar while it works: how far the download is, or a sliding one while it checks or installs
+  const bar = u.error ? null : u.state === 'downloading' ? u.progress ?? 'busy' : ['checking', 'installing'].includes(u.state) ? 'busy' : null;
+  return [{ kind: 'info', label: `Version ${u.version}`, sub: note, ...(bar != null ? { bar } : {}) },
     // a once-a-day anonymous check-in, so the project can count how many copies are in use
     ...(u.off || !P.data?.options ? [] : [{ kind: 'row', label: 'Count this copy', value: onOff(P.data.options.usageCheckin),
       sub: 'Checks in once a day to show roughly how many people are using Ultra Front End. It only counts copies: nothing about you or your games is included',
       act: () => setOpt('usageCheckin') }]),
+    // a dev build follows the dev builds: nothing to choose. They're private (draft releases): read with your GitHub token
+    ...(u.off || u.channel !== 'dev' ? [] : [{ kind: 'info', label: 'Updates: Dev builds',
+      sub: 'Changes being worked on, installed as soon as each one is built. Can have bugs. To go back to Main, download the latest release' },
+      { kind: 'note', label: u.devToken ? 'Your GitHub token is saved. Dev builds are private: only your token can see them.'
+        : 'Dev builds are private. To get them, paste a GitHub token: GitHub › Settings › Developer settings › Fine-grained tokens › Generate new token. Repository access: only Ultra-Front-End. Permissions: Contents, read and write (GitHub only shows drafts to tokens that can write).' },
+      { kind: 'input', id: 'devtoken', label: 'GitHub token', value: '', placeholder: u.devToken ? 'Saved (paste a new one to replace it)' : 'github_pat_…' },
+      { kind: 'row', label: 'Save token', primary: !u.devToken, act: () => setDevToken(val('devtoken')) },
+      // removing it takes a second press within 4 seconds: one press by mistake only asks
+      ...(u.devToken ? [{ kind: 'row', label: devTokenAsk ? 'Press again to remove the token' : 'Remove token',
+        sub: devTokenAsk ? 'Dev builds stop updating until a token is added again' : 'Dev builds stop updating until a token is added again. Asks first',
+        act: () => { if (devTokenAsk) { devTokenAsk = false; return setDevToken(''); }
+          devTokenAsk = true; renderPanel(); clearTimeout(devTokenAskT); devTokenAskT = setTimeout(() => { devTokenAsk = false; if (P.open) renderPanel(); }, 4000); } }] : [])]),
     // main releases, or the newest code built every night (and the releases too)
-    ...(u.off ? [] : [{ kind: 'row', label: 'Updates', value: nightly ? 'Nightly' : 'Main',
+    ...(u.off || u.channel === 'dev' ? [] : [{ kind: 'row', label: 'Updates', value: nightly ? 'Nightly' : 'Main',
       sub: nightly ? 'A build of the newest changes every night, before they’re released. Can have bugs. Choose to go back to Main'
         : 'Tested releases. Choose to get a build of the newest changes every night instead (can have bugs)',
       act: () => setChannel(nightly ? 'main' : 'nightly') }]),
@@ -2526,6 +2633,14 @@ function updateRows(u) {
     ...(u.off ? [] : [{ kind: 'row', label: u.latest ? `Update now to version ${u.latest}` : 'Check for updates',
       sub: u.latest ? 'The frontend closes and opens again on the new version' : 'If there’s a new version, it installs and the frontend opens again on it',
       act: () => updateNow('install') }])];
+}
+let devTokenAsk = false, devTokenAskT = 0;
+async function setDevToken(token) {
+  let u;
+  try { u = await api('/api/update', { action: 'devtoken', token }); } catch (e) { return toast(e.message, 5000); }
+  if (P.data) P.data.update = u;
+  renderPanel();
+  toast(!token ? 'Token removed' : u.error ? u.error : 'Token saved: looking for the newest dev build…', 5000);
 }
 async function setChannel(channel) {
   let u;
@@ -2539,10 +2654,10 @@ async function updateNow(action) {
   let u;
   try { u = await api('/api/update', { action }); } catch (e) { return toast(e.message); }
   if (action === 'install') toast(u.latest ? `Updating to version ${u.latest}…` : 'Checking for a new version…', 4000);
-  for (let i = 0; i < 120 && P.open && P.view === 'about' && ['checking', 'downloading', 'installing'].includes(u.state); i++) {  // show progress while About is open
+  for (let i = 0; i < 480 && P.open && P.view === 'about' && ['checking', 'downloading', 'installing'].includes(u.state); i++) {  // show progress while About is open
     if (P.data) P.data.update = u;
     renderPanel();
-    await new Promise(r => setTimeout(r, 2000));
+    await new Promise(r => setTimeout(r, 500));  // often enough for the bar to move smoothly
     try { u = await api('/api/update'); } catch { break; }
   }
   if (P.data) P.data.update = u;
@@ -2774,9 +2889,11 @@ function panelItems() {
   if (P.view === 'art') {
     const A = P.art;
     return [
+      ...(A.note && !A.loading ? [{ kind: 'note', warn: true, label: A.note }] : []),  // SteamGridDB unreachable: libretro's art only
       ...(A.loading ? [{ kind: 'note', label: 'Loading artwork…' }]
         : A.grids.length ? A.grids.map(a => ({ kind: 'thumb', thumb: a.thumb, badge: a.animated ? 'Animated' : '', label: a.author ? `by ${a.author}` : '', act: () => chooseArt(a.url) }))
-        : [{ kind: 'note', label: !A.current && A.games.length ? 'Which game is it? Pick it below, or search by name.'
+        : [{ kind: 'note', label: A.missing ? `SteamGridDB doesn’t list “${A.missing}” yet. New games often take a few weeks to get artwork there: try again later, or pick another game below.`
+          : !A.current && A.games.length ? 'Which game is it? Pick it below, or search by name.'
           : `No ${P.artKind === 'logo' ? 'logos' : P.artKind === 'hero' ? 'backgrounds' : 'covers'} found for this game. Try another name below.` }]),
       { kind: 'head', label: A.current ? `Showing: ${A.current.name}${A.current.year ? ` (${A.current.year})` : ''}. Not the right game?` : 'Search' },
       ...A.games.filter(x => !A.current || x.id !== A.current.id).map(x => ({ kind: 'row', label: `${x.name}${x.year ? ` (${x.year})` : ''}`, act: () => loadArt({ sgdbId: x.id, query: A.query }) })),
@@ -2878,7 +2995,7 @@ function panelItems() {
   return [  // general
     ...(/Windows/.test(navigator.userAgent) ? [{ kind: 'row', label: 'Start with Windows', value: STARTUP.find(s => s.mode === startupMode(d)).label.replace(/^Don’t start with Windows$/, 'Off'),
       sub: STARTUP.find(s => s.mode === startupMode(d)).sub, act: () => setStartup(STARTUP[(STARTUP.findIndex(s => s.mode === startupMode(d)) + 1) % STARTUP.length].mode) }] : []),
-    ...(ON_MAC ? [{ kind: 'row', ic: icon('power'), label: 'Open at login', value: onOff(startupMode(d) === 'open'), sub: 'Opens full screen when you sign in to your Mac',
+    ...(UNIX ? [{ kind: 'row', ic: icon('power'), label: 'Open at login', value: onOff(startupMode(d) === 'open'), sub: ON_MAC ? 'Opens full screen when you sign in to your Mac' : 'Opens full screen when you sign in to the desktop (on a Steam Deck, Desktop Mode)',
       act: () => setStartup(startupMode(d) === 'open' ? 'off' : 'open') }] : []),
     ...autologonRows(d),
     ...(/Windows/.test(navigator.userAgent) ? [{ kind: 'row', label: 'Do not disturb while playing', value: onOff(d.options.dndWhilePlaying), sub: 'Windows’ notification pop-ups stay hidden while a game is running, and come back after', act: () => setOpt('dndWhilePlaying') }] : []),
@@ -3103,7 +3220,7 @@ async function chooseRomRoot(useDefault) {
 // Runs inside the panel as a centred card: welcome, profile, time zone, accounts, games, done.
 // a Mac has no Windows-only extras (the performance overlay) or start-with-Windows step
 const SETUP_STEPS = ['setup-welcome', 'setup-profile', 'setup-time', ...(ON_ANDROID ? [] : ['setup-accounts']), 'setup-games', 'setup-systems',
-  ...(ON_MAC || ON_ANDROID ? [] : ['setup-extras', 'setup-startup']), 'setup-done'];
+  ...(UNIX || ON_ANDROID ? [] : ['setup-extras', 'setup-startup']), 'setup-done'];
 const SETUP_TITLES = { 'setup-welcome': 'Ultra Front End', 'setup-profile': 'Your profile', 'setup-time': 'Time zone', 'setup-accounts': 'Accounts',
   'setup-games': 'Emulators & games', 'setup-systems': 'Your systems', 'setup-extras': 'Extras', 'setup-startup': 'Starting up', 'setup-done': 'All done' };
 // Start with Windows: the choices, in Settings and in the setup guide
@@ -3203,8 +3320,8 @@ function setupItems(d, prof) {
       return [
         { kind: 'note', label: 'Emulated games: pick one ROMs folder and the frontend makes a subfolder for every console. Drop your ROMs and ISOs into the right one.' },
         ...(d.romRoot ? [{ kind: 'row', label: 'ROMs folder', sub: d.romRoot, value: '✓ Change', act: chooseRomRoot }]
-          : [{ kind: 'row', label: ON_ANDROID ? 'Use the ROMs folder on this device (recommended)' : ON_MAC ? 'Use the ROMs folder in your home folder (recommended)' : 'Use C:\\Ultra-Front-End\\ROMs (recommended)',
-            sub: ON_ANDROID ? 'Internal storage › ROMs, with a folder for each system you play inside' : ON_MAC ? '~/ROMs, with a folder for each system you play inside' : 'A folder for each system you play goes inside', value: 'Use', act: () => chooseRomRoot(true) },
+          : [{ kind: 'row', label: ON_ANDROID ? 'Use the ROMs folder on this device (recommended)' : UNIX ? 'Use the ROMs folder in your home folder (recommended)' : 'Use C:\\Ultra-Front-End\\ROMs (recommended)',
+            sub: ON_ANDROID ? 'Internal storage › ROMs, with a folder for each system you play inside' : UNIX ? `~/ROMs, with a folder for each system you play inside${ON_LINUX ? '. For an SD card, choose a different folder' : ''}` : 'A folder for each system you play goes inside', value: 'Use', act: () => chooseRomRoot(true) },
             { kind: 'row', label: 'Choose a different folder', sub: 'Somewhere else, like another drive', value: 'Choose', act: chooseRomRoot }]),
         { kind: 'row', label: 'Find installed emulators', sub: withEmu.length ? `Ready: ${withEmu.map(p => `${p.name} (${p.emulator})`).join(', ')}` : `Looks for emulators already on ${HERE}`, act: () => work(api('/api/emulators/find', {})).then(r => r && toast(r.found ? `Found ${r.found} emulator${r.found === 1 ? '' : 's'}` : 'No new emulators found', 3000)) },
         ...(ON_ANDROID ? [{ kind: 'note', label: 'Android games on this device show up by themselves.' }] : [{ kind: 'row', label: '+ Add a folder of PC games', act: () => addLib('pc'), value: pc.length ? '✓ Add another' : '',  // what's been added stays on show
@@ -3650,9 +3767,14 @@ function input(action) {
   if (window.addonEmit?.('input', action)) return;  // an add-on took this press
   if (action.startsWith('zoom') && !R.open) return;  // the right stick only zooms a post; elsewhere it does nothing
   if (INTRO.open) return endIntro(true);  // any button skips the intro
+  if (action === 'back' && $('#egg-wasted')) return eggDone(LIB.find(g => g.egg));  // B: over sooner
   // The launch screen is over everything: B takes it down; nothing else may reach the menus hidden under it
   if (S.busy) return action === 'back' ? cancelLaunch() : undefined;
   if (PT.open) return action === 'back' && !PT.live ? closePadTester() : undefined;  // a controller in use is being tested: its B is held 2 s instead
+  if (SC.shown && !SC.mini) {  // the library update window: A or B tucks it away; nothing else reaches the screen under it
+    if (action === 'back' || action === 'ok') { SC.mini = true; $('#scanbox')?.classList.add('mini'); }
+    return;
+  }
   if (SP.open) return ({ up: () => sysMove(-1), down: () => sysMove(1), left: () => sysSide(-1), right: () => sysSide(1), ok: sysOk, back: () => SP.view || SP.fold ? sysView('') : closeSys(), system: closeSys, options: () => SP.rows[SP.i]?.opt ? SP.rows[SP.i].opt() : sysDnd() })[action]?.();
   if (action === 'system') return Q.open || V.open || P.open ? undefined : openSys();
   const kb = { up: () => searchMove(0, -1), down: () => searchMove(0, 1), left: () => searchMove(-1, 0), right: () => searchMove(1, 0), ok: searchEnter, back: closeSearch,
@@ -3848,7 +3970,7 @@ function poll() {
   const t = performance.now();
   // XInput pads already come through the helper; the browser handles the rest (DualSense, Switch Pro, any pad on a Mac)
   // Only while this window has the focus: a browser reads the pad even behind a game, so B there opened the Exit menu here
-  const gp = !document.hasFocus() ? null : [...(navigator.getGamepads?.() || [])].find(p => p && !(HP.live && HP.pads && /xinput|xbox/i.test(p.id)));
+  const gp = !document.hasFocus() ? null : [...(navigator.getGamepads?.() || [])].find(p => p && !(HP.live && HP.pads && (ON_LINUX || /xinput|xbox/i.test(p.id))));  // (on Linux the helper reads every pad)
   if (gp) {
     const b = n => !!gp.buttons[n]?.pressed, ax = n => gp.axes[n] || 0;
     if (!S.pad && (gp.buttons.some(x => x.pressed) || gp.axes.some(a => Math.abs(a) > .5))) S.pad = true;
@@ -3912,6 +4034,123 @@ W.raf = requestAnimationFrame(drawWorld);
 requestAnimationFrame(poll);
 // The helper quits a while after the UI is closed (when started by Start Frontend.bat); the ping also picks up new games.
 if (API) setInterval(watchLibrary, 5000);
+
+// ---------- a tile for a game that's nearly out ----------
+// At the front of the row with a countdown to its release (local midnight). Its page plays its theme; Play has a sound
+// of its own.
+const EGG = { theme: null, sound: null };
+function eggOut(g) { const [y, m, d] = g.egg.release.split('-').map(Number); return new Date(y, m - 1, d); }
+function eggLeft(g, long) {
+  const ms = eggOut(g) - Date.now();
+  if (ms <= 0) return 'Out now';
+  const s = Math.floor(ms / 1000), d = Math.floor(s / 86400), pad = n => String(n).padStart(2, '0');
+  const clock = `${pad(Math.floor(s / 3600) % 24)}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`;
+  const when = eggOut(g).toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+  return long ? `Out ${when} · ${d ? `${d} day${d === 1 ? '' : 's'} ` : ''}${clock}` : `${d ? `${d}d ` : ''}${clock}`;
+}
+setInterval(() => {
+  const g = LIB.find(x => x.egg);
+  if (!g) return;
+  eggCheck();  // (a game started or ended meanwhile)
+  if (Date.now() >= eggOut(g).getTime() + 3 * 864e5 && !D.open && !P.open) { loadLibrary().then(() => buildRow(false)); return; }  // its time is up: off the row
+  document.querySelectorAll('.egg-count').forEach(el => { el.textContent = eggLeft(g); });
+  if (D.open && D.game?.egg) { const d = D.data; $('#details .d-meta').textContent = [g.system || g.group, ...(d?.genres || []), d?.developer, eggLeft(g, true)].filter(Boolean).join('   ·   '); }
+}, 1000);
+// one hidden YouTube player: a song or a sound, faded in, and faded out when stopped
+function eggAudio(id, { volume, loop, start = 0, fadeIn = true }) {
+  const host = document.createElement('div');
+  host.style.cssText = 'position:fixed;left:-9999px;top:0;width:200px;height:120px;opacity:0;pointer-events:none';
+  document.body.appendChild(host);
+  const slot = document.createElement('div');
+  host.appendChild(slot);
+  const it = { host, player: null, gone: false, fade: 0 };
+  loadYouTubePlayer().then(() => {
+    if (it.gone) return;
+    it.player = new YT.Player(slot, { host: 'https://www.youtube-nocookie.com', videoId: id, width: 200, height: 120,
+      playerVars: { autoplay: 1, controls: 0, disablekb: 1, playsinline: 1, rel: 0, start, origin: location.origin, ...(loop ? { loop: 1, playlist: id } : {}) },
+      events: { onReady: e => { if (it.gone) return e.target.destroy(); e.target.setVolume(fadeIn ? 0 : volume); e.target.playVideo(); if (fadeIn) eggRamp(it, 0, volume); } } });
+  }).catch(() => {});
+  return it;
+}
+function eggRamp(it, from, to, done) {
+  clearInterval(it.fade);
+  let i = 0;
+  it.fade = setInterval(() => {
+    i++;
+    try { it.player?.setVolume(from + (to - from) * Math.min(1, i / 20)); } catch {}
+    if (i >= 20) { clearInterval(it.fade); done?.(); }
+  }, 50);
+}
+function eggQuiet(it, fast) {
+  if (!it) return;
+  it.gone = true;
+  const end = () => { try { it.player?.destroy(); } catch {} it.host.remove(); };
+  if (fast || !it.player) return end();
+  let v = 30; try { v = it.player.getVolume(); } catch {}
+  eggRamp(it, v, 0, end);
+}
+function eggDetails(g) {
+  eggStop();
+  new Image().src = 'assets/wasted.png';  // the banner, ready before Play
+  if (musicMayPlay()) EGG.theme = eggAudio(g.egg.theme, { volume: 30, loop: true });
+}
+// quiet while a video plays or a game runs; back once neither is so (and Play's moment is over)
+function eggCheck() {
+  const here = D.open && D.game?.egg;
+  if (EGG.theme && (!here || !musicMayPlay())) { eggQuiet(EGG.theme); EGG.theme = null; }
+  else if (!EGG.theme && here && musicMayPlay() && !$('#egg-wasted')) EGG.theme = eggAudio(D.game.egg.theme, { volume: 30, loop: true });
+}
+function eggStop() {
+  eggQuiet(EGG.theme); EGG.theme = null;
+}
+// Play: it isn't out (and not on a PC). The screen drains of colour and slowly pushes in, a banner drops in with the
+// sound, and a line underneath ribs you for trying: a different one each press.
+const EGG_LINES = [
+  d => `Nice try. It's out in ${d}.`,
+  d => `Still ${d} to go. Maybe touch some grass?`,
+  d => `Pressing Play harder won't make it come out sooner. ${d} left.`,
+  d => `You've waited this long. What's another ${d}?`,
+  () => `Also, it's PS5 and Xbox only. This is a PC.`,
+  d => `Loading Vice City… please wait ${d}.`,
+  () => `Rockstar has been notified of your impatience.`,
+];
+const EGG_OUT_LINES = [
+  () => `It's out! Just… not on PC.`,
+  () => `Wrong machine, pal. Try the PS5 or the Xbox.`,
+  () => `PC version: sometime. Probably. Maybe.`,
+  () => `Same time next year?`,
+];
+let eggPress = 0, eggTimer = 0;
+function eggJoke(g) {
+  const ms = eggOut(g) - Date.now(), days = Math.floor(ms / 864e5), hours = Math.floor(ms / 36e5), mins = Math.max(1, Math.floor(ms / 6e4));
+  const left = days >= 1 ? `${days} day${days === 1 ? '' : 's'}` : hours >= 1 ? `${hours} hour${hours === 1 ? '' : 's'}` : `${mins} minute${mins === 1 ? '' : 's'}`;  // as the countdown counts
+  const lines = ms > 0 ? EGG_LINES : EGG_OUT_LINES;
+  return lines[eggPress++ % lines.length](left);
+}
+function eggPlay(g) {
+  eggQuiet(EGG.theme, true); EGG.theme = null;
+  eggQuiet(EGG.sound, true);
+  clearTimeout(eggTimer);
+  $('#egg-wasted')?.remove();
+  EGG.sound = eggAudio(g.egg.play, { volume: 80, loop: false, fadeIn: false });  // a sound hits at once (a song fades in)
+  const box = document.createElement('div');
+  box.id = 'egg-wasted';
+  box.innerHTML = `<div class="ew-band"><img class="ew-big" src="assets/wasted.png" alt="wasted" draggable="false"><div class="ew-line">${esc(eggJoke(g))}</div></div>`;
+  box.addEventListener('click', () => eggDone(g));
+  document.body.appendChild(box);
+  document.body.classList.remove('egg-wasted'); void document.body.offsetWidth;  // (pressed again: the push-in starts over)
+  document.body.classList.add('egg-wasted');
+  raf2(() => box.classList.add('on'));
+  eggTimer = setTimeout(() => eggDone(g), 6000);
+}
+function eggDone(g) {
+  clearTimeout(eggTimer);
+  document.body.classList.remove('egg-wasted');
+  const box = $('#egg-wasted');
+  if (box) { box.classList.remove('on'); setTimeout(() => box.remove(), 500); }
+  eggQuiet(EGG.sound); EGG.sound = null;
+  eggCheck();  // and the theme again
+}
 if (API) setInterval(watchRunning, 3000);
 // A quiet warning when the controller runs low, once per charge
 let lowWarned = false;

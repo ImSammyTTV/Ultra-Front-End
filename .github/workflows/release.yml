@@ -1,0 +1,40 @@
+# Release: publishes the version in server.py (VERSION) as a release every copy updates itself to, built on GitHub's
+# own Windows machine, so no PC needs Python or the GitHub CLI. Actions › Release › Run workflow, from main.
+# It runs tools/release.py with the notes in release-notes/<VERSION>.md; the What's new picture,
+# assets/whatsnew/<VERSION>.jpg, must be committed with it (release.py checks both).
+name: Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write  # to create the release and its tag
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'  # a release points at a commit on main
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build and publish
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python -m pip install --disable-pip-version-check -r tools/build-requirements.txt
+          version=$(python -c "import re; print(re.search(r'^VERSION = \"([^\"]+)\"', open('server.py', encoding='utf-8').read(), re.M)[1])")
+          notes="release-notes/$version.md"
+          [ -f "$notes" ] || { echo "No release notes at $notes"; exit 1; }
+          [ -f "assets/whatsnew/$version.jpg" ] || { echo "No What's new picture at assets/whatsnew/$version.jpg"; exit 1; }
+          python tools/release.py "$notes"
