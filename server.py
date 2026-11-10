@@ -2682,12 +2682,12 @@ def wiki_summary(title):
         text = ""
         try:
             q = urllib.parse.urlencode({"action": "query", "list": "search", "srsearch": f"{clean} video game", "srlimit": 6, "format": "json"})
-            hits = http_json("https://en.wikipedia.org/w/api.php?" + q, headers=WIKI_UA, timeout=6)["query"]["search"]
+            hits = wiki_json("https://en.wikipedia.org/w/api.php?" + q, timeout=6)["query"]["search"]
             ranked = sorted(((wiki_match_rank(h["title"], title), i, h) for i, h in enumerate(hits)), key=lambda x: (x[0] is None, x[0] or 0, x[1]))
             for rank, _, h in ranked:
                 if rank is None:
                     break
-                s = http_json("https://en.wikipedia.org/api/rest_v1/page/summary/" + urllib.parse.quote(h["title"].replace(" ", "_"), safe=""), headers=WIKI_UA, timeout=6)
+                s = wiki_json("https://en.wikipedia.org/api/rest_v1/page/summary/" + urllib.parse.quote(h["title"].replace(" ", "_"), safe=""), timeout=6)
                 extract = s.get("extract", "")
                 if s.get("type") == "standard" and "game" in extract.lower():
                     sentences = re.split(r"(?<=[.!?])\s+", extract)
@@ -2707,37 +2707,73 @@ def wiki_summary(title):
 HEROES = {}  # game id -> wide background URL ("" when none), for the "game art" home background
 
 
-def egg_info():
-    """Its Wikipedia article, read straight from the page it is (no search to match), with the genre and developer
-    Wikidata keeps for it. Kept for a day; {} while Wikipedia can't be reached."""
-    saved = load("egg.json", {})
-    if saved.get("info") and time.time() - saved.get("infoT", 0) < 86400:
-        return saved["info"]
+def wiki_page_info(page):
+    """A game's details from one Wikipedia article we already know is it (no search to match): the opening, and the
+    genre, developer and year Wikidata keeps for it. Kept for a month; {} while Wikipedia can't be reached."""
+    cache, key = load("wiki-info-cache.json", {}), "page:" + page
+    hit = cache.get(key)
+    if hit and time.time() - hit["t"] < 30 * 86400:
+        return hit["d"]
     try:
-        page = http_json("https://en.wikipedia.org/api/rest_v1/page/summary/" + EGG["wiki"], headers=WIKI_UA, timeout=8)
+        summary = wiki_json("https://en.wikipedia.org/api/rest_v1/page/summary/" + urllib.parse.quote(page.replace(" ", "_"), safe=""), timeout=8)
         bio = ""
-        for sentence in re.split(r"(?<=[.!?])\s+", page.get("extract", "")):
+        for sentence in re.split(r"(?<=[.!?])\s+", summary.get("extract", "")):
             if bio and len(bio) + len(sentence) > 650:
                 break
             bio = (bio + " " + sentence).strip()
-        info = {"description": bio, "descSource": "Wikipedia", "sourceTitle": page.get("title") or EGG["title"]}
-        entity_id = page.get("wikibase_item", "")
+        info = {"description": bio, "descSource": "Wikipedia", "sourceTitle": summary.get("title") or page}
+        entity_id = summary.get("wikibase_item", "")
         if re.fullmatch(r"Q\d+", entity_id):
-            claims = http_json(f"https://www.wikidata.org/wiki/Special:EntityData/{entity_id}.json", headers=WIKI_UA, timeout=8)["entities"][entity_id].get("claims", {})
-            ids = lambda prop: [c["mainsnak"]["datavalue"]["value"]["id"] for c in claims.get(prop, [])
-                                if c.get("rank") != "deprecated" and isinstance(c.get("mainsnak", {}).get("datavalue", {}).get("value"), dict)]
-            genres, developers = ids("P136")[:3], ids("P178")[:2]
+            claims = wiki_json(f"https://www.wikidata.org/wiki/Special:EntityData/{entity_id}.json", timeout=8)["entities"][entity_id].get("claims", {})
+            def values(prop):
+                return [c["mainsnak"]["datavalue"]["value"] for c in claims.get(prop, [])
+                        if c.get("rank") != "deprecated" and "datavalue" in c.get("mainsnak", {})]
+            genres = [v["id"] for v in values("P136") if isinstance(v, dict) and "id" in v][:3]
+            developers = [v["id"] for v in values("P178") if isinstance(v, dict) and "id" in v][:2]
+            years = [v["time"][1:5] for v in values("P577") if isinstance(v, dict) and str(v.get("time", "")).startswith("+")]
+            if years:
+                info["released"] = min(years)
             if genres or developers:
                 q = urllib.parse.urlencode({"action": "wbgetentities", "ids": "|".join(genres + developers), "props": "labels", "languages": "en", "format": "json"})
-                entities = http_json("https://www.wikidata.org/w/api.php?" + q, headers=WIKI_UA, timeout=8).get("entities", {})
+                entities = wiki_json("https://www.wikidata.org/w/api.php?" + q, timeout=8).get("entities", {})
                 label = lambda i: entities.get(i, {}).get("labels", {}).get("en", {}).get("value", "")
                 info["genres"] = [label(i) for i in genres if label(i)]
                 info["developer"] = ", ".join(label(i) for i in developers if label(i))
     except (urllib.error.URLError, ValueError, KeyError, TypeError, TimeoutError, OSError):
-        return saved.get("info") or {}  # yesterday's will do
+        return (hit or {}).get("d") or {}  # the last copy will do
     if info["description"]:
-        store("egg.json", {**load("egg.json", {}), "info": info, "infoT": time.time()})
+        cache = load("wiki-info-cache.json", {})
+        cache[key] = {"t": time.time(), "d": info}
+        store("wiki-info-cache.json", cache)
     return info
+
+
+def wiki_game_choices(query):
+    """Wikipedia's games for a name, for picking which one a game is when it's renamed: [{page, title, about}], the
+    closest names first. Only articles whose short description says it's a game ("2023 video game"), not a studio,
+    an awards show or a series. Searched as typed and without plurals ("Wonders" finds Wonder), then with "video game"
+    added if neither finds any."""
+    want = title_words(query)
+    plain = " ".join(singular(w) for w in re.findall(r"[\w']+", query))
+    found = {}
+    for term in dict.fromkeys([query, plain, f"{query} video game"]):
+        q = urllib.parse.urlencode({"action": "query", "generator": "search", "gsrsearch": term, "gsrlimit": 15,
+                                    "prop": "description", "format": "json", "formatversion": 2})
+        for p in wiki_json("https://en.wikipedia.org/w/api.php?" + q, timeout=8).get("query", {}).get("pages", []):
+            about = (p.get("description") or "").strip()
+            if re.search(r"\bgame$", about, re.I) and p["title"] not in found:
+                found[p["title"]] = (len(found), about)
+        if found and term != f"{query} video game":
+            break
+    def close(page):  # how much of the name typed it shares, then Wikipedia's order
+        words = title_words(re.sub(r"\s*\([^)]*\)$", "", page))
+        return (-len(want & words) / max(1, len(want | words)), found[page][0])
+    return [{"page": page, "title": re.sub(r"\s*\([^)]*\)$", "", page), "about": found[page][1]} for page in sorted(found, key=close)[:8]]
+
+
+def egg_info():
+    """Its Wikipedia article, read straight from the page it is (no search to match)."""
+    return wiki_page_info(EGG["wiki"].replace("_", " "))
 
 
 EGG_GALLERY = "https://www.rockstargames.com/VI/launch-gallery"
@@ -3294,6 +3330,43 @@ def trailer_stills(trailers):
 
 
 WIKI_PAUSE = [0.0]  # Wikipedia said "too many requests": leave it alone until then instead of making it worse
+WIKI_LOCK, WIKI_LAST = threading.Lock(), [0.0]
+WIKI_BG = threading.local()  # .on in the startup lookups (warm_details): they never make someone waiting wait longer
+WIKI_WAITING = [0]  # requests someone is waiting on (a game's page, the rename picker)
+WIKI_GAP = 0.35  # at least this long between requests to Wikipedia and Wikidata, from every lookup together
+
+
+def wiki_json(url, timeout=8):
+    """A Wikipedia or Wikidata request, spaced out from the others. Wikipedia often says "too many requests" for a few
+    seconds (a burst of lookups after a scan, or a busy network): then it waits as long as asked (up to half a
+    minute) and asks again, rather than leaving the game with no description for minutes."""
+    background = getattr(WIKI_BG, "on", False)
+    for attempt in range(3):
+        if background and (WIKI_WAITING[0] or WIKI_PAUSE[0] > time.time()):
+            raise urllib.error.URLError("left for later")  # someone's waiting, or Wikipedia wants a break: not now
+        if not background:
+            WIKI_WAITING[0] += 1
+        try:
+            with WIKI_LOCK:
+                wait = max(WIKI_PAUSE[0] - time.time(), WIKI_LAST[0] + WIKI_GAP - time.time())
+                if wait > 30:
+                    raise urllib.error.URLError("Wikipedia asked for a longer break")
+                if wait > 0:
+                    time.sleep(wait)
+                WIKI_LAST[0] = time.time()
+        finally:
+            if not background:
+                WIKI_WAITING[0] -= 1
+        try:
+            return http_json(url, headers=WIKI_UA, timeout=timeout)
+        except urllib.error.HTTPError as e:
+            if e.code != 429 or attempt == 2 or background:
+                if e.code == 429:
+                    asked = (e.headers.get("Retry-After") or "").strip()
+                    WIKI_PAUSE[0] = max(WIKI_PAUSE[0], time.time() + min(int(asked) if asked.isdigit() else 5, 300))
+                raise
+            asked = (e.headers.get("Retry-After") or "").strip()
+            WIKI_PAUSE[0] = max(WIKI_PAUSE[0], time.time() + min(int(asked) if asked.isdigit() else 5, 300))
 
 
 def platform_words(system):
@@ -3312,16 +3385,17 @@ def wiki_game_info(title, system=None):
     hit = cache.get(f"{key}|{system}") if system else cache.get(key)
     if hit and time.time() - hit["t"] < 30 * 86400 and hit.get("v") == 4:
         return hit["d"]
-    if time.time() < WIKI_PAUSE[0]:
+    if WIKI_PAUSE[0] - time.time() > 30:  # a long break asked for: not now (a short one is waited out by wiki_json)
         return {}
     out = {}
     try:
         hits = []
         # ROM names put the subtitle after " - "; search as written, then for the part before it ("Rust - Staging Branch")
         # with the console too, so a remake with its own page ("Ocarina of Time (2026 video game)" on Switch 2) is among them
-        for q in dict.fromkeys([title.replace(" - ", ": "), re.split(r"\s+-\s+", title)[0]] + ([f"{title.replace(' - ', ': ')} {system}"] if system else [])):
+        plain = " ".join(singular(w) for w in re.findall(r"[\w']+", title))  # "...Wonders" is searched as "...Wonder" too
+        for q in dict.fromkeys([title.replace(" - ", ": "), re.split(r"\s+-\s+", title)[0], plain] + ([f"{title.replace(' - ', ': ')} {system}"] if system else [])):
             query = urllib.parse.urlencode({"action": "query", "list": "search", "srsearch": q if system and q.endswith(system) else f"{q} video game", "srlimit": 6, "format": "json"})
-            hits += [h for h in http_json("https://en.wikipedia.org/w/api.php?" + query, headers=WIKI_UA, timeout=8)["query"]["search"]
+            hits += [h for h in wiki_json("https://en.wikipedia.org/w/api.php?" + query, timeout=8)["query"]["search"]
                      if h["title"] not in {x["title"] for x in hits}]
             if any(wiki_match_rank(h["title"], title) is not None for h in hits) and not system:
                 break
@@ -3330,7 +3404,7 @@ def wiki_game_info(title, system=None):
         for rank, _, hit in ranked:
             if rank is None:
                 break
-            summary = http_json("https://en.wikipedia.org/api/rest_v1/page/summary/" + urllib.parse.quote(hit["title"].replace(" ", "_"), safe=""), headers=WIKI_UA, timeout=8)
+            summary = wiki_json("https://en.wikipedia.org/api/rest_v1/page/summary/" + urllib.parse.quote(hit["title"].replace(" ", "_"), safe=""), timeout=8)
             text = summary.get("extract", "")
             if summary.get("type") != "standard" or "game" not in text.lower():
                 continue
@@ -3354,7 +3428,7 @@ def wiki_game_info(title, system=None):
             out = {"description": bio, "descSource": "Wikipedia", "sourceTitle": summary.get("title") or hit["title"], "_dated": dated}
             entity_id = summary.get("wikibase_item", "")
             if re.fullmatch(r"Q\d+", entity_id):
-                entity = http_json(f"https://www.wikidata.org/wiki/Special:EntityData/{entity_id}.json", headers=WIKI_UA, timeout=8)["entities"][entity_id]
+                entity = wiki_json(f"https://www.wikidata.org/wiki/Special:EntityData/{entity_id}.json", timeout=8)["entities"][entity_id]
                 claims = entity.get("claims", {})
                 def values(prop):
                     return [c["mainsnak"]["datavalue"]["value"] for c in claims.get(prop, []) if c.get("rank") != "deprecated" and "datavalue" in c.get("mainsnak", {})]
@@ -3372,7 +3446,7 @@ def wiki_game_info(title, system=None):
                 labels = {}
                 if ids:
                     q = urllib.parse.urlencode({"action": "wbgetentities", "ids": "|".join(ids), "props": "labels", "languages": "en", "languagefallback": 1, "format": "json"})
-                    entities = http_json("https://www.wikidata.org/w/api.php?" + q, headers=WIKI_UA, timeout=8).get("entities", {})
+                    entities = wiki_json("https://www.wikidata.org/w/api.php?" + q, timeout=8).get("entities", {})
                     labels = {k: v.get("labels", {}).get("en", {}).get("value", "") for k, v in entities.items()}
                     out["genres"] = [labels[i] for i in genres if labels.get(i)]
                     out["developer"] = ", ".join(labels[i] for i in developers if labels.get(i))
@@ -3389,7 +3463,7 @@ def wiki_game_info(title, system=None):
     except urllib.error.HTTPError as e:
         if e.code == 429:
             wait = e.headers.get("Retry-After", "")
-            WIKI_PAUSE[0] = time.time() + (int(wait) if wait.isdigit() else 900)
+            WIKI_PAUSE[0] = max(WIKI_PAUSE[0], time.time() + min(int(wait) if wait.isdigit() else 60, 900))
         out.pop("_dated", None)
         return out
     except (urllib.error.URLError, ValueError, KeyError, TimeoutError):
@@ -3463,11 +3537,11 @@ def quiet(fut, default):
 
 def info_fresh(hit, g):
     """A cached details entry still holds: same name (a renamed ROM looks again), saved with a studio or by this version,
-    and not expired (entries without a description retry after 5 minutes)."""
-    return (bool(hit) and hit.get("title", g["title"]) == g["title"]
+    and not expired (entries without a description retry after a minute)."""
+    return (bool(hit) and hit.get("title", g["title"]) == g["title"] and hit.get("wiki", "") == g.get("wikiPage", "")
             and (hit.get("version") == 10 or (hit.get("version") in (7, 8, 9) and g.get("source") != "Emulators")
                  or (hit.get("version") in (5, 6) and g.get("source") != "Emulators" and hit["d"].get("developer") and hit["d"].get("screenshots")))
-            and time.time() - hit["t"] < (INFO_TTL if hit.get("d", {}).get("description") else 300))
+            and time.time() - hit["t"] < (INFO_TTL if hit.get("d", {}).get("description") else 60))
 
 
 def remote_info(g, appid, local):
@@ -3499,7 +3573,7 @@ def remote_info(g, appid, local):
         if known.get("logo"):
             d["logo"] = known["logo"]
     if not d["description"] and cfg["onlineCovers"]:
-        bio = wiki_game_info(g["title"], g.get("system"))
+        bio = wiki_page_info(g["wikiPage"]) if g.get("wikiPage") else wiki_game_info(g["title"], g.get("system"))
         for field in ("description", "descSource", "sourceTitle", "genres", "developer", "released"):
             if not d.get(field) and bio.get(field):
                 d[field] = bio[field]
@@ -3516,7 +3590,7 @@ def remote_info(g, appid, local):
     if not d["hero"] and "hero" not in local and d["screenshots"]:  # no background art anywhere: a screenshot, shown softened
         d["hero"], d["heroSoft"] = d["screenshots"][0]["full"], True
     cache = load("info-cache.json", {})
-    cache[g["id"]] = {"t": time.time(), "d": d, "version": 10, "title": g["title"]}
+    cache[g["id"]] = {"t": time.time(), "d": d, "version": 10, "title": g["title"], **({"wiki": g["wikiPage"]} if g.get("wikiPage") else {})}
     store("info-cache.json", cache)
     return d
 
@@ -3736,6 +3810,7 @@ def ra_progress(g):
 
 def warm_details():
     """After startup, quietly fetch details for games not cached yet (most recently played first), so details open instantly."""
+    WIKI_BG.on = True  # (its Wikipedia requests step aside for anything someone's waiting on)
     time.sleep(5)
     try:
         all_news()  # so the News page opens instantly
@@ -3969,7 +4044,7 @@ def egg_cover():
         EGG_LOOKUP[0] = True
         def look():
             try:
-                page = http_json("https://en.wikipedia.org/api/rest_v1/page/summary/" + EGG["wiki"], headers=WIKI_UA, timeout=10)
+                page = wiki_json("https://en.wikipedia.org/api/rest_v1/page/summary/" + EGG["wiki"], timeout=10)
                 url = (page.get("originalimage") or page.get("thumbnail") or {}).get("source", "")
                 if url.startswith("https://upload.wikimedia.org/"):
                     store("egg.json", {"t": time.time(), "cover": url})
@@ -4102,6 +4177,8 @@ def scan_all():
             g["hidden"] = True
         if g and o.get("title"):
             g["renameTo"] = o["title"]  # applied after the duplicate merge below, which goes by the game's own name
+        if g and o.get("wiki"):
+            g["wikiPage"] = o["wiki"]  # the Wikipedia article picked for it when it was renamed
         if g and o.get("favorite"):
             g["favorite"] = True
         if g and o.get("collections"):
@@ -10989,13 +11066,20 @@ class Handler(SimpleHTTPRequestHandler):
                 store("overrides.json", overrides)
                 g["hidden"] = bool(body.get("hidden"))
                 return self.reply({"ok": True})
+            if path == "/api/game/names":  # {query}: Wikipedia's games by that name, to pick from when renaming
+                return self.reply({"games": wiki_game_choices(" ".join(str(body.get("query") or "").split())[:120])})
             if path == "/api/game/rename":  # a name of the user's own; an empty one goes back to the game's own name
                 g = STATE["byId"].get(body.get("id"))
                 if not g:
                     raise ValueError("Game not found")
                 title = " ".join(str(body.get("title") or "").split())[:120]
+                page = " ".join(str(body.get("wiki") or "").split())[:200]
                 overrides = load("overrides.json", {})
                 o = overrides.setdefault(g["id"], {})
+                if page and title:
+                    o["wiki"] = page  # picked from Wikipedia's games: its details come from that article
+                else:
+                    o.pop("wiki", None)
                 if title:
                     o["title"] = title
                 else:

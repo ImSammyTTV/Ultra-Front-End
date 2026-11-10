@@ -1066,13 +1066,29 @@ async function afterLibraryChange() {
   if (D.open) D.game = LIB.find(x => x.id === D.game.id) || D.game;  // the ⋯ and Y menus read it
 }
 // A name of your own for a game, typed on the on-screen keyboard (or a real one), starting from the name it has now
+// then, which game it is: Wikipedia's games by that name to pick from, so its details come from the right article
 function renameGame(g) {
-  openSearch(null, text => setGameName(g, text.trim()), { id: 'rename', label: `New name for ${g.title}`, max: 120 });
+  openSearch(null, text => pickGameName(g, text.trim()), { id: 'rename', label: `New name for ${g.title}`, max: 120 });
   $('#srq').value = g.title; searchRun();
 }
-async function setGameName(g, title) {
-  if (title === g.title) return;
-  try { await api('/api/game/rename', { id: g.id, title }); } catch (e) { return toast(e.message); }
+async function pickGameName(g, typed) {
+  if (!typed) return setGameName(g, '');  // empty: back to the game's own name
+  toast('Looking for games by that name…', 2500);
+  let found = [], why = '';
+  try { found = (await api('/api/game/names', { query: typed })).games || []; } catch { why = 'Couldn’t reach Wikipedia'; }
+  if (!found.length) {  // nothing found (or no internet): the name as typed, and it says why there's no list
+    if (typed === g.title) return toast(`${why || 'No games found by that name'}. The name is unchanged.`, 4000);
+    await setGameName(g, typed);
+    return toast(`${why || 'No games found by that name'}: renamed to ${typed} as typed`, 4000);
+  }
+  sysMenu('Which game is it?', [
+    ...found.map(f => ({ label: f.about ? `${f.title} · ${f.about}` : f.title, ic: icon('pad'), run: () => setGameName(g, f.title, f.page) })),
+    { label: `Just call it “${typed}”`, ic: icon('keyboard'), run: () => setGameName(g, typed) },
+  ]);
+}
+async function setGameName(g, title, wiki = '') {
+  if (title === g.title && wiki === (g.wikiPage || '')) return;
+  try { await api('/api/game/rename', { id: g.id, title, wiki }); } catch (e) { return toast(e.message); }
   delete DCACHE[g.id];  // a new name can find other details
   await afterLibraryChange();
   if (D.open) renderDetails();  // its title, now
