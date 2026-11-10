@@ -2734,6 +2734,65 @@ def egg_info():
     return info
 
 
+EGG_GALLERY = "https://www.rockstargames.com/VI/launch-gallery"
+# its gallery's screenshots by their names (the codes after them change whenever the site is rebuilt): not the editions'
+# extras, the box art or the phone-sized copies
+EGG_SHOT = re.compile(r"/VI/_next/static/media/((?:Jason_and_Lucia|Jason_Duval|Lucia_Caminos|Vice_City|Port_Gellhorn|Leonida_Keys|Grassrivers)_\d+)\.[A-Za-z0-9_.~-]+\.jpg")
+EGG_SHOTS_LOCK = threading.Lock()
+
+
+def egg_shots():
+    """The official screenshots, read off the game's gallery page once a week, as [{thumb, full}] served from here: each
+    picture (4K, a megabyte) is fetched once when it's first shown and kept, with a small copy for the strip. [] while
+    the page can't be read (the trailer frames stand in)."""
+    saved = load("egg.json", {})
+    urls = saved.get("shots") or []
+    if not urls or time.time() - saved.get("shotsT", 0) > 7 * 86400:
+        try:
+            req = urllib.request.Request(EGG_GALLERY, headers={"User-Agent": UA})
+            with urllib.request.urlopen(req, timeout=15) as r:
+                page = r.read(8 << 20).decode("utf-8", "replace")
+            found = list(dict.fromkeys("https://www.rockstargames.com" + m.group(0) for m in EGG_SHOT.finditer(page)))
+            if found:
+                urls = found
+                store("egg.json", {**load("egg.json", {}), "shots": urls, "shotsT": time.time()})
+        except (urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError, ValueError):
+            pass  # last week's list will do
+    return [{"thumb": f"/api/egg/shot?i={i}&small=1", "full": f"/api/egg/shot?i={i}"} for i in range(len(urls))]
+
+
+def egg_shot_file(i, small):
+    """One screenshot on disk (fetched the first time), or its small copy for the strip; None if it can't be had."""
+    urls = load("egg.json", {}).get("shots") or []
+    if not 0 <= i < len(urls) or not urls[i].startswith("https://www.rockstargames.com/VI/_next/static/media/"):
+        return None
+    folder = os.path.join(ART_DIR, "egg")
+    name = EGG_SHOT.search(urls[i]).group(1)
+    full, thumb = os.path.join(folder, name + ".jpg"), os.path.join(folder, name + "-small.jpg")
+    with EGG_SHOTS_LOCK:  # (the strip asks for several at once: each is fetched once)
+        if not os.path.isfile(full):
+            os.makedirs(folder, exist_ok=True)
+            try:
+                with urllib.request.urlopen(urllib.request.Request(urls[i], headers={"User-Agent": UA}), timeout=60) as r:
+                    data = r.read(20 << 20)
+                    if not (r.headers.get("Content-Type") or "").startswith("image/"):
+                        return None
+            except (urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError):
+                return None
+            with open(full + ".part", "wb") as f:
+                f.write(data)
+            os.replace(full + ".part", full)
+        if small and not os.path.isfile(thumb):
+            try:
+                from PIL import Image
+                with Image.open(full) as im:
+                    im.thumbnail((640, 360))
+                    im.convert("RGB").save(thumb, "JPEG", quality=82)
+            except Exception:
+                return full  # the big one will do
+    return thumb if small else full
+
+
 def egg_hero():
     return EGG["hero"]
 
@@ -3666,8 +3725,9 @@ def game_details(g):
     if g.get("egg"):  # the official trailers first (what YouTube's search found too, after them), and its own background
         pinned = [{"youtube": v, "name": f"{g['title']} — Trailer {i + 1}", "thumb": f"https://i.ytimg.com/vi/{v}/hqdefault.jpg"} for i, v in enumerate(EGG["trailers"])]
         d["trailers"] = pinned + [t for t in d.get("trailers") or [] if t.get("youtube") not in EGG["trailers"]][:2]
-        # no store page to take screenshots from: frames from the official trailers (three from each), not a fan video's
-        d["screenshots"] = [shot for v in EGG["trailers"] for shot in trailer_stills([{"youtube": v}])]
+        # Rockstar's own screenshots (its launch gallery); while that can't be read, frames from its trailers (three from
+        # each), not a fan video's
+        d["screenshots"] = egg_shots() or [shot for v in EGG["trailers"] for shot in trailer_stills([{"youtube": v}])]
         if not custom:
             d["hero"], d["heroSoft"] = egg_hero(), False
         d["egg"] = g["egg"]
@@ -10728,6 +10788,15 @@ class Handler(SimpleHTTPRequestHandler):
             cid = (urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("id") or [""])[0]
             f = album_file(cid) if path.endswith("file") else album_thumb(cid)
             return self.send_path(f) if f else self.send_error(404)
+        if path == "/api/egg/shot":  # ?i=&small=: one of the nearly-out game's official screenshots
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            try:
+                f = egg_shot_file(int((q.get("i") or ["-1"])[0]), bool(q.get("small")))
+            except ValueError:
+                f = None
+            if not f:
+                return self.send_error(404)
+            return self.send_path(f)
         if path.startswith("/api/art/"):
             key = path.rsplit("/", 1)[-1]
             f = ART.get(key) or DETAIL_ART.get(key)
