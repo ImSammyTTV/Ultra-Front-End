@@ -6544,15 +6544,38 @@ def pad_wait(after, overlay=False, timeout=20):
         return {"seq": PAD["seq"], "actions": [a for a, d in mine], "desk": [d for a, d in mine], "pads": PAD["pads"]}
 
 
+DESKTOP_WINDOWS = ("Progman", "WorkerW")  # the desktop's own windows (Wallpaper Engine's wallpaper sits in a WorkerW)
+DESK_API = []
+
+
 def desktop_in_front(user32):
-    """The desktop is the window in front (clicked on, or every window minimised): its window is Progman or WorkerW."""
+    """The desktop is in front: Windows says the desktop (or, as it does once you click a Wallpaper Engine wallpaper, no
+    window at all) is in front, and the pointer is over the desktop too, not over a window or the taskbar. Both together,
+    so a moment between windows (Alt+Tab) doesn't count."""
     import ctypes
-    name = ctypes.create_unicode_buffer(64)
-    user32.GetClassNameW(user32.GetForegroundWindow(), name, 64)
-    fronts = WALLPAPER["fronts"]  # the last few kinds of window seen in front, for /api/wallpaper
-    if not fronts or fronts[-1] != name.value:
-        WALLPAPER["fronts"] = (fronts + [name.value])[-8:]
-    desk = name.value in ("Progman", "WorkerW")
+    import ctypes.wintypes as W
+    if not DESK_API:  # its own prototypes, with full-width window handles, leaving user32's for the rest of the helper
+        DESK_API.extend([ctypes.WINFUNCTYPE(W.HWND)(("GetForegroundWindow", ctypes.windll.user32)),
+                         ctypes.WINFUNCTYPE(W.HWND, W.POINT)(("WindowFromPoint", ctypes.windll.user32)),
+                         ctypes.WINFUNCTYPE(W.HWND, W.HWND, ctypes.c_uint)(("GetAncestor", ctypes.windll.user32)),
+                         ctypes.WINFUNCTYPE(ctypes.c_int, W.HWND, ctypes.c_wchar_p, ctypes.c_int)(("GetClassNameW", ctypes.windll.user32)),
+                         ctypes.WINFUNCTYPE(W.BOOL, ctypes.POINTER(W.POINT))(("GetCursorPos", ctypes.windll.user32))])
+    foreground, from_point, ancestor, class_name, cursor = DESK_API
+
+    def kind(hwnd):
+        if not hwnd:
+            return ""
+        name = ctypes.create_unicode_buffer(64)
+        class_name(hwnd, name, 64)
+        return name.value
+    front = kind(foreground())
+    pt = W.POINT()
+    under = kind(ancestor(from_point(pt), 2)) if cursor(ctypes.byref(pt)) else ""  # GA_ROOT: the top window under the pointer
+    seen = f"{front or '(none)'} / pointer over {under or '(none)'}"
+    fronts = WALLPAPER["fronts"]  # the last few seen, for /api/wallpaper
+    if not fronts or fronts[-1] != seen:
+        WALLPAPER["fronts"] = (fronts + [seen])[-8:]
+    desk = (front in DESKTOP_WINDOWS or not front) and under in DESKTOP_WINDOWS
     if desk:
         WALLPAPER["desk"] = time.time()
     return desk
