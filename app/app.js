@@ -2,6 +2,9 @@
 const ON_MAC = /Macintosh|Mac OS X/.test(navigator.userAgent), ON_ANDROID = /Android/.test(navigator.userAgent),
   HERE = ON_MAC ? 'this Mac' : ON_ANDROID ? 'this device' : 'this PC';  // the page's word for the computer
 const ON_LINUX = /Linux|X11/.test(navigator.userAgent) && !ON_ANDROID, UNIX = ON_MAC || ON_LINUX;  // (Linux: the Steam Deck first)
+// Shown by Wallpaper Engine as the desktop's wallpaper (?wallpaper=1): the controller and keys come through the helper
+// while the desktop is in front (Wallpaper Engine passes on the mouse only), and never while another window is
+const WALLPAPER = new URLSearchParams(location.search).has('wallpaper');
 // Focus zones (up/down): 0 = game row, 1 = buttons, 2 = source tabs.
 const $ = q => document.querySelector(q);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -700,7 +703,7 @@ function runIntro() {
   const el = $('#intro');
   let seen = false;
   try { seen = !!sessionStorage.getItem('fe-intro-seen'); sessionStorage.setItem('fe-intro-seen', '1'); } catch {}
-  if (seen || !API || !introOn()) return el.remove();
+  if (seen || !API || !introOn() || WALLPAPER) return el.remove();  // (a wallpaper starts with the desktop: no intro)
   INTRO.open = true;
   el.addEventListener('pointerdown', () => endIntro(true), { once: true });  // a tap or click skips it, like any button
   api('/api/introsound', { play: true }).catch(() => {});
@@ -997,7 +1000,7 @@ function scanHide() {
 }
 async function watchLibrary() {
   let r;
-  try { r = await api('/api/ping'); } catch { return; }
+  try { r = await api(WALLPAPER ? '/api/ping?wallpaper=1' : '/api/ping'); } catch { return; }  // (a wallpaper says it's showing)
   if (r.scan?.active) scanTick();
   // New page files: refresh by itself, but only on the plain home screen so nothing is interrupted
   if (r.page && pageStamp && r.page !== pageStamp) {
@@ -3003,6 +3006,10 @@ function panelItems() {
       sub: 'Games that minimize when the in-game menu opens are asked to stay on screen, so the menu opens without the game pausing. Steam games pick this up after Steam restarts. Games in true fullscreen may still minimize: set them to borderless window in their own settings',
       act: () => setOpt('keepOnScreen') }] : []),
     ...(/Windows/.test(navigator.userAgent) ? [{ kind: 'row', ic: icon('pad'), label: 'Open with the Xbox button', value: onOff(d.options.guideOpens), sub: 'The Xbox button on a controller opens Ultra Front End, or brings it to the front; so does holding View + Start, which also works through Steam (Steam keeps the Xbox and Steam buttons for itself while it runs). A Steam Controller’s Steam button does it with a double-press or a hold. In a game, they open the overlay.', act: () => setOpt('guideOpens') }] : []),
+    // the desktop's wallpaper, with Wallpaper Engine: this page behind the icons, the controller and keyboard on the desktop
+    ...(/Windows/.test(navigator.userAgent) && !WALLPAPER ? [{ kind: 'row', ic: icon('wide'), label: 'Use as your wallpaper (Wallpaper Engine)',
+      sub: 'Ultra Front End becomes your desktop: click, use the controller or type while the desktop is in front. Keep Ultra Front End running (Start with Windows) for it to show',
+      act: () => api('/api/wallpaper', {}).then(r => toast(r.opened ? 'Opened in Wallpaper Engine as your wallpaper' : 'Wallpaper Engine wasn’t found: in it, choose Open Wallpaper and this folder’s project.json', 7000), e => toast(e.message)) }] : []),
     ...(ON_ANDROID ? [] : [{ kind: 'row', label: 'Installed Steam games', value: d.steamDetected ? onOff(d.options.steamLocal) : 'Steam not found',
       sub: !d.steamDetected ? '' : d.options.steamLocal ? `${d.localSteamCount} found on ${HERE}` : 'Off: your installed Steam games are hidden', act: () => d.steamDetected && setOpt('steamLocal') },
     { kind: 'row', label: 'Show games that aren’t installed', value: onOff(d.options.showUninstalled),
@@ -3945,14 +3952,25 @@ async function helperPad() {
       HP.live = true; HP.pads = r.pads;
       // Every page open on the helper hears the controller: only Ultra Front End's own window acts on it, or a browser tab
       // you're looking at. A tab in the background (or a test page) pressing along opened program pickers by itself.
+      // A press on the desktop is the wallpaper's alone, and the keyboard's keys come only that way (as key:down:<key>)
       const mine = window.pywebview || window.AndroidApp || (document.visibilityState === 'visible' && document.hasFocus());
-      if (mine) r.actions.forEach(a => { S.pad = true; inputFrom('xinput', a); });
+      r.actions.forEach((a, i) => {
+        const desk = !!r.desk?.[i];
+        if (WALLPAPER ? !desk : !mine || desk) return;
+        if (a.startsWith('key:')) return wallpaperKey(a);
+        S.pad = true; inputFrom('xinput', a);
+      });
       HP.seq = r.seq;
     } catch {
       HP.live = false;
       await new Promise(res => setTimeout(res, 3000));
     }
   }
+}
+// A key pressed on the desktop, for the wallpaper: given to the page as if typed into it
+function wallpaperKey(a) {
+  const [, kind, key] = a.match(/^key:(down|up):(.+)$/) || [];
+  if (key) dispatchEvent(new KeyboardEvent(kind === 'down' ? 'keydown' : 'keyup', { key, bubbles: true }));
 }
 // One press can arrive twice: from the helper and as a key Steam Input types for the same controller. Count it once.
 const LAST_INPUT = {};
