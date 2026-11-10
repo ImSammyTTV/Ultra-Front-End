@@ -2,6 +2,9 @@
 const ON_MAC = /Macintosh|Mac OS X/.test(navigator.userAgent), ON_ANDROID = /Android/.test(navigator.userAgent),
   HERE = ON_MAC ? 'this Mac' : ON_ANDROID ? 'this device' : 'this PC';  // the page's word for the computer
 const ON_LINUX = /Linux|X11/.test(navigator.userAgent) && !ON_ANDROID, UNIX = ON_MAC || ON_LINUX;  // (Linux: the Steam Deck first)
+// Shown by Wallpaper Engine as the desktop's wallpaper (?wallpaper=1): the controller and keys come through the helper
+// while the desktop is in front (Wallpaper Engine passes on the mouse only), and never while another window is
+const WALLPAPER = new URLSearchParams(location.search).has('wallpaper');
 // Focus zones (up/down): 0 = game row, 1 = buttons, 2 = source tabs.
 const $ = q => document.querySelector(q);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -99,7 +102,7 @@ const colorOf = g => g.color || `hsl(${hue(g.title)},45%,42%)`;
 
 async function api(path, body) {
   let r;
-  try { r = await fetch(path, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Frontend': '1' }, body: JSON.stringify(body) }); }
+  try { r = await fetch(path, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Frontend': '1', ...(WALLPAPER ? { 'X-Wallpaper': '1' } : {}) }, body: JSON.stringify(body) }); }
   catch { throw new Error('The frontend helper isn’t running. Close Ultra Front End and open it again.'); }
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || `Something went wrong (${r.status})`);
@@ -700,7 +703,7 @@ function runIntro() {
   const el = $('#intro');
   let seen = false;
   try { seen = !!sessionStorage.getItem('fe-intro-seen'); sessionStorage.setItem('fe-intro-seen', '1'); } catch {}
-  if (seen || !API || !introOn()) return el.remove();
+  if (seen || !API || !introOn() || WALLPAPER) return el.remove();  // (a wallpaper starts with the desktop: no intro)
   INTRO.open = true;
   el.addEventListener('pointerdown', () => endIntro(true), { once: true });  // a tap or click skips it, like any button
   api('/api/introsound', { play: true }).catch(() => {});
@@ -790,6 +793,7 @@ const POWER = [{ id: 'sleep', ic: 'moon', label: 'Sleep', done: 'Going to sleep'
   { id: 'shutdown', ic: 'power', label: 'Shut down', confirm: true }, { id: 'exit', ic: 'exit', label: 'Exit' }];
 const powerChoices = () => API && !ON_ANDROID ? POWER : POWER.filter(p => p.id === 'exit');  // Android apps can't sleep or restart the device
 function powerPick(p) {
+  if (WALLPAPER) return toast('Shutting down, restarting and quitting aren’t available from the wallpaper', 4000);  // (never by a stray press)
   if (p.id === 'exit') return quitFrontend();
   if (p.confirm && SP.confirm !== p.id) {
     SP.confirm = p.id; renderSys();
@@ -814,6 +818,7 @@ function sysMenu(title, items) {
   quickFocus();
 }
 function quitFrontend() {
+  if (WALLPAPER) return toast('Quitting isn’t available from the wallpaper', 4000);
   playOutro(() => {
     if (window.pywebview?.api?.quit) window.pywebview.api.quit();
     else if (window.AndroidApp) window.AndroidApp.quit();
@@ -997,7 +1002,7 @@ function scanHide() {
 }
 async function watchLibrary() {
   let r;
-  try { r = await api('/api/ping'); } catch { return; }
+  try { r = await api(WALLPAPER ? '/api/ping?wallpaper=1' : '/api/ping'); } catch { return; }  // (a wallpaper says it's showing)
   if (r.scan?.active) scanTick();
   // New page files: refresh by itself, but only on the plain home screen so nothing is interrupted
   if (r.page && pageStamp && r.page !== pageStamp) {
@@ -3003,6 +3008,13 @@ function panelItems() {
       sub: 'Games that minimize when the in-game menu opens are asked to stay on screen, so the menu opens without the game pausing. Steam games pick this up after Steam restarts. Games in true fullscreen may still minimize: set them to borderless window in their own settings',
       act: () => setOpt('keepOnScreen') }] : []),
     ...(/Windows/.test(navigator.userAgent) ? [{ kind: 'row', ic: icon('pad'), label: 'Open with the Xbox button', value: onOff(d.options.guideOpens), sub: 'The Xbox button on a controller opens Ultra Front End, or brings it to the front; so does holding View + Start, which also works through Steam (Steam keeps the Xbox and Steam buttons for itself while it runs). A Steam Controller’s Steam button does it with a double-press or a hold. In a game, they open the overlay.', act: () => setOpt('guideOpens') }] : []),
+    // the desktop's wallpaper, with Wallpaper Engine: this page behind the icons, the controller and keyboard on the desktop
+    ...(/Windows/.test(navigator.userAgent) && !WALLPAPER ? [{ kind: 'row', ic: icon('wide'), label: 'Use as your wallpaper (Wallpaper Engine)',
+      sub: 'Ultra Front End becomes your desktop: click, use the controller or type while the desktop is in front. Keep Ultra Front End running (Start with Windows) for it to show',
+      act: () => api('/api/wallpaper', {}).then(r => toast(r.opened ? 'Opened in Wallpaper Engine as your wallpaper' : 'Wallpaper Engine wasn’t found: in it, choose Open Wallpaper and this folder’s project.json', 7000), e => toast(e.message)) }] : []),
+    ...(/Windows/.test(navigator.userAgent) && !WALLPAPER ? [{ kind: 'row', ic: icon('keyboard'), label: 'Type on the wallpaper', value: onOff(d.options.wallpaperKeys),
+      sub: 'Your keyboard types into the wallpaper while the desktop is in front (click an empty spot first), and nowhere else. Enter on the desktop also opens a selected desktop icon',
+      act: () => setOpt('wallpaperKeys') }] : []),
     ...(ON_ANDROID ? [] : [{ kind: 'row', label: 'Installed Steam games', value: d.steamDetected ? onOff(d.options.steamLocal) : 'Steam not found',
       sub: !d.steamDetected ? '' : d.options.steamLocal ? `${d.localSteamCount} found on ${HERE}` : 'Off: your installed Steam games are hidden', act: () => d.steamDetected && setOpt('steamLocal') },
     { kind: 'row', label: 'Show games that aren’t installed', value: onOff(d.options.showUninstalled),
@@ -3823,6 +3835,8 @@ const keyHold = {};
 function stopKeyHolds() { Object.values(keyHold).forEach(clearTimeout); for (const k in keyHold) delete keyHold[k]; }
 const recentKeys = [];
 addEventListener('keydown', e => {
+  // A wallpaper never acts on the keyboard Wallpaper Engine passes on: it can arrive while you type in another window
+  if (WALLPAPER && e.isTrusted) return;
   const k = e.key.toLowerCase(), typing = e.target.tagName === 'INPUT' && !SR.entry;
   if (!e.repeat) { recentKeys.unshift(e.key === ' ' ? 'Space' : e.key); recentKeys.length = Math.min(recentKeys.length, 6); }
   if (P.mapping && !e.repeat) {  // Controllers screen is waiting for the quick-menu button
@@ -3945,14 +3959,36 @@ async function helperPad() {
       HP.live = true; HP.pads = r.pads;
       // Every page open on the helper hears the controller: only Ultra Front End's own window acts on it, or a browser tab
       // you're looking at. A tab in the background (or a test page) pressing along opened program pickers by itself.
+      // A press on the desktop is the wallpaper's alone, and the keyboard's keys come only that way (as key:down:<key>)
       const mine = window.pywebview || window.AndroidApp || (document.visibilityState === 'visible' && document.hasFocus());
-      if (mine) r.actions.forEach(a => { S.pad = true; inputFrom('xinput', a); });
+      r.actions.forEach((a, i) => {
+        const desk = !!r.desk?.[i];
+        if (WALLPAPER ? !desk : !mine || desk) return;
+        if (a.startsWith('key:')) return wallpaperKey(a);
+        if (a.startsWith('wheel:')) return wallpaperWheel(a.endsWith('up') ? -1 : 1);
+        S.pad = true; inputFrom('xinput', a);
+      });
       HP.seq = r.seq;
     } catch {
       HP.live = false;
       await new Promise(res => setTimeout(res, 3000));
     }
   }
+}
+// The mouse wheel turned on the desktop, for the wallpaper: the list under the pointer scrolls (a page, a menu), and the
+// home row moves as it does for a wheel
+let wallPointer = { x: innerWidth / 2, y: innerHeight / 2 };
+if (WALLPAPER) addEventListener('mousemove', e => { wallPointer = { x: e.clientX, y: e.clientY }; }, { passive: true });
+function wallpaperWheel(dir) {
+  let el = document.elementFromPoint(wallPointer.x, wallPointer.y);
+  while (el && el !== document.body && !(el.scrollHeight > el.clientHeight + 2 && /auto|scroll/.test(getComputedStyle(el).overflowY))) el = el.parentElement;
+  if (el && el !== document.body) return el.scrollBy({ top: dir * Math.max(80, el.clientHeight * 0.2), behavior: 'smooth' });
+  dispatchEvent(new WheelEvent('wheel', { deltaY: dir * 100, clientX: wallPointer.x, clientY: wallPointer.y, bubbles: true }));
+}
+// A key pressed on the desktop, for the wallpaper: given to the page as if typed into it
+function wallpaperKey(a) {
+  const [, kind, key] = a.match(/^key:(down|up):(.+)$/) || [];
+  if (key) dispatchEvent(new KeyboardEvent(kind === 'down' ? 'keydown' : 'keyup', { key, bubbles: true }));
 }
 // One press can arrive twice: from the helper and as a key Steam Input types for the same controller. Count it once.
 const LAST_INPUT = {};

@@ -524,13 +524,17 @@ def scan_steam_local():
             if not appid or not name or appid in seen or STEAM_SKIP.search(name):
                 continue
             # Steam also keeps a record for a game it hasn't finished installing (queued, a demo or playtest it never
-            # downloaded): only the ones flagged fully installed, with their folder there, can start
+            # downloaded): only the ones flagged fully installed, with their folder there, can start. A game being updated
+            # is still installed, though Steam can take that flag off while the update is queued or downloading: it has
+            # an update flag (2 needed, 256 running, 512 paused, 1024 started) and depots already installed, which a
+            # first download doesn't have yet
             try:
                 flags = int(ci(st, "StateFlags") or 0)
             except ValueError:
                 flags = 0
             folder = ci(st, "installdir") and os.path.join(lib, "steamapps", "common", ci(st, "installdir"))
-            if not flags & 4 or not (folder and os.path.isdir(folder)):
+            updating = flags & (2 | 256 | 512 | 1024) and bool(ci(st, "InstalledDepots"))
+            if not (flags & 4 or updating) or not (folder and os.path.isdir(folder)):
                 continue
             seen.add(appid)
             s = stats.get(appid, {})
@@ -6495,6 +6499,20 @@ def open_frontend():
 PAD_BUTTONS = {0x1000: "ok", 0x2000: "back", 0x8000: "options", 0x0010: "options", 0x0100: "prevTab", 0x0200: "nextTab"}  # Start, like Y: the game's menu
 PAD_DIRS = {"up": 0x0001, "down": 0x0002, "left": 0x0004, "right": 0x0008}
 PAD = {"seq": 0, "events": [], "cond": threading.Condition(), "pads": 0, "seen": 0.0, "last": {}}
+# ---------- Wallpaper Engine: the frontend as the desktop's wallpaper ----------
+# Wallpaper Engine shows the page (http://127.0.0.1:8137/?wallpaper=1) behind the desktop icons, but gives it no controller
+# and no keyboard. While the desktop is the window in front and a wallpaper page has checked in lately, the helper reads
+# both itself and sends each press marked for the desktop: only the wallpaper acts on those, never the frontend's window.
+# Nothing is read from the keyboard while any other window is in front, or with no wallpaper showing.
+WALLPAPER = {"seen": 0.0, "desk": 0.0, "fronts": []}  # (desk, fronts: when the desktop was last in front, and the windows seen in front, for /api/wallpaper)
+DESK = [False]  # the desktop is in front and a wallpaper is showing (watch_controller keeps it up to date)
+# Never from a wallpaper, whatever reaches it: shutting down, restarting or sleeping the PC, quitting, closing a game,
+# and (by their names, in do_POST) anything that removes or deletes
+WALLPAPER_NEVER = {"/api/system", "/api/quit", "/api/uninstall", "/api/running/close", "/api/album/delete"}
+
+
+def wallpaper_live():
+    return time.time() - WALLPAPER["seen"] < 15
 XSTATE = {}  # XInput slot: (when, buttons, lt, rt, lx, ly, rx, ry), the latest of each pad, for the controller tester
 
 
@@ -6511,7 +6529,8 @@ def pad_emit(action, src="xinput"):
             return
         PAD["last"][action] = now
         PAD["seq"] += 1
-        PAD["events"] = (PAD["events"] + [(PAD["seq"], action, overlay_open())])[-50:]  # each press goes to the overlay or the frontend, never both
+        desk = DESK[0] and src in ("xinput", "helper", "steam")  # (a press on the desktop: the wallpaper's)
+        PAD["events"] = (PAD["events"] + [(PAD["seq"], action, overlay_open(), desk)])[-50:]  # each press goes to the overlay or the frontend, never both
         PAD["cond"].notify_all()
 
 
@@ -6521,7 +6540,154 @@ def pad_wait(after, overlay=False, timeout=20):
         if after > PAD["seq"]:  # the page just opened, or the helper restarted: catch up without replaying old presses
             return {"seq": PAD["seq"], "actions": [], "pads": PAD["pads"]}
         PAD["cond"].wait_for(lambda: PAD["seq"] > after, timeout=timeout)
-        return {"seq": PAD["seq"], "actions": [a for n, a, o in PAD["events"] if n > after and o == overlay], "pads": PAD["pads"]}
+        mine = [(a, d) for n, a, o, d in PAD["events"] if n > after and o == overlay]
+        return {"seq": PAD["seq"], "actions": [a for a, d in mine], "desk": [d for a, d in mine], "pads": PAD["pads"]}
+
+
+DESKTOP_WINDOWS = ("Progman", "WorkerW")  # the desktop's own windows (Wallpaper Engine's wallpaper sits in a WorkerW)
+DESK_API = []
+
+
+def desktop_in_front(user32):
+    """The desktop is in front: Windows says the desktop (or, as it does once you click a Wallpaper Engine wallpaper, no
+    window at all) is in front, and the pointer is over the desktop too, not over a window or the taskbar. Both together,
+    so a moment between windows (Alt+Tab) doesn't count."""
+    import ctypes
+    import ctypes.wintypes as W
+    if not DESK_API:  # its own prototypes, with full-width window handles, leaving user32's for the rest of the helper
+        DESK_API.extend([ctypes.WINFUNCTYPE(W.HWND)(("GetForegroundWindow", ctypes.windll.user32)),
+                         ctypes.WINFUNCTYPE(W.HWND, W.POINT)(("WindowFromPoint", ctypes.windll.user32)),
+                         ctypes.WINFUNCTYPE(W.HWND, W.HWND, ctypes.c_uint)(("GetAncestor", ctypes.windll.user32)),
+                         ctypes.WINFUNCTYPE(ctypes.c_int, W.HWND, ctypes.c_wchar_p, ctypes.c_int)(("GetClassNameW", ctypes.windll.user32)),
+                         ctypes.WINFUNCTYPE(W.BOOL, ctypes.POINTER(W.POINT))(("GetCursorPos", ctypes.windll.user32))])
+    foreground, from_point, ancestor, class_name, cursor = DESK_API
+
+    def kind(hwnd):
+        if not hwnd:
+            return ""
+        name = ctypes.create_unicode_buffer(64)
+        class_name(hwnd, name, 64)
+        return name.value
+    front = kind(foreground())
+    pt = W.POINT()
+    under = kind(ancestor(from_point(pt), 2)) if cursor(ctypes.byref(pt)) else ""  # GA_ROOT: the top window under the pointer
+    seen = f"{front or '(none)'} / pointer over {under or '(none)'}"
+    fronts = WALLPAPER["fronts"]  # the last few seen, for /api/wallpaper
+    if not fronts or fronts[-1] != seen:
+        WALLPAPER["fronts"] = (fronts + [seen])[-8:]
+    desk = (front in DESKTOP_WINDOWS or not front) and under in DESKTOP_WINDOWS
+    if desk:
+        WALLPAPER["desk"] = time.time()
+    return desk
+
+
+# The keys a wallpaper gets: letters, numbers, a little punctuation, and the keys the frontend moves with
+WALL_KEYS = {**{0x41 + i: (chr(97 + i), chr(65 + i)) for i in range(26)},
+             **{0x30 + i: (str(i), ")!@#$%^&*("[i]) for i in range(10)},
+             0x20: (" ", " "), 0xBD: ("-", "_"), 0xBE: (".", ">"), 0xBC: (",", "<"), 0xDE: ("'", '"'), 0xBA: (";", ":"), 0xBF: ("/", "?"),
+             0x08: ("Backspace",) * 2, 0x0D: ("Enter",) * 2, 0x1B: ("Escape",) * 2,
+             0x25: ("ArrowLeft",) * 2, 0x26: ("ArrowUp",) * 2, 0x27: ("ArrowRight",) * 2, 0x28: ("ArrowDown",) * 2}
+
+
+def wallpaper_keys(user32, down):
+    """The keys pressed and let go since the last look, sent to the wallpaper as key:down:<key> and key:up:<key>."""
+    now = {vk for vk in WALL_KEYS if user32.GetAsyncKeyState(vk) & 0x8000}
+    shift = bool(user32.GetAsyncKeyState(0x10) & 0x8000)
+    if user32.GetAsyncKeyState(0x11) & 0x8000 or user32.GetAsyncKeyState(0x12) & 0x8000 or user32.GetAsyncKeyState(0x5B) & 0x8000:
+        return now  # Ctrl, Alt or the Windows key held: a shortcut for Windows, not typing
+    for vk in now - down:
+        pad_emit("key:down:" + WALL_KEYS[vk][shift], "helper")
+    for vk in down - now:
+        pad_emit("key:up:" + WALL_KEYS[vk][0], "helper")
+    return now
+
+
+WHEEL_HOOK = []  # the hook's callback, kept so it isn't freed while Windows still calls it
+
+
+def wallpaper_wheel():
+    """The mouse wheel turned on the desktop, for the wallpaper (Wallpaper Engine passes on clicks, not scrolling): seen by
+    a low-level mouse hook, sent as wheel:up / wheel:down only while the desktop is in front with a wallpaper showing,
+    and every turn still goes on to Windows as it was."""
+    import ctypes
+    import ctypes.wintypes as W
+    user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
+    proc_type = ctypes.WINFUNCTYPE(ctypes.c_ssize_t, ctypes.c_int, W.WPARAM, W.LPARAM)
+
+    class MouseInfo(ctypes.Structure):
+        _fields_ = [("pt", W.POINT), ("mouseData", W.DWORD), ("flags", W.DWORD), ("time", W.DWORD), ("extra", ctypes.c_size_t)]
+    user32.SetWindowsHookExW.argtypes = [ctypes.c_int, proc_type, W.HINSTANCE, W.DWORD]
+    user32.SetWindowsHookExW.restype = ctypes.c_void_p
+    user32.CallNextHookEx.argtypes = [ctypes.c_void_p, ctypes.c_int, W.WPARAM, W.LPARAM]
+    user32.CallNextHookEx.restype = ctypes.c_ssize_t
+    kernel32.GetModuleHandleW.restype = W.HMODULE
+
+    @proc_type
+    def seen(code, wparam, lparam):
+        if code == 0 and wparam == 0x020A and DESK[0]:  # WM_MOUSEWHEEL
+            delta = ctypes.c_short(ctypes.cast(lparam, ctypes.POINTER(MouseInfo)).contents.mouseData >> 16).value
+            if delta:
+                pad_emit("wheel:up" if delta > 0 else "wheel:down", "helper")
+        return user32.CallNextHookEx(None, code, wparam, lparam)
+    WHEEL_HOOK.append(seen)
+    if not user32.SetWindowsHookExW(14, seen, kernel32.GetModuleHandleW(None), 0):  # WH_MOUSE_LL
+        return
+    msg = W.MSG()
+    while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:  # a low-level hook is called through this thread's messages
+        pass
+
+
+WALLPAPER_PAGE = """<!doctype html>
+<html><head><meta charset="utf-8"><title>Ultra Front End</title>
+<style>html,body{margin:0;height:100%;background:#05070d;overflow:hidden}iframe{border:0;width:100%;height:100%;display:none}
+p{position:fixed;inset:auto 0 46%;text-align:center;font:600 2.2vh system-ui,sans-serif;color:#8aa0c0}</style></head>
+<body><iframe id="app" allow="autoplay"></iframe><p id="wait">Waiting for Ultra Front End…</p>
+<script>
+// Ultra Front End as the desktop's wallpaper: its page, once its helper answers (asked again every few seconds until then,
+// so a wallpaper that starts before the helper doesn't stop at an error page)
+const url = 'http://127.0.0.1:8137/';
+async function up() { try { await fetch(url + 'api/ping', { mode: 'no-cors', cache: 'no-store' }); return true; } catch { return false; } }
+async function start() {
+  if (!(await up())) return setTimeout(start, 3000);
+  const f = document.getElementById('app');
+  f.src = url + '?wallpaper=1'; f.style.display = 'block'; document.getElementById('wait').remove();
+  setInterval(async () => { if (!(await up())) location.reload(); }, 15000);  // the helper went away: wait for it again
+}
+start();
+</script></body></html>
+"""
+
+
+def wallpaper_project():
+    """A Wallpaper Engine project for the frontend, in the data folder: its folder, made or brought up to date."""
+    folder = os.path.join(DATA, "wallpaper-engine")
+    os.makedirs(folder, exist_ok=True)
+    with open(os.path.join(folder, "index.html"), "w", encoding="utf-8") as f:
+        f.write(WALLPAPER_PAGE)
+    with open(os.path.join(folder, "project.json"), "w", encoding="utf-8") as f:
+        json.dump({"file": "index.html", "title": "Ultra Front End", "type": "web", "description": "Ultra Front End as your desktop. Needs Ultra Front End running (Settings › General › Start with Windows)."}, f, indent=2)
+    icon = os.path.join(APP, "icon.png")
+    if os.path.isfile(icon):
+        shutil.copyfile(icon, os.path.join(folder, "preview.png"))
+    return folder
+
+
+def wallpaper_engine_exe():
+    """Wallpaper Engine's program, in one of Steam's library folders, or None."""
+    sp = steam_path()
+    libs = [sp] if sp else []
+    try:
+        for v in (ci(vdf(read(os.path.join(sp, "steamapps", "libraryfolders.vdf"))), "libraryfolders") or {}).values() if sp else []:
+            if isinstance(v, dict) and v.get("path"):
+                libs.append(v["path"])
+    except OSError:
+        pass
+    for lib in libs:
+        for name in ("wallpaper64.exe", "wallpaper32.exe"):
+            exe = os.path.join(lib, "steamapps", "common", "wallpaper_engine", name)
+            if os.path.isfile(exe):
+                return exe
+    return None
 
 
 def watch_controller():
@@ -6546,13 +6712,21 @@ def watch_controller():
         get_state = xinput.XInputGetState
     user32 = ctypes.windll.user32
     held, last_fire, last_fg, last_open, front, repeat, combo, zoom_at = {}, 0.0, 0.0, 0.0, False, {}, {}, 0.0
+    keys_down, keys_checked, keys_on = set(), 0.0, False
     while True:
-        time.sleep(0.016 if front else 0.04)
+        time.sleep(0.016 if front or DESK[0] else 0.04)
         now = time.time()
         n = user32.GetWindowTextLengthW(user32.GetForegroundWindow())
         title = ctypes.create_unicode_buffer(n + 1)
         user32.GetWindowTextW(user32.GetForegroundWindow(), title, n + 1)
         front = title.value.startswith("Ultra Front End") and frontend_in_front()
+        DESK[0] = not front and wallpaper_live() and desktop_in_front(user32)
+        # The keyboard, for the wallpaper: only if it's switched on (Settings › General › Type on the wallpaper), and only
+        # while the desktop is truly in front (desktop_in_front: Windows and the pointer both say so). Keys Wallpaper Engine
+        # passes on itself are never used: those reached it from other windows and went through to Shut down, 2026-11-11
+        if now - keys_checked > 1:
+            keys_checked, keys_on = now, bool(config().get("wallpaperKeys"))
+        keys_down = wallpaper_keys(user32, keys_down) if DESK[0] and keys_on else set()
         if front and now - last_fg > 2:  # the frontend is in front again: a game started through a link has ended
             last_fg = now
             session = open_session()
@@ -6585,7 +6759,7 @@ def watch_controller():
                 combo[i] = True
             if was & XINPUT_BACK and not b & XINPUT_BACK and not combo.pop(i, False) and front and not overlay_open():
                 pad_emit("system")  # View pressed on its own (not View + a bumper or Start): Quick Access
-            if not (front or overlay_open()) or b & XINPUT_BACK:  # menus only while the frontend has the screen; View+bumper is the capture combo
+            if not (front or overlay_open() or DESK[0]) or b & XINPUT_BACK:  # menus only while the frontend (or the wallpaper, on the desktop) has the screen; View+bumper is the capture combo
                 continue
             for bit, action in PAD_BUTTONS.items():
                 if pressed & bit:
@@ -7803,7 +7977,7 @@ def steam_button_reader(path, active):
         now, on, r = time.time(), bool(buf.raw[4] & 1), buf.raw
         PAD_RAW[0], PAD_RAW[1] = r[:30], now
         if now - checked > 0.1:
-            checked, menus = now, overlay_open() or frontend_in_front()
+            checked, menus = now, overlay_open() or frontend_in_front() or DESK[0]  # (or the wallpaper, on the desktop)
             dolphin = foreground_title().startswith("Dolphin") and not menus and bool(config().get("wiiMotion"))
             if dolphin and now - motion_sent > 5:  # again every so often: Steam or a sleeping controller can turn it off
                 motion_sent = now
@@ -8145,7 +8319,7 @@ LOCAL_PROVIDERS = {"ea": "EA app", "ubisoft": "Ubisoft Connect", "gog": "GOG", "
 # each launcher has installed on this PC from the entries it writes to Windows' installed-programs list, and starts
 # games through the launcher so sign-in, updates and cloud saves still work.
 SERVICE_SCANS = ("ea", "ubisoft", "gog", "battlenet")   # each has an on/off option "<id>Local" (on by default)
-OPTION_KEYS = ("steamLocal", "onlineCovers", "showUninstalled", "artBackground", "guideOpens", "wiiMotion", "keepOnScreen", "usageCheckin", "dndWhilePlaying") + tuple(p + "Local" for p in SERVICE_SCANS)
+OPTION_KEYS = ("steamLocal", "onlineCovers", "showUninstalled", "artBackground", "guideOpens", "wiiMotion", "keepOnScreen", "usageCheckin", "dndWhilePlaying", "wallpaperKeys") + tuple(p + "Local" for p in SERVICE_SCANS)
 SERVICE_APPS = {
     "ea": [r"C:\Program Files\Electronic Arts\EA Desktop\EA Desktop\EADesktop.exe"],
     "ubisoft": [r"C:\Program Files (x86)\Ubisoft\Ubisoft Game Launcher\UbisoftConnect.exe", r"C:\Program Files (x86)\Ubisoft\Ubisoft Game Launcher\upc.exe"],
@@ -8412,7 +8586,8 @@ def settings_view():
     chosen = set(cfg.get("systems") or []) | set(extra)
     platforms = [system_view(p, cfg, chosen) for p in ROM_FOLDERS + extra]
     services = {p: {"detected": bool(service_app(p)), "count": STATE["counts"].get(f"{LOCAL_PROVIDERS[p]} (installed)", 0)} for p in SERVICE_SCANS}
-    return {"options": {**{k: cfg.get(k, True) for k in OPTION_KEYS}, "dndWhilePlaying": cfg.get("dndWhilePlaying", False), "startup": cfg.get("startup")}, "services": services, "libraries": libs, "accounts": acc,
+    return {"options": {**{k: cfg.get(k, True) for k in OPTION_KEYS}, "dndWhilePlaying": cfg.get("dndWhilePlaying", False),
+                        "wallpaperKeys": cfg.get("wallpaperKeys", False), "startup": cfg.get("startup")}, "services": services, "libraries": libs, "accounts": acc,
             "errors": STATE["errors"], "steamDetected": bool(steam_path()), "steamSuggestedId": steam_suggested_id(),
             "localSteamCount": STATE["counts"].get("Steam (installed)", 0), "romRoot": cfg.get("romRoot") or "", "platforms": platforms,
             "emuUpdates": {"checked": EMU_UPDATES["checked"], "list": [{"name": n, "to": i.get("to", ""), "systems": i["systems"], "installer": k == "winget"}
@@ -10754,7 +10929,17 @@ class Handler(SimpleHTTPRequestHandler):
             except ValueError:
                 after = 0
             return self.reply(pad_wait(after, bool(q.get("overlay"))))
+        if path == "/api/wallpaper":  # how Wallpaper mode is doing, to see why a wallpaper gets no controller or keys
+            ago = lambda t: round(time.time() - t, 1) if t else None
+            return self.reply({"version": VERSION, "wallpaperCheckedIn": ago(WALLPAPER["seen"]), "showing": wallpaper_live(),
+                               "desktopInFrontAgo": ago(WALLPAPER["desk"]), "desktopInFrontNow": DESK[0],
+                               "windowsInFront": WALLPAPER["fronts"], "wheelWatching": bool(WALLPAPER.get("wheel")), "controllers": PAD["pads"]})
         if path == "/api/ping":
+            if "wallpaper=1" in (urllib.parse.urlparse(self.path).query or ""):
+                WALLPAPER["seen"] = time.time()  # a wallpaper is showing: it gets the controller and keys on the desktop
+                if WIN and not WALLPAPER.get("wheel"):  # and the mouse wheel, from the first time one shows
+                    WALLPAPER["wheel"] = True
+                    threading.Thread(target=wallpaper_wheel, daemon=True).start()
             return self.reply({"ok": True, "scanned": STATE["scanned"], "page": page_version(), "build": BUILD, "pid": os.getpid(), "root": ROOT,
                                "version": VERSION, "scan": scan_progress()})
         if path == "/api/scan":  # polled quickly while a scan is under way, for its progress window
@@ -10978,6 +11163,8 @@ class Handler(SimpleHTTPRequestHandler):
                     k in body and body[k] is not None and not isinstance(body[k], str) for k in TEXT_FIELDS) or ("pid" in body and not isinstance(body["pid"], int)):
                 raise ValueError("A field has the wrong type")
             path = urllib.parse.urlparse(self.path).path
+            if self.headers.get("X-Wallpaper") == "1" and (path in WALLPAPER_NEVER or re.search(r"/(remove|delete|uninstall|close)$", path)):
+                raise ValueError("That can't be done from the wallpaper: open Ultra Front End for it")
             if path == "/api/spawn/done":
                 spawn_done(body.get("id"), int(body.get("pid") or 0))
                 return self.reply({"ok": True})
@@ -11066,6 +11253,16 @@ class Handler(SimpleHTTPRequestHandler):
                 store("overrides.json", overrides)
                 g["hidden"] = bool(body.get("hidden"))
                 return self.reply({"ok": True})
+            if path == "/api/wallpaper":  # Settings › General: the frontend as a Wallpaper Engine wallpaper
+                if not WIN:
+                    raise ValueError("Wallpaper Engine runs on Windows")
+                folder = wallpaper_project()
+                exe = wallpaper_engine_exe()
+                if exe:  # Wallpaper Engine's own command line: use this project as the wallpaper now
+                    subprocess.Popen([exe, "-control", "openWallpaper", "-file", os.path.join(folder, "project.json")], creationflags=0x08000000)
+                else:
+                    open_target(folder)
+                return self.reply({"folder": folder, "opened": bool(exe)})
             if path == "/api/game/names":  # {query}: Wikipedia's games by that name, to pick from when renaming
                 return self.reply({"games": wiki_game_choices(" ".join(str(body.get("query") or "").split())[:120])})
             if path == "/api/game/rename":  # a name of the user's own; an empty one goes back to the game's own name
