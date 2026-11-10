@@ -3958,6 +3958,7 @@ async function helperPad() {
         const desk = !!r.desk?.[i];
         if (WALLPAPER ? !desk : !mine || desk) return;
         if (a.startsWith('key:')) return wallpaperKey(a);
+        if (a.startsWith('wheel:')) return wallpaperWheel(a.endsWith('up') ? -1 : 1);
         S.pad = true; inputFrom('xinput', a);
       });
       HP.seq = r.seq;
@@ -3966,6 +3967,16 @@ async function helperPad() {
       await new Promise(res => setTimeout(res, 3000));
     }
   }
+}
+// The mouse wheel turned on the desktop, for the wallpaper: the list under the pointer scrolls (a page, a menu), and the
+// home row moves as it does for a wheel
+let wallPointer = { x: innerWidth / 2, y: innerHeight / 2 };
+if (WALLPAPER) addEventListener('mousemove', e => { wallPointer = { x: e.clientX, y: e.clientY }; }, { passive: true });
+function wallpaperWheel(dir) {
+  let el = document.elementFromPoint(wallPointer.x, wallPointer.y);
+  while (el && el !== document.body && !(el.scrollHeight > el.clientHeight + 2 && /auto|scroll/.test(getComputedStyle(el).overflowY))) el = el.parentElement;
+  if (el && el !== document.body) return el.scrollBy({ top: dir * Math.max(80, el.clientHeight * 0.2), behavior: 'smooth' });
+  dispatchEvent(new WheelEvent('wheel', { deltaY: dir * 100, clientX: wallPointer.x, clientY: wallPointer.y, bubbles: true }));
 }
 // A key pressed on the desktop, for the wallpaper: given to the page as if typed into it
 function wallpaperKey(a) {

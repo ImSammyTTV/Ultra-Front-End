@@ -6526,7 +6526,7 @@ def pad_emit(action, src="xinput"):
             return
         PAD["last"][action] = now
         PAD["seq"] += 1
-        desk = DESK[0] and src in ("xinput", "helper")  # (a press on the desktop: the wallpaper's)
+        desk = DESK[0] and src in ("xinput", "helper", "steam")  # (a press on the desktop: the wallpaper's)
         PAD["events"] = (PAD["events"] + [(PAD["seq"], action, overlay_open(), desk)])[-50:]  # each press goes to the overlay or the frontend, never both
         PAD["cond"].notify_all()
 
@@ -6568,6 +6568,41 @@ def wallpaper_keys(user32, down):
     for vk in down - now:
         pad_emit("key:up:" + WALL_KEYS[vk][0], "helper")
     return now
+
+
+WHEEL_HOOK = []  # the hook's callback, kept so it isn't freed while Windows still calls it
+
+
+def wallpaper_wheel():
+    """The mouse wheel turned on the desktop, for the wallpaper (Wallpaper Engine passes on clicks, not scrolling): seen by
+    a low-level mouse hook, sent as wheel:up / wheel:down only while the desktop is in front with a wallpaper showing,
+    and every turn still goes on to Windows as it was."""
+    import ctypes
+    import ctypes.wintypes as W
+    user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
+    proc_type = ctypes.WINFUNCTYPE(ctypes.c_ssize_t, ctypes.c_int, W.WPARAM, W.LPARAM)
+
+    class MouseInfo(ctypes.Structure):
+        _fields_ = [("pt", W.POINT), ("mouseData", W.DWORD), ("flags", W.DWORD), ("time", W.DWORD), ("extra", ctypes.c_size_t)]
+    user32.SetWindowsHookExW.argtypes = [ctypes.c_int, proc_type, W.HINSTANCE, W.DWORD]
+    user32.SetWindowsHookExW.restype = ctypes.c_void_p
+    user32.CallNextHookEx.argtypes = [ctypes.c_void_p, ctypes.c_int, W.WPARAM, W.LPARAM]
+    user32.CallNextHookEx.restype = ctypes.c_ssize_t
+    kernel32.GetModuleHandleW.restype = W.HMODULE
+
+    @proc_type
+    def seen(code, wparam, lparam):
+        if code == 0 and wparam == 0x020A and DESK[0]:  # WM_MOUSEWHEEL
+            delta = ctypes.c_short(ctypes.cast(lparam, ctypes.POINTER(MouseInfo)).contents.mouseData >> 16).value
+            if delta:
+                pad_emit("wheel:up" if delta > 0 else "wheel:down", "helper")
+        return user32.CallNextHookEx(None, code, wparam, lparam)
+    WHEEL_HOOK.append(seen)
+    if not user32.SetWindowsHookExW(14, seen, kernel32.GetModuleHandleW(None), 0):  # WH_MOUSE_LL
+        return
+    msg = W.MSG()
+    while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:  # a low-level hook is called through this thread's messages
+        pass
 
 
 WALLPAPER_PAGE = """<!doctype html>
@@ -7905,7 +7940,7 @@ def steam_button_reader(path, active):
         now, on, r = time.time(), bool(buf.raw[4] & 1), buf.raw
         PAD_RAW[0], PAD_RAW[1] = r[:30], now
         if now - checked > 0.1:
-            checked, menus = now, overlay_open() or frontend_in_front()
+            checked, menus = now, overlay_open() or frontend_in_front() or DESK[0]  # (or the wallpaper, on the desktop)
             dolphin = foreground_title().startswith("Dolphin") and not menus and bool(config().get("wiiMotion"))
             if dolphin and now - motion_sent > 5:  # again every so often: Steam or a sleeping controller can turn it off
                 motion_sent = now
@@ -10859,6 +10894,9 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/ping":
             if "wallpaper=1" in (urllib.parse.urlparse(self.path).query or ""):
                 WALLPAPER["seen"] = time.time()  # a wallpaper is showing: it gets the controller and keys on the desktop
+                if WIN and not WALLPAPER.get("wheel"):  # and the mouse wheel, from the first time one shows
+                    WALLPAPER["wheel"] = True
+                    threading.Thread(target=wallpaper_wheel, daemon=True).start()
             return self.reply({"ok": True, "scanned": STATE["scanned"], "page": page_version(), "build": BUILD, "pid": os.getpid(), "root": ROOT,
                                "version": VERSION, "scan": scan_progress()})
         if path == "/api/scan":  # polled quickly while a scan is under way, for its progress window
