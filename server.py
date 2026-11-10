@@ -1091,8 +1091,8 @@ def install_from_github(name, target=None):
     if not asset:
         raise ValueError(f"{name} has no Windows download right now. Its project page may have one.")
     url = asset["browser_download_url"]
-    if not on_project(url, repo):
-        raise ValueError(f"{name}'s download isn't on its own project")
+    if not on_project(url, repo):  # (it says where it is, so a project that moved can be told from a bad download)
+        raise ValueError(f"{name}'s download isn't on its own project ({urllib.parse.urlparse(url).netloc}{'/'.join(urllib.parse.urlparse(url).path.split('/')[:3])}, not github.com/{repo})")
     # GitHub's SHA-256 of the file, on everything uploaded since mid-2025
     exe = install_download(name, url, asset["name"], program_name, asset.get("digest") or "", asset.get("size") or 0, target)
     versions = load("emu-versions.json", {})
