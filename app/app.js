@@ -3714,6 +3714,7 @@ function input(action) {
   if (window.addonEmit?.('input', action)) return;  // an add-on took this press
   if (action.startsWith('zoom') && !R.open) return;  // the right stick only zooms a post; elsewhere it does nothing
   if (INTRO.open) return endIntro(true);  // any button skips the intro
+  if (action === 'back' && $('#egg-wasted')) return eggDone(LIB.find(g => g.egg));  // B: over sooner
   // The launch screen is over everything: B takes it down; nothing else may reach the menus hidden under it
   if (S.busy) return action === 'back' ? cancelLaunch() : undefined;
   if (PT.open) return action === 'back' && !PT.live ? closePadTester() : undefined;  // a controller in use is being tested: its B is held 2 s instead
@@ -4071,17 +4072,53 @@ function eggHomeVideo(g) {
     detailsFor(g)?.info.then(d => { if (d?.egg?.background && game()?.id === g.id && last.isConnected) eggVideo(last, d.egg.background); }).catch(() => {});
   }, 1500);  // once the selection rests on it (the layer goes with the next game's background)
 }
-// Play: it isn't out (and not on a PC), so a sound and the screen drained of colour for a moment
+// Play: it isn't out (and not on a PC). The screen drains of colour and slowly pushes in, a banner drops in with the
+// sound, and a line underneath ribs you for trying: a different one each press.
+const EGG_LINES = [
+  d => `Nice try. It's out in ${d}.`,
+  d => `Still ${d} to go. Maybe touch some grass?`,
+  d => `Pressing Play harder won't make it come out sooner. ${d} left.`,
+  d => `You've waited this long. What's another ${d}?`,
+  () => `Also, it's PS5 and Xbox only. This is a PC.`,
+  d => `Loading Vice City… please wait ${d}.`,
+  () => `Rockstar has been notified of your impatience.`,
+];
+const EGG_OUT_LINES = [
+  () => `It's out! Just… not on PC.`,
+  () => `Wrong machine, pal. Try the PS5 or the Xbox.`,
+  () => `PC version: sometime. Probably. Maybe.`,
+  () => `Same time next year?`,
+];
+let eggPress = 0, eggTimer = 0;
+function eggJoke(g) {
+  const ms = eggOut(g) - Date.now(), days = Math.floor(ms / 864e5), hours = Math.floor(ms / 36e5), mins = Math.max(1, Math.floor(ms / 6e4));
+  const left = days >= 1 ? `${days} day${days === 1 ? '' : 's'}` : hours >= 1 ? `${hours} hour${hours === 1 ? '' : 's'}` : `${mins} minute${mins === 1 ? '' : 's'}`;  // as the countdown counts
+  const lines = ms > 0 ? EGG_LINES : EGG_OUT_LINES;
+  return lines[eggPress++ % lines.length](left);
+}
 function eggPlay(g) {
   eggQuiet(EGG.theme, true); EGG.theme = null;
   eggQuiet(EGG.sound, true);
+  clearTimeout(eggTimer);
+  $('#egg-wasted')?.remove();
   EGG.sound = eggAudio(g.egg.play, { volume: 80, loop: false, fadeIn: false });  // a sound hits at once (a song fades in)
+  const box = document.createElement('div');
+  box.id = 'egg-wasted';
+  box.innerHTML = `<div class="ew-band"><div class="ew-big">wasted</div><div class="ew-line">${esc(eggJoke(g))}</div></div>`;
+  box.addEventListener('click', () => eggDone(g));
+  document.body.appendChild(box);
+  document.body.classList.remove('egg-wasted'); void document.body.offsetWidth;  // (pressed again: the push-in starts over)
   document.body.classList.add('egg-wasted');
-  setTimeout(() => {
-    document.body.classList.remove('egg-wasted');
-    eggQuiet(EGG.sound); EGG.sound = null;
-    if (D.open && D.game?.egg && !EGG.theme) EGG.theme = eggAudio(g.egg.theme, { volume: 30, loop: true });  // and the theme again
-  }, 5000);
+  raf2(() => box.classList.add('on'));
+  eggTimer = setTimeout(() => eggDone(g), 6000);
+}
+function eggDone(g) {
+  clearTimeout(eggTimer);
+  document.body.classList.remove('egg-wasted');
+  const box = $('#egg-wasted');
+  if (box) { box.classList.remove('on'); setTimeout(() => box.remove(), 500); }
+  eggQuiet(EGG.sound); EGG.sound = null;
+  if (D.open && D.game?.egg && !EGG.theme) EGG.theme = eggAudio(g.egg.theme, { volume: 30, loop: true });  // and the theme again
 }
 if (API) setInterval(watchRunning, 3000);
 // A quiet warning when the controller runs low, once per charge

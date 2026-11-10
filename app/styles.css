@@ -1329,5 +1329,15 @@ body.trim-open.quick-open #quick { z-index: 10; }
 .egg-video { position: absolute; inset: 0; overflow: hidden; opacity: 0; transition: opacity 1.2s ease; pointer-events: none; }
 .egg-video.on { opacity: 1; }
 .egg-video iframe { position: absolute; left: 50%; top: 50%; width: max(100%, 177.78vh); height: max(100%, 56.25vw); transform: translate(-50%, -50%) scale(1.2); border: 0; }
-#world, main, header, footer, #details { transition: filter .4s ease; }
-body.egg-wasted #world, body.egg-wasted main, body.egg-wasted header, body.egg-wasted footer, body.egg-wasted #details { filter: grayscale(1) brightness(.7); }
+#world, main, header, footer, #details { transition: filter .4s ease, transform .5s ease; }
+body.egg-wasted #world, body.egg-wasted main, body.egg-wasted header, body.egg-wasted footer, body.egg-wasted #details {
+  filter: grayscale(1) brightness(.6) contrast(1.1); transform: scale(1.08); transition: filter .6s ease, transform 6s cubic-bezier(.2, .6, .3, 1); }
+#egg-wasted { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; pointer-events: auto; cursor: pointer; }
+#egg-wasted .ew-band { width: 100%; padding: 3.2vh 0 3.6vh; text-align: center; background: linear-gradient(90deg, transparent, rgba(0, 0, 0, .78) 18%, rgba(0, 0, 0, .78) 82%, transparent);
+  opacity: 0; transition: opacity .35s ease .25s; }
+#egg-wasted .ew-big { font: 900 13vh/1 Georgia, 'Times New Roman', serif; letter-spacing: .02em; color: #c8102e; text-transform: lowercase;
+  text-shadow: 0 .4vh 0 #000, 0 0 3vh rgba(0, 0, 0, .9); transform: scale(1.6); opacity: 0; transition: transform .45s cubic-bezier(.2, 1.4, .4, 1) .3s, opacity .2s ease .3s; }
+#egg-wasted .ew-line { margin-top: 1.6vh; font-size: 2.4vh; font-weight: 600; color: #f2f2f2; opacity: 0; transform: translateY(1vh); transition: opacity .4s ease 1.3s, transform .4s ease 1.3s; }
+#egg-wasted.on .ew-band, #egg-wasted.on .ew-big, #egg-wasted.on .ew-line { opacity: 1; }
+#egg-wasted.on .ew-big { transform: none; }
+#egg-wasted.on .ew-line { transform: none; }
