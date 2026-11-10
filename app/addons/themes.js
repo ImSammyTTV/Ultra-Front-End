@@ -1,4 +1,5 @@
-// Theme music: a game's theme plays quietly while its page is open, and fades out when you leave or start it.
+// Theme music: a game's theme plays quietly while its page is open, and fades out when you leave or start it, while a
+// trailer plays, and while any game is running (back by itself once you're on the page again with nothing playing).
 // It finds the theme on YouTube and plays it through YouTube's own player with the picture hidden (nothing is
 // downloaded). The song picked for each game is remembered, and "Next song" in Settings tries another if it's wrong.
 // Your own song for a game: put it in this add-on's folder named after the game ("Hades II.mp3", or .m4a, .ogg...); it plays instead.
@@ -98,10 +99,19 @@ UFE.addon({
     };
     this.next = next;
     this.last = null;
-    api.on('game:details', ({ game }) => { this.last = game; if (api.settings().off) return; play(game); });
-    api.on('game:details:close', stop);
+    // silent while a video plays (a trailer has its own sound) or any game is running
+    const quiet = () => document.body.classList.contains('video-playing') || api.running().length > 0;
+    const onPage = () => document.body.classList.contains('details-open');
+    let page = null;  // the game whose page is open (this.last stays for Settings' Next song)
+    api.on('game:details', ({ game }) => { this.last = page = game; if (api.settings().off || quiet()) return; play(game); });
+    api.on('game:details:close', () => { page = null; stop(); });
     api.on('game:start', stop);
-    api.every(1000, () => { if (current && !document.body.classList.contains('details-open')) stop(); });  // left the page some other way: silence
+    api.on('video:start', stop);
+    api.on('video:stop', () => { if (page && onPage() && !quiet() && !api.settings().off) play(page); });
+    api.every(1000, () => {
+      if (current && (!onPage() || quiet())) stop();  // left the page some other way, or a game is running: silence
+      else if (!current && page && onPage() && !quiet() && !api.settings().off) play(page);  // the game ended: its theme again
+    });
     this.stop = stop;
   },
   unmount() { this.stop?.(); },

@@ -1421,6 +1421,7 @@ function showMedia(i) {
   V.i = (i + V.items.length) % V.items.length;
   const m = V.items[V.i], stage = $('#viewer .v-stage');
   stopVideo();
+  themesQuiet(m.kind === 'video');  // a trailer has its own sound: theme music waits
   if (m.youtube) {
     stage.innerHTML = '<div id="youtube-trailer"></div>';
     loadYouTubePlayer().then(() => {
@@ -1456,7 +1457,15 @@ function stopVideo() {
   const v = $('#viewer video');
   if (v) { v.onerror = null; v.pause(); v.removeAttribute('src'); v.load(); }
 }
-function closeViewer() { stopVideo(); $('#viewer .v-stage').innerHTML = ''; V.open = false; document.body.classList.remove('viewer-open'); tick(420, .06); }
+function closeViewer() { stopVideo(); $('#viewer .v-stage').innerHTML = ''; V.open = false; document.body.classList.remove('viewer-open'); themesQuiet(false); tick(420, .06); }
+// Theme music (the add-on's, and the nearly-out tile's) is silent while a video plays here or while any game is running
+function themesQuiet(video) {
+  const was = document.body.classList.contains('video-playing');
+  document.body.classList.toggle('video-playing', video);
+  if (was !== video) window.addonEmit?.(video ? 'video:start' : 'video:stop');
+  eggCheck();
+}
+const musicMayPlay = () => !document.body.classList.contains('video-playing') && !RUN.size;
 function viewerToggle() { if (V.youtube?.getPlayerState) { V.youtube.getPlayerState() === 1 ? V.youtube.pauseVideo() : V.youtube.playVideo(); return; } const v = $('#viewer video'); if (v) v.paused ? v.play() : v.pause(); }
 $('#viewer').addEventListener('click', e => {
   const th = e.target.closest('.v-thumb');
@@ -4026,6 +4035,7 @@ function eggLeft(g, long) {
 setInterval(() => {
   const g = LIB.find(x => x.egg);
   if (!g) return;
+  eggCheck();  // (a game started or ended meanwhile)
   if (Date.now() >= eggOut(g).getTime() + 3 * 864e5 && !D.open && !P.open) { loadLibrary().then(() => buildRow(false)); return; }  // its time is up: off the row
   document.querySelectorAll('.egg-count').forEach(el => { el.textContent = eggLeft(g); });
   if (D.open && D.game?.egg) { const d = D.data; $('#details .d-meta').textContent = [g.system || g.group, ...(d?.genres || []), d?.developer, eggLeft(g, true)].filter(Boolean).join('   ·   '); }
@@ -4066,7 +4076,13 @@ function eggQuiet(it, fast) {
 function eggDetails(g) {
   eggStop();
   document.fonts?.load("900 15vh 'Passion One'").catch(() => {});  // the banner's font, ready before Play
-  EGG.theme = eggAudio(g.egg.theme, { volume: 30, loop: true });
+  if (musicMayPlay()) EGG.theme = eggAudio(g.egg.theme, { volume: 30, loop: true });
+}
+// quiet while a video plays or a game runs; back once neither is so (and Play's moment is over)
+function eggCheck() {
+  const here = D.open && D.game?.egg;
+  if (EGG.theme && (!here || !musicMayPlay())) { eggQuiet(EGG.theme); EGG.theme = null; }
+  else if (!EGG.theme && here && musicMayPlay() && !$('#egg-wasted')) EGG.theme = eggAudio(D.game.egg.theme, { volume: 30, loop: true });
 }
 function eggStop() {
   eggQuiet(EGG.theme); EGG.theme = null;
@@ -4117,7 +4133,7 @@ function eggDone(g) {
   const box = $('#egg-wasted');
   if (box) { box.classList.remove('on'); setTimeout(() => box.remove(), 500); }
   eggQuiet(EGG.sound); EGG.sound = null;
-  if (D.open && D.game?.egg && !EGG.theme) EGG.theme = eggAudio(g.egg.theme, { volume: 30, loop: true });  // and the theme again
+  eggCheck();  // and the theme again
 }
 if (API) setInterval(watchRunning, 3000);
 // A quiet warning when the controller runs low, once per charge
