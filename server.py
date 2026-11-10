@@ -3624,6 +3624,8 @@ def game_details(g):
     if g.get("egg"):  # the official trailers first (what YouTube's search found too, after them), and a frame as the background
         pinned = [{"youtube": v, "name": f"{g['title']} — Trailer {i + 1}", "thumb": f"https://i.ytimg.com/vi/{v}/hqdefault.jpg"} for i, v in enumerate(EGG["trailers"])]
         d["trailers"] = pinned + [t for t in d.get("trailers") or [] if t.get("youtube") not in EGG["trailers"]][:2]
+        # no store page to take screenshots from: frames from the official trailers (three from each), not a fan video's
+        d["screenshots"] = [shot for v in EGG["trailers"] for shot in trailer_stills([{"youtube": v}])]
         if not custom:
             d["hero"], d["heroSoft"] = egg_hero(), False
         d["egg"] = {**g["egg"], "background": EGG["trailers"][0]}
