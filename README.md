@@ -21,6 +21,7 @@
   <a href="#controls"><b>Controls</b></a> ·
   <a href="#roms-and-bios"><b>ROMs and BIOS</b></a> ·
   <a href="#help"><b>Help</b></a> ·
+  <a href="wiki/Home.md"><b>Wiki</b></a> ·
   <a href="https://github.com/ImSammyTTV/Ultra-Front-End/issues/new"><b>Report a bug</b></a>
 </p>
 
@@ -191,6 +192,8 @@ failed. Updating never removes them.
 Ultra Front End checks in once a day to show roughly how many people are using it. It only counts copies:
 nothing about you or your games is included. To opt out, turn off **Settings › About › Count this copy**.
 </details>
+
+More help, and a page for each part of the app, is in the **[wiki](wiki/Home.md)**.
 
 **Found a bug or have an idea?** [Open an issue](https://github.com/ImSammyTTV/Ultra-Front-End/issues/new). Say what
 you expected and what happened, and attach `errors.log` if there is one.
