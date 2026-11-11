@@ -1,0 +1,52 @@
+# Wiki: copies the wiki/ folder to the project's Wiki tab whenever it changes (on main or dev), so the two never drift.
+# The pages link to each other as files (Installing.md), which GitHub shows on the code side; the Wiki tab links pages
+# by name (Installing), so the links are changed on the way. Actions › Wiki › Run workflow copies it again by hand.
+name: Wiki
+
+on:
+  push:
+    branches: [main, dev]
+    paths: ["wiki/**", ".github/workflows/wiki.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write  # to push to the wiki
+
+concurrency:
+  group: wiki
+  cancel-in-progress: false
+
+jobs:
+  wiki:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy the pages to the Wiki tab
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git clone -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" wiki-tab
+          # the Wiki tab holds exactly the wiki/ folder's pages: one removed there goes from the tab too
+          find wiki-tab -maxdepth 1 -name '*.md' -delete
+          python3 - "$GITHUB_REPOSITORY" <<'EOF'
+          import glob, os, re, sys
+          repo = sys.argv[1]
+          for src in glob.glob("wiki/*.md"):
+              s = open(src, encoding="utf-8").read()
+              s = s.replace("](../ADDONS.md)", f"](https://github.com/{repo}/blob/main/ADDONS.md)")
+              s = re.sub(r"\]\(([A-Za-z_-]+)\.md(#[^)]*)?\)", lambda m: f"]({m.group(1)}{m.group(2) or ''})", s)
+              open(os.path.join("wiki-tab", os.path.basename(src)), "w", encoding="utf-8").write(s)
+          EOF
+          cd wiki-tab
+          git add -A
+          if git diff --cached --quiet; then
+            echo "The Wiki tab is already up to date"
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -qm "Wiki: from ${GITHUB_REF_NAME} at ${GITHUB_SHA::7}"
+          git push -q origin HEAD
+          echo "The Wiki tab is updated"
