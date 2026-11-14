@@ -159,15 +159,36 @@ os.makedirs(DATA, exist_ok=True)
 
 
 # ---------------------------------------------------------------- storage
+KEEP = {"config.json", "accounts.json", "overrides.json", "playlog.json", "sessions.json"}  # files with a .bak copy
+
+
 def load(name, default):
+    """The saved file, or default when there is none yet. A file another program briefly holds (antivirus, OneDrive) is
+    read again; one that is damaged (a power cut mid-write) falls back to its .bak copy. For the settings files a file
+    that still can't be read raises instead of reading as empty, so nothing stores the defaults over the real settings."""
+    path = os.path.join(DATA, name)
+    for attempt in range(10):
+        try:
+            with open(path, encoding="utf-8") as f:
+                return json.load(f)
+        except FileNotFoundError:
+            return default
+        except PermissionError:
+            time.sleep(0.1)
+        except (OSError, ValueError):
+            break
     try:
-        with open(os.path.join(DATA, name), encoding="utf-8") as f:
+        with open(path + ".bak", encoding="utf-8") as f:
             return json.load(f)
     except (OSError, ValueError):
-        return default
+        pass
+    if name in KEEP and os.path.exists(path):
+        raise OSError(f"Couldn't read {name}")
+    return default
 
 
 STORE_LOCK = threading.Lock()
+CONFIG_LOCK = threading.RLock()  # around a read-change-write of config.json from a background job
 
 
 def secrets_equal(a, b):
@@ -183,6 +204,13 @@ def store(name, obj):
     with STORE_LOCK:
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(obj, f, indent=1)
+            f.flush()
+            os.fsync(f.fileno())  # on disk before it replaces the old file, so a power cut can't leave it empty
+        if name in KEEP and os.path.exists(path):
+            try:
+                shutil.copyfile(path, path + ".bak")
+            except OSError:
+                pass
         for attempt in range(20):
             try:
                 os.replace(tmp, path)
@@ -579,6 +607,29 @@ def epic_token(form):
                      headers={"Authorization": f"Basic {auth}", "Content-Type": "application/x-www-form-urlencoded", "User-Agent": EPIC_UA})
 
 
+EPIC_LOCK, EPIC_ACCESS = threading.Lock(), {}
+
+
+def epic_access():
+    """A current Epic access token, refreshing it at most once at a time. Epic's refresh tokens rotate: two refreshes
+    at once (a scan and the Friends panel) would leave one holding a token Epic has already replaced. The settings file
+    is read again just before, and only the Epic sign-in written back, so nothing added meanwhile is stored over."""
+    with EPIC_LOCK:
+        accounts = load("accounts.json", {})
+        acc = accounts.get("epic")
+        if not acc:
+            raise ValueError("Epic isn't connected")
+        if EPIC_ACCESS.get("refresh") == acc["refresh_token"] and time.time() < EPIC_ACCESS.get("until", 0):
+            return EPIC_ACCESS["tok"]
+        tok = epic_token({"grant_type": "refresh_token", "refresh_token": acc["refresh_token"]})
+        accounts = load("accounts.json", {})
+        if accounts.get("epic"):
+            accounts["epic"]["refresh_token"] = tok["refresh_token"]
+            store("accounts.json", accounts)
+        EPIC_ACCESS.update(tok=tok, refresh=tok["refresh_token"], until=time.time() + min(int(tok.get("expires_in") or 0), 7200) - 300)
+        return tok
+
+
 def epic_login(code_text):
     m = re.search(r"[0-9a-f]{32}", code_text)
     if not m:
@@ -601,10 +652,7 @@ def epic_installed():
 
 
 def scan_epic(accounts):
-    acc = accounts["epic"]
-    tok = epic_token({"grant_type": "refresh_token", "refresh_token": acc["refresh_token"]})
-    acc["refresh_token"] = tok["refresh_token"]  # refresh tokens rotate
-    store("accounts.json", accounts)
+    tok = epic_access()
     auth = {"Authorization": f"Bearer {tok['access_token']}", "User-Agent": EPIC_UA}
     records, cursor = [], None
     while True:
@@ -985,10 +1033,11 @@ def unpack(archive, folder, name):
         with zipfile.ZipFile(archive) as z:
             z.extractall(folder)  # extractall keeps every entry inside folder
         return
-    tool = SEVEN_ZIP or shutil.which("tar")
+    sz = seven_zip()
+    tool = sz or shutil.which("tar")
     if not tool:
         raise ValueError(f"Install 7-Zip first to unpack {name}")
-    command = [tool, "x", archive, "-o" + folder, "-y"] if SEVEN_ZIP else [tool, "-xf", archive, "-C", folder]
+    command = [tool, "x", archive, "-o" + folder, "-y"] if sz else [tool, "-xf", archive, "-C", folder]
     if subprocess.run(command, capture_output=True, timeout=300, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).returncode:
         raise ValueError(f"Could not unpack {name}. Install 7-Zip and try again.")
 
@@ -1063,12 +1112,23 @@ def port_release_ok(repo, release):
                                              or "sha256" in a["name"].lower() for a in release.get("assets", []))
 
 
+def github_api(url):
+    """GitHub's API, with its hourly limit for computers that aren't signed in (60 requests) said in words, not as
+    "HTTP Error 403"."""
+    try:
+        return http_json(url, timeout=30)
+    except urllib.error.HTTPError as e:
+        if e.code in (403, 429):
+            raise ValueError("GitHub is limiting how often this PC can ask for downloads. Try again in an hour") from e
+        raise
+
+
 def github_latest(name):
     """The newest Windows download of a GitHub emulator: (asset, published) or (None, "")."""
     repo, pattern, program_name = GITHUB_EMUS[name]
-    releases = http_json(f"https://api.github.com/repos/{repo}/releases?per_page=30", timeout=30)
+    releases = github_api(f"https://api.github.com/repos/{repo}/releases?per_page=30")
     try:  # the list isn't always newest first (RPCS3's is by tag name), so the newest full release goes in too
-        releases = [http_json(f"https://api.github.com/repos/{repo}/releases/latest", timeout=30)] + releases
+        releases = [github_api(f"https://api.github.com/repos/{repo}/releases/latest")] + releases
     except (urllib.error.URLError, ValueError):  # none yet: Eglantine only makes pre-releases
         pass
     if name in PORT_NAMES:
@@ -1167,10 +1227,11 @@ def install_dolphin():
             job_progress("Unpacking")
             unpacked = os.path.join(staging, "unpacked")
             os.makedirs(unpacked)
-            tool = SEVEN_ZIP or shutil.which("tar")
+            sz = seven_zip()
+            tool = sz or shutil.which("tar")
             if not tool:
                 raise ValueError("Install 7-Zip first to unpack Dolphin")
-            command = [tool, "x", archive, "-o" + unpacked, "-y"] if SEVEN_ZIP else [tool, "-xf", archive, "-C", unpacked]
+            command = [tool, "x", archive, "-o" + unpacked, "-y"] if sz else [tool, "-xf", archive, "-C", unpacked]
             result = subprocess.run(command, capture_output=True, timeout=180, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             if result.returncode or not os.path.isfile(os.path.join(unpacked, "Dolphin-x64", "Dolphin.exe")):
                 raise ValueError("Could not unpack the Dolphin release. Install 7-Zip and try again.")
@@ -1549,12 +1610,15 @@ def broker_loop(port, token):
 
 def connect_emulator(package, exe=None):
     """Give every console this package plays its program (found, or the one just installed), keeping the user's own choices."""
-    cfg, found = config(), {} if exe else find_emulators()
-    for console, candidate in emu_table().items():
-        path = exe or found.get(console)
-        if candidate == package and path and not cfg.get("emulators", {}).get(console, {}).get("path"):
-            cfg.setdefault("emulators", {})[console] = {"path": path, "args": emulator_args(path, (system_info(console) or {"cores": []})["cores"], console)}
-    store("config.json", cfg)
+    found = {} if exe else find_emulators()  # (the slow search first: settings changed meanwhile aren't stored over)
+    with CONFIG_LOCK:
+        cfg = config()
+        for console, candidate in emu_table().items():
+            path = exe or found.get(console)
+            current = cfg.get("emulators", {}).get(console, {}).get("path")
+            if candidate == package and path and not (current and os.path.exists(current)):  # (or the chosen one has gone)
+                cfg.setdefault("emulators", {})[console] = {"path": path, "args": emulator_args(path, (system_info(console) or {"cores": []})["cores"], console)}
+        store("config.json", cfg)
     return cfg
 
 
@@ -1717,11 +1781,11 @@ def find_emulators(keep_retroarch=False):
     return found
 
 
-def auto_emulators(cfg):
-    """Fill in emulators for platforms that don't have one yet. Returns how many were added."""
+def auto_emulators(cfg, found=None):
+    """Fill in emulators for platforms that don't have one yet (or whose program has gone). Returns how many were added."""
     emus, added = cfg.setdefault("emulators", {}), 0
-    for platform, exe in find_emulators().items():
-        if platform not in emus:
+    for platform, exe in (find_emulators() if found is None else found).items():
+        if platform not in emus or not os.path.exists(emus[platform].get("path") or ""):
             info = system_info(platform) or {"cores": []}
             emus[platform] = {"path": exe, "args": emulator_args(exe, info["cores"], platform)}
             added += 1
@@ -1731,7 +1795,9 @@ def auto_emulators(cfg):
 ARCHIVES = [".zip", ".7z"]  # any console folder may hold zipped games
 # Emulators that open zipped games themselves; for the rest the game is unpacked on first play.
 ZIP_OK = re.compile(r"retroarch|snes9x|bsnes|mesen|mgba|project64|simple64|fceux|nestopia|blastem|kega|visualboy|vba|gens|higan|ares", re.I)
-SEVEN_ZIP = next((p for p in (r"C:\Program Files\7-Zip\7z.exe", r"C:\Program Files (x86)\7-Zip\7z.exe") if os.path.isfile(p)), None) or shutil.which("7z") or shutil.which("7zz")
+def seven_zip():
+    """7-Zip's program, looked for each time it's needed (it may have been installed since the helper started)."""
+    return next((p for p in (r"C:\Program Files\7-Zip\7z.exe", r"C:\Program Files (x86)\7-Zip\7z.exe") if os.path.isfile(p)), None) or shutil.which("7z") or shutil.which("7zz")
 
 
 def detect_system(folder):
@@ -1792,7 +1858,15 @@ def best_exe(folder, exts=(".exe",)):
     want = norm(os.path.basename(folder))
     # Prefer an exe named like the folder, then the shallowest, then the biggest.
     return max(exes, key=lambda p: (bool(want) and (norm(os.path.splitext(os.path.basename(p))[0]) in want or want in norm(os.path.basename(p))),
-                                    -p.count(os.sep), os.path.getsize(p)))
+                                    -p.count(os.sep), file_size(p)))
+
+
+def file_size(p):
+    """A file's size, or 0 when it has gone (a game updating) or can't be read: one file never stops a whole scan."""
+    try:
+        return os.path.getsize(p)
+    except OSError:
+        return 0
 
 
 LINUX_SKIP = re.compile(r"\.(so(\.\d+)*|dll|exe|txt|md|json|ini|cfg|py|pyc)$|^(lib|uninstall|crash)", re.I)
@@ -2102,8 +2176,12 @@ def shortcut_targets(paths):
         except OSError:  # gone since the folder was listed
             return None
     todo = [p for p in paths if stamp(p) is not None and (p, stamp(p)) not in LNK_CACHE]
-    for i in range(0, len(todo) if WIN else 0, 40):  # 40 at a time: the paths travel on PowerShell's command line
-        batch = todo[i:i + 40]
+    batches = []
+    for p in todo if WIN else []:  # the paths travel on PowerShell's command line (32,767 characters at most): batched by length
+        if not batches or len(json.dumps(batches[-1] + [p])) > 6000:
+            batches.append([])
+        batches[-1].append(p)
+    for batch in batches:
         code = LNK_SCRIPT.replace("{paths}", base64.b64encode(json.dumps(batch).encode("utf-8")).decode())
         try:
             r = subprocess.run([POWERSHELL, "-NoProfile", "-NonInteractive", "-EncodedCommand", base64.b64encode(code.encode("utf-16-le")).decode()],
@@ -2166,7 +2244,7 @@ def shortcut_games(folder, group, cfg):
                 g["launch"]["cwd"] = link["dir"]
             if g["launch"]["args"]:  # an emulator or launcher given a game: its folder says nothing about which game is running
                 g["launch"]["noFolder"] = True
-        elif target:
+        elif target or f.lower().endswith(".lnk"):  # (one with no file target, like a Microsoft Store or Game Pass game's: opened as it is)
             folder_of = os.path.dirname(target) if os.path.isfile(target) and not os.path.normcase(target).startswith(windows) else None
             img = find_image([folder_of], {"cover", "boxart", "poster", title}) if folder_of else None
             g_id = gid("lnk", path)
@@ -2261,14 +2339,22 @@ def scan_library(lib, cfg):
             continue
         if dirpath.count(os.sep) - path.rstrip("\\/").count(os.sep) >= max_depth:
             dirs[:] = []
-        listed = {n.lower() for n in names}
+        covered = set()  # discs a playlist (.m3u) in this folder lists: the playlist stands for them
+        for n in names:
+            if n.lower().endswith(".m3u"):
+                try:
+                    with open(os.path.join(dirpath, n), encoding="utf-8", errors="replace") as fh:
+                        covered |= {os.path.basename(x.strip().replace("\\", "/")).lower() for x in fh.read(65536).splitlines()
+                                    if x.strip() and not x.startswith("#")}
+                except OSError:
+                    pass
         for n in names:
             ext = os.path.splitext(n)[1].lower()
             if re.match(r"\[?bios\b", n, re.I):  # console BIOS/firmware dumps kept beside the games aren't games
                 continue
             if n.lower() in by_name or ((ext in exts) if exts else (ext not in NOT_ROM and not n.startswith("."))):
                 # skip discs that a playlist (.m3u) or .cue already covers
-                if ext in (".cue", ".chd", ".bin") and any(x.endswith(".m3u") for x in listed) and ".m3u" in exts:
+                if n.lower() in covered and ".m3u" in exts:
                     continue
                 files.append(os.path.join(dirpath, n))
     games, pkgs, tids, cids = [], {}, {}, {}
@@ -2286,6 +2372,8 @@ def scan_library(lib, cfg):
             stem = switch_titles().get(npdm_title_id(f + ".npdm")) or re.sub(r"\s+(rom|dump)$", "", os.path.basename(dumps[f]), flags=re.I)
         elif lib["name"] in ("Switch", "Switch 2") and re.search(r"\[[0-9a-f]{16}\]", stem, re.I):  # "Game [0100...].nup"
             tid = re.search(r"\[([0-9a-f]{16})\]", stem, re.I).group(1).upper()
+            if int(tid, 16) & 0xFFF:
+                continue  # an update (…800) or add-on content for a game, not a game: the game's own id ends in 000
             stem = switch_titles().get(tid) or stem
         elif os.path.basename(f).lower() in by_name:  # folder game: name it after its folder, not "EBOOT"
             d = os.path.dirname(f)
@@ -2316,11 +2404,11 @@ def scan_library(lib, cfg):
         launch = ({"type": "emu", "emu": lib["emulator"], "args": lib.get("args") or ["{rom}"], "rom": f, "exts": order, "romdir": path} if lib.get("emulator")
                   else {"type": "none", "message": f"Choose an emulator for {lib['name']} in Settings › Systems"})
         if by_name and f.lower().endswith(".zip"):  # PS3/4/5 archive: is there a game the emulator can load inside?
-            names = zip_names(f)
-            if names is not None and not any(n == e or n.endswith(e) for n in names for e in order):
+            inner = zip_names(f)  # (not "names": the disc check above still needs the folder's)
+            if inner is not None and not any(n == e or n.endswith(e) for n in inner for e in order):
                 launch = {"type": "none", "message": f"There's no playable game in this archive. {lib['name']} needs a game dump: "
                           f"a folder with eboot.bin{' or a .zar file' if '.zar' in order else ''}"
-                          f"{'. Encrypted .pkg install files can’t be played' if any(n.endswith('.pkg') for n in names) else ''}."}
+                          f"{'. Encrypted .pkg install files can’t be played' if any(n.endswith('.pkg') for n in inner) else ''}."}
         info = ps4_pkg(f) if f.lower().endswith(".pkg") else None
         if info:
             pkgs[gid_] = info
@@ -3208,7 +3296,7 @@ def libretro_index(thumbs, kind):
         if key in LR_INDEX:
             return LR_INDEX[key]
         hit = load("libretro-index.json", {}).get(key)
-        if hit and time.time() - hit["t"] < 30 * 86400:
+        if hit and time.time() - hit["t"] < (30 * 86400 if hit["names"] else 3600):  # (an empty list: a bad answer, asked again soon)
             names = hit["names"]
         elif time.time() - LR_DOWN.get(key, 0) < 300:  # unreachable a moment ago: not waited on again for every ROM
             if not hit:
@@ -3228,6 +3316,8 @@ def libretro_index(thumbs, kind):
                 names = hit["names"]
             else:
                 names = [urllib.parse.unquote(n)[:-4] for n in re.findall(r'href="([^"?/][^"]*\.png)"', page)]
+                if not names and hit and hit["names"]:
+                    names = hit["names"]  # an error page answered: the list from before still holds
                 cache = load("libretro-index.json", {})
                 cache[key] = {"t": time.time(), "names": names}
                 store("libretro-index.json", cache)
@@ -3489,6 +3579,7 @@ def detail_art(key, path):
 from concurrent.futures import ThreadPoolExecutor
 
 POOL = ThreadPoolExecutor(8)   # slow lookups for one game run side by side
+INNER_POOL = ThreadPoolExecutor(4)  # lookups a POOL task waits on: never queued behind the tasks waiting for them
 INFO_TTL = 7 * 86400           # store text, screenshots and art URLs are kept on disk for a week
 NEWS = {}                      # game id -> (time, news); news refreshes after 30 minutes
 
@@ -3522,20 +3613,20 @@ def sgdb_art(key, g, need_hero, need_logo):
     m = sgdb_game_for(key, g)
     if not m:
         return {}
-    hero = POOL.submit(sgdb, f"/heroes/game/{m['id']}", key, types="static", nsfw="false") if need_hero else None
-    logo = POOL.submit(sgdb, f"/logos/game/{m['id']}", key, types="static", nsfw="false") if need_logo else None
+    hero = INNER_POOL.submit(sgdb, f"/heroes/game/{m['id']}", key, types="static", nsfw="false") if need_hero else None
+    logo = INNER_POOL.submit(sgdb, f"/logos/game/{m['id']}", key, types="static", nsfw="false") if need_logo else None
     out = {}
-    if hero and (hero.result() or []):
+    if quiet(hero, None):
         out["hero"] = hero.result()[0]["url"]
-    if logo and (logo.result() or []):
+    if quiet(logo, None):
         out["logo"] = logo.result()[0]["url"]
     return out
 
 
-def quiet(fut, default):
+def quiet(fut, default, timeout=90):
     try:
-        return fut.result() if fut else default
-    except Exception:
+        return fut.result(timeout) if fut else default
+    except Exception:  # (a lookup that hangs past the time limit too: the page gets what's there)
         return default
 
 
@@ -3765,9 +3856,15 @@ def ra_fingerprint(path, system, exts):
     elif system == "SNES" and len(data) % 1024 == 512:
         data = data[512:]
     elif system == "N64" and data[:1] == b"\x37":      # .v64: byte-swapped
-        data = b"".join(data[i + 1:i + 2] + data[i:i + 1] for i in range(0, len(data) - 1, 2))
+        import array
+        words = array.array("H", data[:len(data) // 2 * 2])  # (swapped in place: a 64 MB game stays 64 MB in memory)
+        words.byteswap()
+        data = words.tobytes()
     elif system == "N64" and data[:1] == b"\x40":      # .n64: little-endian words
-        data = b"".join(data[i:i + 4][::-1] for i in range(0, len(data) - 3, 4))
+        import array
+        words = array.array("I", data[:len(data) // 4 * 4])
+        words.byteswap()
+        data = words.tobytes()
     return hashlib.md5(data).hexdigest()
 
 
@@ -4082,8 +4179,10 @@ def scan_step(n=1):
     SCAN_PROG["done"] += n
 
 
-def scan():
+def scan(only_if_never=False):
     with SCAN_LOCK:
+        if only_if_never and STATE["scanned"]:  # pages that asked during the first scan get its result, not a scan each
+            return
         SCAN_PROG.update(active=True, phase="games", done=0, total=0, started=time.time())
         try:
             scan_all()
@@ -4127,7 +4226,7 @@ def scan_all():
         except Exception as e:
             programs = []
             errors.append(f"Installed programs: {e}")
-        for prov, fn in (("ea", scan_ea), ("ubisoft", scan_ubisoft), ("gog", scan_gog), ("battlenet", scan_battlenet)):
+        for prov, fn in (("ea", scan_ea), ("ubisoft", scan_ubisoft), ("gog", scan_gog), ("battlenet", scan_battlenet), ("rockstar", scan_rockstar)):
             if cfg.get(prov + "Local", True):
                 add(f"{LOCAL_PROVIDERS[prov]} (installed)", lambda fn=fn: fn(programs, cfg))
     if "epic" in accounts:
@@ -4224,12 +4323,15 @@ def scan_all():
     copies = {}
     for g in games.values():
         if g.get("source") != "Emulators":
-            copies.setdefault(re.sub(r"[^a-z0-9]", "", re.sub(r"[™®©]", "", g["title"].lower())), []).append(g)
+            key = re.sub(r"[\W_]", "", re.sub(r"[™®©]", "", g["title"].lower()))  # letters of any script: "Метро" isn't "Сталкер"
+            if key:
+                copies.setdefault(key, []).append(g)
     for same in copies.values():
         if len(same) > 1:
             keep = max(same, key=lambda c: (c["installed"], c["minutes"], c["lastPlayed"], c.get("source") == "Steam"))
             for c in same:
-                if c is not keep:
+                # two installed games from the same place are two games that share a name (Prey 2006 and 2017)
+                if c is not keep and not (c["installed"] and keep["installed"] and c.get("source") == keep.get("source")):
                     keep["minutes"], keep["lastPlayed"] = max(keep["minutes"], c["minutes"]), max(keep["lastPlayed"], c["lastPlayed"])
                     del games[c["id"]]
     for g in games.values():
@@ -4368,25 +4470,62 @@ def dnd_for_game(playing):
     if not WIN or not config().get("dndWhilePlaying", False):
         return
     try:
+        if DND_BEFORE[0] is None:  # kept on disk too: a helper restarted mid-game still puts it back
+            DND_BEFORE[0] = load("dnd.json", {}).get("before")
         if playing and DND_BEFORE[0] is None:
             DND_BEFORE[0] = do_not_disturb()
+            store("dnd.json", {"before": DND_BEFORE[0]})
             do_not_disturb(True)
         elif not playing and DND_BEFORE[0] is not None:
             do_not_disturb(DND_BEFORE[0])
             DND_BEFORE[0] = None
+            store("dnd.json", {})
     except Exception:
         log_error()
+
+
+def booted_at():
+    """When Windows last started (a game can't have run across a restart)."""
+    if not WIN:
+        return 0
+    import ctypes
+    ctypes.windll.kernel32.GetTickCount64.restype = ctypes.c_ulonglong
+    return time.time() - ctypes.windll.kernel32.GetTickCount64() / 1000
+
+
+def close_session(s, now):
+    """End an open session, at the last moment its game was really seen running: one left open by a shutdown or a crash
+    mustn't count the whole time the PC was off (or the frontend sat unused) as play time."""
+    end = now
+    if s.get("seen") and now - s["seen"] > 180:
+        end = s["seen"] + 60
+    elif not s.get("seen") and s["start"] < booted_at():
+        end = s["start"]  # never seen running, and Windows has restarted since: no time can be told for it
+    s["end"] = max(s["start"], min(end, now))
+
+
+def session_seen(game_id):
+    """watch_running: the open session's game still has its window open (once a minute)."""
+    with SESSION_LOCK:
+        sessions = load("sessions.json", [])
+        s = next((s for s in reversed(sessions) if not s.get("end")), None)
+        if s and s["game"] == game_id:
+            s["seen"] = time.time()
+            store("sessions.json", sessions)
 
 
 def session_start(game_id):
     dnd_for_game(True)
     with SESSION_LOCK:
-        sessions, now = load("sessions.json", []), time.time()
+        sessions, now, ended = load("sessions.json", []), time.time(), []
         for s in sessions:
             if not s.get("end"):
-                s["end"] = now
+                close_session(s, now)
+                ended.append(s)
         sessions.append({"game": game_id, "start": now, "end": None})
         store("sessions.json", sessions[-3000:])
+    for s in ended:  # a game still open from before (started through a link): its time counts too
+        record_play(s["game"], s["end"] - s["start"])
     threading.Timer(0.3, warm_overlay).start()  # the in-game menu, ready before the game's window is up
     threading.Timer(8, hud_start).start()  # an add-on's card, once the game is up
 
@@ -4396,7 +4535,8 @@ def session_end(game_id=None, min_age=0):
         sessions, now, changed, ended = load("sessions.json", []), time.time(), False, []
         for s in sessions:
             if not s.get("end") and (game_id is None or s["game"] == game_id) and now - s["start"] >= min_age:
-                s["end"], changed = now, True
+                close_session(s, now)
+                changed = True
                 ended.append(s)
         if changed:
             store("sessions.json", sessions)
@@ -4423,6 +4563,7 @@ def still_library():
 
 CAPTURES = os.path.join(DATA, "captures")
 RECORD = {"proc": None, "entry": None}
+RECORD_LOCK = threading.Lock()
 ENCODER = [None]
 
 
@@ -4451,6 +4592,29 @@ def video_encoder(ffmpeg):
     return None
 
 
+EXPORT_ENCODER = {}  # ffmpeg path -> the encoder export uses with it (found once)
+
+
+def export_encoder(ffmpeg, crf):
+    """The encoder for exporting a video, with the preset's quality (crf) in that encoder's terms. The app's own FFmpeg
+    is the LGPL build, which has no libx264: then the graphics card's encoder, or Windows' own (Media Foundation)."""
+    if ffmpeg not in EXPORT_ENCODER:
+        EXPORT_ENCODER[ffmpeg] = None
+        for name in ("libx264", "h264_nvenc", "h264_amf", "h264_qsv", "h264_mf"):
+            probe = subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=black:s=320x240:d=0.1", "-c:v", name, "-f", "null", "-"],
+                                   capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            if probe.returncode == 0:
+                EXPORT_ENCODER[ffmpeg] = name
+                break
+    name = EXPORT_ENCODER[ffmpeg]
+    if not name:
+        raise ValueError("The video couldn't be exported: this PC's video recorder has no H.264 encoder")
+    rate = f"{max(3, min(24, round(24 * 0.82 ** (crf - 18))))}M"  # (Media Foundation takes a bit rate: crf 18 about 24 Mb/s, 28 about 3.3)
+    return ["-c:v", name] + {"libx264": ["-preset", "medium", "-crf", str(crf)], "h264_nvenc": ["-preset", "p5", "-cq", str(crf)],
+                             "h264_amf": ["-quality", "quality", "-qp_i", str(crf), "-qp_p", str(crf)],
+                             "h264_qsv": ["-preset", "medium", "-global_quality", str(crf)], "h264_mf": ["-b:v", rate]}[name]
+
+
 def add_capture(entry):
     store("captures.json", load("captures.json", []) + [entry])
 
@@ -4463,7 +4627,14 @@ def take_capture(mode):
     if not session:
         return
     if mode == "record":
-        return stop_recording() if RECORD["proc"] else start_recording(session["game"])
+        # one start or stop at a time: a second press while the recorder is still starting (it waits up to 1.5 s for the
+        # sound) would otherwise start a second recorder, or stop one that isn't running yet
+        if not RECORD_LOCK.acquire(blocking=False):
+            return
+        try:
+            return stop_recording() if RECORD["proc"] else start_recording(session["game"])
+        finally:
+            RECORD_LOCK.release()
     from PIL import ImageGrab
     import ctypes
     ctypes.windll.user32.SetProcessDPIAware()
@@ -4640,7 +4811,9 @@ def recycle(path):
     class Op(ctypes.Structure):
         _fields_ = [("hwnd", ctypes.c_void_p), ("func", W.UINT), ("src", ctypes.c_wchar_p), ("dst", ctypes.c_wchar_p), ("flags", W.WORD),
                     ("aborted", W.BOOL), ("mappings", ctypes.c_void_p), ("title", ctypes.c_wchar_p)]
-    op = Op(None, 3, path + chr(0), None, 0x0454, False, None, None)  # FO_DELETE; silent, no prompt, undoable, no error box
+    # FO_DELETE; silent, no prompt, undoable, no error box, but asking first when a file is too big for the Recycle Bin
+    # (FOF_WANTNUKEWARNING: without it Windows would delete that one for good, without a word)
+    op = Op(None, 3, path + chr(0), None, 0x4454, False, None, None)
     return ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op)) == 0 and not op.aborted and not os.path.exists(path)
 
 
@@ -4754,7 +4927,7 @@ def user_addons():
         icon = os.path.basename(str(e.get("icon") or ""))
         q = urllib.parse.quote
         out.append({"id": str(e.get("id") or name), "title": str(e.get("title") or name), "description": str(e.get("description") or ""),
-                    "author": str(e.get("author") or "You"), "version": str(e.get("version") or ""), "own": True,
+                    "author": str(e.get("author") or "You"), "version": str(e.get("version") or ""), "own": True, "dir": name,  # (its folder: the name can differ from its id)
                     "script": f"/api/addons/file?dir={q(name)}&f={q(script)}&v={int(stamp)}",
                     "icon": f"/api/addons/file?dir={q(name)}&f={q(icon)}" if icon else "icon.png", "stamp": int(stamp)})
     return out
@@ -5045,7 +5218,7 @@ def export_capture(capture_id, preset="original", start=None, end=None):
         cmd += ["-vf", vf + ",format=yuv420p"]
     else:
         cmd += ["-vf", "format=yuv420p"]
-    cmd += ["-c:v", "libx264", "-preset", "medium", "-crf", str(crf), "-c:a", "aac", "-b:a", "160k" if crf < 26 else "128k",
+    cmd += [*export_encoder(ffmpeg, crf), "-c:a", "aac", "-b:a", "160k" if crf < 26 else "128k",
             "-movflags", "+faststart", out]
     r = subprocess.run(cmd, capture_output=True, timeout=1800, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     if r.returncode or not os.path.isfile(out):
@@ -5286,7 +5459,7 @@ PORT_DIRS = {}  # launched pid -> the folder of a PC port
 
 # Games should be started by the frontend window when it's open: Steam only gives a Steam Controller to programs it started
 # itself and their children, and the helper in the tray isn't one. The window asks for work at /api/spawn/next.
-SPAWN = {"cond": threading.Condition(), "jobs": [], "seen": 0.0, "done": {}, "next": 0}
+SPAWN = {"cond": threading.Condition(), "jobs": [], "seen": 0.0, "done": {}, "next": 0, "taken": set()}
 
 
 class WindowProcess:
@@ -5302,16 +5475,25 @@ class WindowProcess:
             time.sleep(1)
 
 
-def spawn_via_window(cmd, cwd):
+def spawn_via_window(cmd, cwd, console=False):
     with SPAWN["cond"]:
         if time.time() - SPAWN["seen"] > 25:
             return None
         SPAWN["next"] += 1
         job = SPAWN["next"]
-        SPAWN["jobs"].append({"id": job, "cmd": cmd, "cwd": cwd})
+        SPAWN["jobs"].append({"id": job, "cmd": cmd, "cwd": cwd, "console": console})
         SPAWN["cond"].notify_all()
-        SPAWN["cond"].wait_for(lambda: job in SPAWN["done"], timeout=6)
-        pid = SPAWN["done"].pop(job, 0)
+        SPAWN["cond"].wait_for(lambda: job in SPAWN["done"] or job in SPAWN["taken"], timeout=6)
+        if job not in SPAWN["done"] and job not in SPAWN["taken"]:  # the window didn't come for it: started here instead,
+            SPAWN["jobs"] = [j for j in SPAWN["jobs"] if j["id"] != job]  # and taken back so the window can't start it too
+            return None
+        # The window has it. A game that needs administrator rights waits on Windows' prompt for as long as it's up:
+        # waited for, never started a second time from here (two prompts, two copies)
+        SPAWN["cond"].wait_for(lambda: job in SPAWN["done"], timeout=900)
+        SPAWN["taken"].discard(job)
+        pid, error = SPAWN["done"].pop(job, (0, "The game didn't start: Windows didn't answer"))
+    if error:
+        raise ValueError(error)
     return WindowProcess(pid) if pid else None
 
 
@@ -5321,29 +5503,50 @@ def spawn_next():
         SPAWN["seen"] = time.time()
         SPAWN["cond"].wait_for(lambda: SPAWN["jobs"], timeout=20)
         SPAWN["seen"] = time.time()
-        return SPAWN["jobs"].pop(0) if SPAWN["jobs"] else {}
+        if not SPAWN["jobs"]:
+            return {}
+        job = SPAWN["jobs"].pop(0)
+        SPAWN["taken"].add(job["id"])
+        SPAWN["cond"].notify_all()
+        return job
 
 
-def spawn_done(job, pid):
+def spawn_done(job, pid, error=""):
     with SPAWN["cond"]:
-        SPAWN["done"][job] = pid
+        SPAWN["done"][job] = (pid, error or ("" if pid else "The game didn't start"))
         SPAWN["cond"].notify_all()
 
 
-def spawn(cmd, cwd, window=True):
+def spawn(cmd, cwd, window=True, console=False):
     window = window and not re.search(r"azahar", os.path.basename(cmd[0]), re.I)  # it freezes at start under Steam's overlay
-    proc = spawn_via_window(cmd, cwd) if WIN and window else None
-    return proc or local_spawn(cmd, cwd)
+    proc = spawn_via_window(cmd, cwd, console) if WIN and window else None
+    return proc or local_spawn(cmd, cwd, console)
 
 
-def local_spawn(cmd, cwd):
+def console_program(path):
+    """A game that runs in a console window (a .bat or .cmd, or a console program such as a roguelike): it starts with
+    its console showing. Every other child of the helper starts without one, so no console flashes over the screen."""
+    if not WIN:
+        return False
+    if path.lower().endswith((".bat", ".cmd")):
+        return True
+    try:
+        with open(path, "rb") as f:
+            head = f.read(4096)
+        pe = int.from_bytes(head[0x3C:0x40], "little")
+        return head[:2] == b"MZ" and head[pe:pe + 4] == b"PE\0\0" and int.from_bytes(head[pe + 0x5C:pe + 0x5E], "little") == 3  # IMAGE_SUBSYSTEM_WINDOWS_CUI
+    except (OSError, ValueError):
+        return False
+
+
+def local_spawn(cmd, cwd, console=False):
     """Start a game. The packaged exe's unpack folder is on its DLL search path and children inherit it, so an emulator would
     load our vcruntime140.dll instead of the system's (RPCS3 refuses to run on it): clear that for the moment of starting."""
     bundle = getattr(sys, "_MEIPASS", None)
     if POSIX:
         return subprocess.Popen(cmd, cwd=cwd, env=PLAT.child_env() if bundle else None)
     if not (WIN and bundle):
-        return start_program(cmd, cwd)
+        return start_program(cmd, cwd, console=console)
     import ctypes
     # nor where it was unpacked: Steam started from here would hand that on to the frontend it launches, which would then run
     # from this copy's unpack folder and lose it when this copy goes
@@ -5354,16 +5557,16 @@ def local_spawn(cmd, cwd):
     with SPAWN_LOCK:
         set_dir(None)
         try:
-            return start_program(cmd, cwd, env)
+            return start_program(cmd, cwd, env, console)
         finally:
             set_dir(bundle)
 
 
-def start_program(cmd, cwd, env=None):
+def start_program(cmd, cwd, env=None, console=False):
     """Popen, or for a program that insists on running as administrator (Windows refuses it with error 740), Windows'
     "Run as administrator", which asks first. Either way the game is followed while it runs."""
     try:
-        return subprocess.Popen(cmd, cwd=cwd, env=env)
+        return subprocess.Popen(cmd, cwd=cwd, env=env, **({"creationflags": 0x10} if console else {}))  # CREATE_NEW_CONSOLE
     except OSError as e:
         if not WIN or getattr(e, "winerror", 0) != 740:
             raise
@@ -5516,6 +5719,20 @@ RUN_NOW = {}  # game id -> (window, process id), kept current by watch_running
 RUN_DIRS = [0.0, {}]
 
 
+def shared_dirs():
+    """Folders that hold all sorts besides one game (Downloads, the Desktop, this app's own): a game kept loose in one
+    isn't tracked by its folder, or everything else there (this app included) would count as that game running."""
+    home = os.path.expanduser("~")
+    dirs = [home] + [os.path.join(home, d) for d in ("Downloads", "Desktop", "Documents", "OneDrive", os.path.join("OneDrive", "Desktop"),
+                                                    os.path.join("OneDrive", "Documents"))]
+    dirs += [os.environ.get(v, "") for v in ("ProgramFiles", "ProgramFiles(x86)", "SystemRoot", "PUBLIC")]
+    dirs.append(os.path.dirname(os.path.abspath(sys.executable if getattr(sys, "frozen", False) else __file__)))
+    return {os.path.normcase(os.path.normpath(d)) for d in dirs if d}
+
+
+SHARED_DIRS = shared_dirs()
+
+
 def game_folders():
     """Install folder -> game id, for spotting games however they were started. Refreshed once a minute."""
     if time.time() - RUN_DIRS[0] < 60:
@@ -5551,7 +5768,8 @@ def game_folders():
         if g.get("folder"):
             add(g["folder"], g["id"])
         elif L.get("type") == "exe" and not L.get("noFolder") and len(os.path.dirname(L.get("exe", ""))) > 12:  # never a whole drive or Windows itself
-            add(os.path.dirname(L["exe"]), g["id"])
+            if os.path.normcase(os.path.normpath(os.path.dirname(L["exe"]))) not in SHARED_DIRS:
+                add(os.path.dirname(L["exe"]), g["id"])
     RUN_DIRS[0], RUN_DIRS[1] = time.time(), found
     return found
 
@@ -5575,6 +5793,7 @@ def watch_running():
         k32.CloseHandle(h)
         return os.path.normcase(buf.value) if ok else ""
 
+    seen_at = [0.0]
     while True:
         time.sleep(3)
         try:
@@ -5593,7 +5812,7 @@ def watch_running():
             paths = {pid: image(pid) for pid in {w[1] for w in windows}}
             for hwnd, pid in windows:
                 hit = max((d for d in folders if paths[pid].startswith(d)), key=len, default=None)
-                if hit and "game frontend" not in paths[pid]:
+                if hit and pid != os.getpid() and not re.search(r"game frontend|ultrafrontend|ultra front end", paths[pid]):  # (paths are lower case)
                     now.setdefault(folders[hit], (hwnd, pid))
             for game, proc in list(RUNNING.items()):
                 tree = game_tree(proc.pid)
@@ -5602,6 +5821,11 @@ def watch_running():
                     now[game] = window or (None, proc.pid)
             RUN_NOW.clear()
             RUN_NOW.update(now)
+            if time.time() - seen_at[0] > 60:  # the open session's game is still there: kept, so a crash can't overcount
+                seen_at[0] = time.time()
+                session = open_session()
+                if session and session["game"] in now:
+                    session_seen(session["game"])
             if RECORD["proc"] and RECORD["entry"]["game"] not in now and time.time() - RECORD["entry"]["created"] > 10:
                 stop_recording()  # the game has closed
         except Exception:
@@ -5676,6 +5900,13 @@ def hold_steam_launch(game_id, timeout=30):
         k32.CloseHandle(h)
         return buf.value.lower() if ok else ""
 
+    # this game's own install folder, so another Steam game that's still open isn't taken for it
+    try:
+        own = tuple(d for d, g in game_folders().items() if g == game_id)
+    except Exception:
+        own = ()
+    mine = (lambda path: path.startswith(own)) if own else (lambda path: "steamapps" in path)
+
     def game_window():
         found = []
 
@@ -5683,7 +5914,7 @@ def hold_steam_launch(game_id, timeout=30):
             p, r = ctypes.c_ulong(), W.RECT()
             user32.GetWindowThreadProcessId(ctypes.c_void_p(hwnd), ctypes.byref(p))
             user32.GetWindowRect(ctypes.c_void_p(hwnd), ctypes.byref(r))
-            if user32.IsWindowVisible(ctypes.c_void_p(hwnd)) and r.right - r.left >= 600 and r.bottom - r.top >= 300 and "steamapps" in image(p.value):
+            if user32.IsWindowVisible(ctypes.c_void_p(hwnd)) and r.right - r.left >= 600 and r.bottom - r.top >= 300 and mine(image(p.value)):
                 found.append(hwnd)
             return True
         user32.EnumWindows(proto(cb), 0)
@@ -6975,12 +7206,103 @@ def xinput_off(slot):
     raise OSError("This controller can't be turned off from here: hold its own button")
 
 
+def wlan_native():
+    """Windows' own Wi-Fi API (wlanapi.dll): the same answers in every Windows language, unlike netsh's text.
+    Returns (status, networks) for the first Wi-Fi adapter, or None on a PC without one."""
+    import ctypes
+    from ctypes import wintypes as W
+
+    class GUID(ctypes.Structure):
+        _fields_ = [("a", ctypes.c_ubyte * 16)]
+
+    class IFACE(ctypes.Structure):
+        _fields_ = [("guid", GUID), ("desc", ctypes.c_wchar * 256), ("state", ctypes.c_int)]
+
+    class IFACES(ctypes.Structure):
+        _fields_ = [("count", W.DWORD), ("index", W.DWORD), ("items", IFACE * 1)]
+
+    class SSID(ctypes.Structure):
+        _fields_ = [("length", W.ULONG), ("ssid", ctypes.c_ubyte * 32)]
+
+    class ASSOC(ctypes.Structure):
+        _fields_ = [("ssid", SSID), ("bss", ctypes.c_int), ("mac", ctypes.c_ubyte * 6), ("phy", ctypes.c_int), ("phyIndex", W.ULONG),
+                    ("quality", W.ULONG), ("rx", W.ULONG), ("tx", W.ULONG)]
+
+    class CONN(ctypes.Structure):
+        _fields_ = [("state", ctypes.c_int), ("mode", ctypes.c_int), ("profile", ctypes.c_wchar * 256), ("assoc", ASSOC)]
+
+    class RADIO(ctypes.Structure):
+        _fields_ = [("count", W.DWORD), ("phys", (W.DWORD * 3) * 64)]  # index, software state, hardware state (1 on, 2 off)
+
+    class NET(ctypes.Structure):
+        _fields_ = [("profile", ctypes.c_wchar * 256), ("ssid", SSID), ("bss", ctypes.c_int), ("bssids", W.ULONG), ("connectable", W.BOOL),
+                    ("reason", W.DWORD), ("phyCount", W.ULONG), ("phys", ctypes.c_int * 8), ("morePhys", W.BOOL), ("quality", W.ULONG),
+                    ("secure", W.BOOL), ("auth", ctypes.c_int), ("cipher", ctypes.c_int), ("flags", W.DWORD), ("reserved", W.DWORD)]
+
+    class NETS(ctypes.Structure):
+        _fields_ = [("count", W.DWORD), ("index", W.DWORD), ("items", NET * 1)]
+
+    api = ctypes.WinDLL("wlanapi")
+    handle, version = W.HANDLE(), W.DWORD()
+    if api.WlanOpenHandle(2, None, ctypes.byref(version), ctypes.byref(handle)):
+        raise OSError("Wi-Fi service unavailable")
+    name = lambda x: bytes(x.ssid[:min(x.length, 32)]).decode("utf-8", "replace")
+    try:
+        ifaces = ctypes.POINTER(IFACES)()
+        if api.WlanEnumInterfaces(handle, None, ctypes.byref(ifaces)):
+            raise OSError("Wi-Fi adapters unreadable")
+        try:
+            if not ifaces.contents.count:
+                return None
+            iface = ctypes.cast(ctypes.addressof(ifaces.contents.items), ctypes.POINTER(IFACE))[0]
+            guid = GUID.from_buffer_copy(iface.guid)
+            connected = iface.state == 1  # wlan_interface_state_connected
+        finally:
+            api.WlanFreeMemory(ifaces)
+        status = {"connected": connected, "name": "", "signal": None}
+        size, data = W.DWORD(), ctypes.c_void_p()
+        if not api.WlanQueryInterface(handle, ctypes.byref(guid), 4, None, ctypes.byref(size), ctypes.byref(data), None):  # radio state
+            radio = ctypes.cast(data, ctypes.POINTER(RADIO)).contents
+            if radio.count and all(radio.phys[i][1] == 2 or radio.phys[i][2] == 2 for i in range(min(radio.count, 64))):
+                status = {"connected": False, "name": "", "signal": None, "off": True}
+            api.WlanFreeMemory(data)
+        if connected and not api.WlanQueryInterface(handle, ctypes.byref(guid), 7, None, ctypes.byref(size), ctypes.byref(data), None):
+            conn = ctypes.cast(data, ctypes.POINTER(CONN)).contents
+            status.update(name=name(conn.assoc.ssid), signal=int(conn.assoc.quality))
+            api.WlanFreeMemory(data)
+        nets = {}
+        lst = ctypes.POINTER(NETS)()
+        if not status.get("off") and not api.WlanGetAvailableNetworkList(handle, ctypes.byref(guid), 0, None, ctypes.byref(lst)):
+            try:
+                items = ctypes.cast(ctypes.addressof(lst.contents.items), ctypes.POINTER(NET))
+                for i in range(lst.contents.count):
+                    n = items[i]
+                    ssid = name(n.ssid)
+                    if not ssid:
+                        continue  # a hidden network
+                    e = nets.setdefault(ssid, {"ssid": ssid, "signal": 0, "secure": bool(n.secure), "saved": False, "on": False,
+                                               "auth": "wpa3" if n.auth in (8, 9, 11) else "wpa2"})  # WPA3 (enterprise, SAE)
+                    e["signal"] = max(e["signal"], int(n.quality))
+                    e["saved"] = e["saved"] or bool(n.flags & 2)  # WLAN_AVAILABLE_NETWORK_HAS_PROFILE
+                    e["on"] = e["on"] or bool(n.flags & 1)  # ..._CONNECTED
+            finally:
+                api.WlanFreeMemory(lst)
+        return status, sorted(nets.values(), key=lambda n: (not n["on"], not n["saved"], -n["signal"]))
+    finally:
+        api.WlanCloseHandle(handle, None)
+
+
 def wifi_status():
     """The Wi-Fi network this PC is on and its signal (0-100), or None on a PC without Wi-Fi."""
     if not WIN:
         return None
     try:
-        r = subprocess.run(["netsh", "wlan", "show", "interfaces"], capture_output=True, text=True, timeout=5, creationflags=0x08000000)
+        native = wlan_native()
+        return native and native[0]
+    except Exception:
+        pass  # (the API itself unavailable: netsh's English text, below)
+    try:
+        r = subprocess.run(["netsh", "wlan", "show", "interfaces"], capture_output=True, encoding="oem", errors="replace", timeout=5, creationflags=0x08000000)
     except (OSError, subprocess.SubprocessError):
         return None
     info = {}
@@ -7001,7 +7323,12 @@ def wifi_networks():
     """Wi-Fi networks in range, strongest first: [{"ssid", "signal", "secure", "saved", "on"}]. Saved ones connect with one press."""
     if not WIN:
         return []
-    run = lambda *a: subprocess.run(["netsh", "wlan", *a], capture_output=True, text=True, timeout=10, creationflags=0x08000000).stdout
+    try:
+        native = wlan_native()
+        return native[1] if native else []
+    except Exception:
+        pass
+    run = lambda *a: subprocess.run(["netsh", "wlan", *a], capture_output=True, encoding="oem", errors="replace", timeout=10, creationflags=0x08000000).stdout
     try:
         listing, profiles = run("show", "networks", "mode=bssid"), run("show", "profiles")
     except (OSError, subprocess.SubprocessError):
@@ -7679,9 +8006,7 @@ def epic_friends():
         return []
     if time.time() - EPIC_FRIENDS[0] < 120:
         return EPIC_FRIENDS[1]
-    tok = epic_token({"grant_type": "refresh_token", "refresh_token": acc["refresh_token"]})
-    acc["refresh_token"] = tok["refresh_token"]  # refresh tokens rotate
-    store("accounts.json", accounts)
+    tok = epic_access()
     me, auth = tok["account_id"], {"Authorization": f"bearer {tok['access_token']}", "User-Agent": EPIC_UA}
     ids = [f["accountId"] for f in http_json(f"https://friends-public-service-prod.ol.epicgames.com/friends/api/v1/{me}/summary", headers=auth).get("friends", [])]
     names = {}
@@ -8122,9 +8447,10 @@ def unpacked_rom(game, L):
                         raise ValueError("That archive has unsafe paths in it")
                 z.extractall(dest)
         else:
-            if not SEVEN_ZIP:
+            sz = seven_zip()
+            if not sz:
                 raise ValueError("Install 7-Zip to play .7z games")
-            r = subprocess.run([SEVEN_ZIP, "x", "-y", "-spe", f"-o{dest}", src], capture_output=True, timeout=1800)
+            r = subprocess.run([sz, "x", "-y", "-spe", f"-o{dest}", src], capture_output=True, timeout=1800)
             if r.returncode != 0:
                 raise ValueError("Couldn't unpack that .7z")
         with open(marker, "w", encoding="utf-8") as f:
@@ -8189,9 +8515,10 @@ def launch(game):
             make_borderless(L["emu"])  # exclusive fullscreen would pause the game whenever the in-game menu opens
         except Exception:
             log_error()
-    if L["type"] != "uri":
+    if L["type"] != "uri" and not L.get("handoff"):
         LAUNCHING.add(game["id"])
-    session_start(game["id"])  # Still captures from now until it ends belong to this game
+    if game.get("installed", True):  # (not for a store's install link: time in its install dialog isn't play time)
+        session_start(game["id"])  # Still captures from now until it ends belong to this game
     try:
         started = start_game(game, L)
         if started != "unpacking":  # that one is recorded once it has unpacked and started
@@ -8215,6 +8542,11 @@ def start_game(game, L):
         return
     if L["type"] == "exe":
         cmd, cwd = [program(L["exe"]), *L.get("args", [])], L.get("cwd") or os.path.dirname(L["exe"].rstrip("/"))
+        if L.get("handoff"):
+            # Battle.net or GOG Galaxy starts the game and stays open after it: the game is followed by its install
+            # folder (watch_running), like a store link, never by the launcher's own process
+            local_spawn(cmd, cwd)
+            return
     else:  # emulator: no shell, the ROM path is passed as a single argument
         rom = L["rom"]
         try:
@@ -8239,7 +8571,7 @@ def start_game(game, L):
             threading.Thread(target=unpack_and_run, daemon=True).start()
             return "unpacking"
         return run_emulator(game, L, rom)
-    proc = spawn(cmd, cwd)
+    proc = spawn(cmd, cwd, console=console_program(L["exe"]))
     RUNNING[game["id"]] = proc
     if WIN and re.search(r"[\\/]Ports[\\/]", L["exe"]):  # a port's folder is its own, unlike an emulator's shared install
         PORT_DIRS[proc.pid] = cwd
@@ -8318,13 +8650,14 @@ LOCAL_PROVIDERS = {"ea": "EA app", "ubisoft": "Ubisoft Connect", "gog": "GOG", "
 # None of them share your owned-games list without their own sign-in, so (like "Installed Steam games") this finds what
 # each launcher has installed on this PC from the entries it writes to Windows' installed-programs list, and starts
 # games through the launcher so sign-in, updates and cloud saves still work.
-SERVICE_SCANS = ("ea", "ubisoft", "gog", "battlenet")   # each has an on/off option "<id>Local" (on by default)
-OPTION_KEYS = ("steamLocal", "onlineCovers", "showUninstalled", "artBackground", "guideOpens", "wiiMotion", "keepOnScreen", "usageCheckin", "dndWhilePlaying", "wallpaperKeys") + tuple(p + "Local" for p in SERVICE_SCANS)
+SERVICE_SCANS = ("ea", "ubisoft", "gog", "battlenet", "rockstar")   # each has an on/off option "<id>Local" (on by default)
+OPTION_KEYS = ("steamLocal", "onlineCovers", "showUninstalled", "artBackground", "guideOpens", "wiiMotion", "keepOnScreen", "dndWhilePlaying", "wallpaperKeys") + tuple(p + "Local" for p in SERVICE_SCANS)
 SERVICE_APPS = {
     "ea": [r"C:\Program Files\Electronic Arts\EA Desktop\EA Desktop\EADesktop.exe"],
     "ubisoft": [r"C:\Program Files (x86)\Ubisoft\Ubisoft Game Launcher\UbisoftConnect.exe", r"C:\Program Files (x86)\Ubisoft\Ubisoft Game Launcher\upc.exe"],
     "battlenet": [r"C:\Program Files (x86)\Battle.net\Battle.net.exe", r"C:\Program Files\Battle.net\Battle.net.exe"],
     "gog": [r"C:\Program Files (x86)\GOG Galaxy\GalaxyClient.exe", r"C:\Program Files\GOG Galaxy\GalaxyClient.exe"],
+    "rockstar": [r"C:\Program Files\Rockstar Games\Launcher\Launcher.exe", r"C:\Program Files (x86)\Rockstar Games\Launcher\Launcher.exe"],
 }
 # Battle.net starts a game by its product code; games not listed here start from their own launcher program instead.
 BNET_CODES = {"wow": "WoW", "d3": "D3", "pro": "Pro", "hs_beta": "WTCG", "heroes": "Hero", "s1": "S1", "s2": "S2", "w3": "W3",
@@ -8424,7 +8757,7 @@ def scan_battlenet(programs, cfg):
         uid = m.group(1).lower()
         code = BNET_CODES.get(uid) or BNET_CODES.get(uid.split("_")[0])
         if code and app:
-            launch = {"type": "exe", "exe": app, "args": [f"--exec=launch {code}"]}
+            launch = {"type": "exe", "exe": app, "args": [f"--exec=launch {code}"], "handoff": True}
         else:  # Blizzard games ship a "<Game> Launcher.exe" that goes through Battle.net
             own = [f for f in glob.glob(os.path.join(folder, "* Launcher.exe")) if "battle.net" not in f.lower()]
             exe = own[0] if own else best_exe(folder)
@@ -8456,6 +8789,7 @@ def scan_gog(programs, cfg):
                             except OSError:
                                 return ""
                         title, folder, exe, args, depends = val("gameName"), val("path"), val("exe"), val("launchParam"), val("dependsOn")
+                        workdir = val("workingDir")
                 except OSError:
                     continue
                 if not re.fullmatch(r"\d+", game_id) or depends or not title or not os.path.isdir(folder):  # dependsOn: a DLC, not a game
@@ -8463,15 +8797,49 @@ def scan_gog(programs, cfg):
                 if any(g["id"] == gid("gog", game_id) for g in games):
                     continue
                 if app:
-                    launch = {"type": "exe", "exe": app, "args": ["/command=runGame", f"/gameId={game_id}", f"/path={folder}"]}
+                    launch = {"type": "exe", "exe": app, "args": ["/command=runGame", f"/gameId={game_id}", f"/path={folder}"], "handoff": True}
                 elif exe and os.path.isfile(exe):
-                    launch = {"type": "exe", "exe": exe, "args": args.split() if args else []}
+                    # DOSBox and ScummVM classics pass quoted paths ("-conf "..\\dosbox.conf""): split as Windows does
+                    launch = {"type": "exe", "exe": exe, "args": command_args(args) if args else [],
+                              **({"cwd": workdir} if workdir and os.path.isdir(workdir) else {})}
                 else:
                     found = best_exe(folder)
                     if not found:
                         continue
                     launch = {"type": "exe", "exe": found, "args": []}
                 games.append(service_game("gog", game_id, clean_title(title), folder, launch, cfg))
+    return games
+
+
+def scan_rockstar(programs, cfg):
+    """Rockstar Games Launcher games: each installed one is listed under Rockstar Games in the registry with its folder. A
+    game starts from its own program, which goes through the launcher (sign-in, updates) and hands over to the game, so
+    it's followed by its folder like Battle.net's."""
+    import winreg
+    games = []
+    for path in (r"SOFTWARE\WOW6432Node\Rockstar Games", r"SOFTWARE\Rockstar Games"):
+        try:
+            root = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, path)
+        except OSError:
+            continue
+        with root:
+            for i in range(winreg.QueryInfoKey(root)[0]):
+                try:
+                    name = winreg.EnumKey(root, i)
+                    with winreg.OpenKey(root, name) as k:
+                        folder = str(winreg.QueryValueEx(k, "InstallFolder")[0] or "")
+                except OSError:
+                    continue
+                if re.search(r"launcher|social ?club", name, re.I) or not os.path.isdir(folder):
+                    continue
+                key = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+                if any(g["id"] == gid("rockstar", key) for g in games):
+                    continue
+                play = [f for f in glob.glob(os.path.join(folder, "Play*.exe"))]  # GTA V's PlayGTAV.exe
+                exe = play[0] if play else best_exe(folder)
+                if not exe:
+                    continue
+                games.append(service_game("rockstar", key, clean_title(name), folder, {"type": "exe", "exe": exe, "args": [], "handoff": True}, cfg))
     return games
 
 
@@ -8614,10 +8982,12 @@ def default_rom_root():
 
 def set_rom_root(path):
     """Use this folder as the ROMs folder, with a subfolder for every system you play that doesn't have one."""
-    cfg = config()
-    cfg["romRoot"] = path
-    found = auto_emulators(cfg)
-    store("config.json", cfg)
+    emus = find_emulators()  # (the slow search before reading the settings it changes)
+    with CONFIG_LOCK:
+        cfg = config()
+        cfg["romRoot"] = path
+        found = auto_emulators(cfg, emus)
+        store("config.json", cfg)
     made = sum(ensure_folders(s, cfg) for s in cfg.get("systems") or [])
     apply_soon()
     return made, found
@@ -9800,6 +10170,11 @@ def launch_args(game, L, rom):
 
 # --- which systems are chosen
 def sync_systems(counts):
+    with CONFIG_LOCK:
+        sync_systems_now(counts)
+
+
+def sync_systems_now(counts):
     """Systems with games are added by themselves; the first time (an older setup), so is every one with an emulator."""
     cfg = config()
     have, removed = cfg.get("systems"), set(cfg.get("systemsRemoved") or [])
@@ -10084,11 +10459,13 @@ def check_emulator_updates():
     """Which of the app's own emulators have something newer (GitHub downloads by release date, installers by winget)."""
     refind_moved(list(config().get("emulators") or {}))  # any whose program has moved since (an update, or by hand)
     cfg, versions = config(), load("emu-versions.json", {})
-    github = {}
+    github, before = {}, EMU_UPDATES.get("github") or {}
     for name, (folder, systems) in own_github_emus(cfg).items():
         try:
             asset, published = github_latest(name)
         except (urllib.error.URLError, ValueError, KeyError, TimeoutError):
+            if name in before:  # couldn't ask (offline, or GitHub's hourly limit): what was found last time still holds
+                github[name] = before[name]
             continue
         if not asset:
             continue
@@ -10114,6 +10491,7 @@ def check_emulator_updates():
         installed = EMU_UPDATES.get("installed") or {}
     EMU_UPDATES.update(checked=time.time(), github=github, winget=winget, installed=installed, error="")
     EMU_VERSIONS.clear()
+    versions = load("emu-versions.json", {})  # read again: an update that finished meanwhile wrote its version there
     versions["_checked"] = time.time()
     store("emu-versions.json", versions)
 
@@ -10916,7 +11294,7 @@ class Handler(SimpleHTTPRequestHandler):
         LAST_PING[0] = time.time()
         if path == "/api/library":
             if not STATE["scanned"]:
-                scan()
+                scan(only_if_never=True)
             return self.reply({"games": public_games(), "errors": STATE["errors"], "scanned": STATE["scanned"]})
         if path == "/api/settings":
             return self.reply(settings_view())
@@ -11094,7 +11472,8 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/addons/files":  # ?dir=: the files in one of your add-ons' folders (its own songs, pictures)
             d = os.path.basename((urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("dir") or [""])[0])
             folder = os.path.join(USER_ADDONS, d)
-            return self.reply({"files": sorted(os.listdir(folder)) if d and os.path.isdir(folder) else []})
+            ok = d not in ("", ".", "..") and os.path.isdir(folder)  # (".." would be the data folder)
+            return self.reply({"files": sorted(os.listdir(folder)) if ok else []})
         if path == "/api/addons/file":
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             f = user_addon_file((q.get("dir") or [""])[0], (q.get("f") or [""])[0])
@@ -11163,10 +11542,11 @@ class Handler(SimpleHTTPRequestHandler):
                     k in body and body[k] is not None and not isinstance(body[k], str) for k in TEXT_FIELDS) or ("pid" in body and not isinstance(body["pid"], int)):
                 raise ValueError("A field has the wrong type")
             path = urllib.parse.urlparse(self.path).path
-            if self.headers.get("X-Wallpaper") == "1" and (path in WALLPAPER_NEVER or re.search(r"/(remove|delete|uninstall|close)$", path)):
+            if self.headers.get("X-Wallpaper") == "1" and (path in WALLPAPER_NEVER or re.search(r"/(remove|delete|uninstall|close)$", path)
+                                                          or (path == "/api/update" and body.get("action") == "install")):  # (it closes the frontend)
                 raise ValueError("That can't be done from the wallpaper: open Ultra Front End for it")
             if path == "/api/spawn/done":
-                spawn_done(body.get("id"), int(body.get("pid") or 0))
+                spawn_done(body.get("id"), int(body.get("pid") or 0), str(body.get("error") or "")[:300])
                 return self.reply({"ok": True})
             if path in ("/api/broker/out", "/api/broker/done"):  # the elevated install helper's output and result
                 if not BROKER["token"] or not secrets_equal(str(body.get("token") or ""), BROKER["token"]):
@@ -11576,9 +11956,11 @@ class Handler(SimpleHTTPRequestHandler):
                 scan()
                 return self.reply(settings_view())
             if path == "/api/emulators/find":
-                cfg = config()
-                found = auto_emulators(cfg)
-                store("config.json", cfg)
+                emus = find_emulators()
+                with CONFIG_LOCK:
+                    cfg = config()
+                    found = auto_emulators(cfg, emus)
+                    store("config.json", cfg)
                 scan()
                 return self.reply({**settings_view(), "found": found})
             if path == "/api/libraries/add":
@@ -12084,6 +12466,7 @@ def update_step(action=None):
     open (it closes, and the new copy opens it again)."""
     if updates_off() or UPDATE["done"] or not UPDATE_LOCK.acquire(blocking=False):
         return
+    closed = False  # the frontend was closed for this install: it opens again if the install doesn't go through
     try:
         now = time.time()
         if not action and now < UPDATE["retry"]:
@@ -12127,9 +12510,17 @@ def update_step(action=None):
             raise ValueError("the downloaded update changed on disk, so it will be fetched again")
         if window and not POSIX and not close_window(window):
             raise ValueError("the frontend didn't close")
+        closed = bool(window) and not POSIX
         UPDATE["state"] = "installing"
         install_update(ready, rel["version"], reopen=bool(window))
+        if closed and not UPDATE["done"]:  # the new version didn't start and the old one was put back
+            open_frontend()
     except Exception as e:
+        if closed and not UPDATE["done"]:
+            try:
+                open_frontend()
+            except Exception:
+                log_error()
         UPDATE["state"], UPDATE["error"] = "", f"Couldn't update: {e}"
         UPDATE["retry"] = time.time() + 3600  # a failed download or install waits an hour (Settings can try sooner)
     finally:
@@ -12158,28 +12549,6 @@ def clean_after_update():
             os.remove(f)
         except OSError:
             pass  # still running (a window from before the update) or already gone
-
-
-USAGE_URL = f"https://github.com/{UPDATE_REPO}/releases/download/usage/checkin.txt"
-
-
-def watch_usage():
-    """Once a day, while the helper runs, this copy downloads a tiny file from the project's GitHub page, so GitHub's
-    download count shows how many copies are in use (a daily job writes the totals to stats/usage.csv). Nothing about
-    the person or their games is sent. Off in Settings › About; never from a test copy on another port or a source run."""
-    if PORT != 8137 or not getattr(sys, "frozen", False) or updates_off():
-        return
-    while True:
-        today = time.strftime("%Y-%m-%d", time.gmtime())
-        if config().get("usageCheckin", True) and load("usage.json", {}).get("day") != today:
-            try:
-                req = urllib.request.Request(USAGE_URL, headers={"User-Agent": "UltraFrontEnd"})
-                with urllib.request.urlopen(req, timeout=20) as r:
-                    r.read(64)
-                store("usage.json", {"day": today})
-            except (urllib.error.URLError, OSError, ValueError, TimeoutError):
-                pass  # offline: tried again within the hour
-        time.sleep(3600)
 
 
 def watch_updates():
@@ -12724,27 +13093,49 @@ def copy_mac_program(src, dst):
         raise ValueError("The emulator couldn't be copied into Applications")
 
 
+def keep_running(fn):
+    """Run a watcher in its own thread, starting it again if it fails (one bad moment shouldn't stop the controller
+    for the rest of the session). A watcher that returns on its own (no XInput, say) stays stopped."""
+    def run():
+        while True:
+            try:
+                fn()
+                return
+            except Exception:
+                log_error()
+                time.sleep(1)
+    threading.Thread(target=run, daemon=True).start()
+
+
 def main():
     def start():
-        scan()
-        threading.Thread(target=watch_folders, daemon=True).start()
+        # the controller first: the Xbox button works while the first scan (with its slow online lookups) runs
         if PORT == 8137 and MAC:
-            threading.Thread(target=watch_running_mac, daemon=True).start()
-            threading.Thread(target=watch_controller_mac, daemon=True).start()
-            sync_autostart()
+            keep_running(watch_running_mac)
+            keep_running(watch_controller_mac)
         if PORT == 8137 and LINUX:
-            threading.Thread(target=watch_running_mac, daemon=True).start()  # (the same watcher: windows through plat_linux)
-            threading.Thread(target=watch_controller_linux, daemon=True).start()
-            sync_autostart()
+            keep_running(watch_running_mac)  # (the same watcher: windows through plat_linux)
+            keep_running(watch_controller_linux)
         if PORT == 8137 and WIN:  # only the real helper (a test copy would fire every shortcut twice); XInput is Windows-only
-            threading.Thread(target=watch_controller, daemon=True).start()
-            threading.Thread(target=watch_steam_button, daemon=True).start()
-            threading.Thread(target=watch_running, daemon=True).start()
-            threading.Thread(target=watch_emulator_updates, daemon=True).start()  # the app's own emulators, kept up to date
-            threading.Thread(target=watch_key_guard, daemon=True).start()  # Steam's desktop keys kept out of games it didn't start
+            keep_running(watch_controller)
+            keep_running(watch_steam_button)
+            keep_running(watch_running)
+            keep_running(watch_key_guard)  # Steam's desktop keys kept out of games it didn't start
+        try:
+            scan()
+        except Exception:
+            log_error()  # the next scan (a folder change, or the page asking) tries again
+        keep_running(watch_folders)
+        if PORT == 8137 and (MAC or LINUX):
+            sync_autostart()
+        if PORT == 8137 and WIN:
+            keep_running(watch_emulator_updates)  # the app's own emulators, kept up to date
             threading.Thread(target=sync_keep_on_screen, daemon=True).start()  # Settings › General › Keep games on screen
-            import hud
-            hud.start(DATA, hud_visible, load("hud.json", {}).get("mode") if hud.presentmon(DATA) else "off")  # an extra: off until installed
+            try:
+                import hud
+                hud.start(DATA, hud_visible, load("hud.json", {}).get("mode") if hud.presentmon(DATA) else "off")  # an extra: off until installed
+            except Exception:
+                log_error()
             sync_autostart()
             note_installed_version()
         warm_details()
@@ -12757,13 +13148,14 @@ def main():
             os._exit(0)
         threading.Thread(target=watchdog, daemon=True).start()
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+        class Server(ThreadingHTTPServer):
+            allow_reuse_address = not WIN  # on Windows that lets a second helper bind the same port beside the first
+        server = Server(("127.0.0.1", PORT), Handler)
     except OSError:
         print(f"Port {PORT} is busy; the frontend helper is probably already running.")
         return
     print(f"Game frontend on http://127.0.0.1:{PORT}")
     threading.Thread(target=watch_updates, daemon=True).start()  # once this copy really has the port
-    threading.Thread(target=watch_usage, daemon=True).start()
     server.serve_forever()
 
 
