@@ -2618,10 +2618,6 @@ function updateRows(u) {
   // a bar while it works: how far the download is, or a sliding one while it checks or installs
   const bar = u.error ? null : u.state === 'downloading' ? u.progress ?? 'busy' : ['checking', 'installing'].includes(u.state) ? 'busy' : null;
   return [{ kind: 'info', label: `Version ${u.version}`, sub: note, ...(bar != null ? { bar } : {}) },
-    // a once-a-day anonymous check-in, so the project can count how many copies are in use
-    ...(u.off || !P.data?.options ? [] : [{ kind: 'row', label: 'Count this copy', value: onOff(P.data.options.usageCheckin),
-      sub: 'Checks in once a day to show roughly how many people are using Ultra Front End. It only counts copies: nothing about you or your games is included',
-      act: () => setOpt('usageCheckin') }]),
     // a dev build follows the dev builds: nothing to choose. They're private (draft releases): read with your GitHub token
     ...(u.off || u.channel !== 'dev' ? [] : [{ kind: 'info', label: 'Updates: Dev builds',
       sub: 'Changes being worked on, installed as soon as each one is built. Can have bugs. To go back to Main, download the latest release' },

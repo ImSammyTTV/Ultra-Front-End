@@ -13,7 +13,7 @@ Open **Settings** from the home screen's round buttons.
 | **Controllers** | The quick-menu button, the Xbox button, the **Controller tester**, Wii Remote motion from the Steam Controller. |
 | **Hidden games** | Games you've hidden: unhide them here. |
 | **Add-ons** | Install and set up add-ons. See [Add-ons](Add-ons.md). |
-| **About** | Your version, updates and the update channel, emulator updates, the usage count, licences, and **Run the setup guide again**. See [Updates](Updates.md). |
+| **About** | Your version, updates and the update channel, emulator updates, licences, and **Run the setup guide again**. See [Updates](Updates.md). |
 
 ## General
 
