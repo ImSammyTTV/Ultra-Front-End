@@ -79,8 +79,8 @@ function addonApi(id) {
     // YouTube's player (its IFrame API, window.YT), loaded once for the whole app
     youtubePlayer: () => loadYouTubePlayer(),
     // files in its own folder (an add-on in your Add-ons folder): their names, and an address to load one
-    ownFiles: () => api('/api/addons/files?dir=' + encodeURIComponent(id)).then(r => r.files || []).catch(() => []),
-    fileUrl: name => `/api/addons/file?dir=${encodeURIComponent(id)}&f=${encodeURIComponent(name)}`,
+    ownFiles: () => api('/api/addons/files?dir=' + encodeURIComponent(ADDONS.dirs?.[id] || id)).then(r => r.files || []).catch(() => []),
+    fileUrl: name => `/api/addons/file?dir=${encodeURIComponent(ADDONS.dirs?.[id] || id)}&f=${encodeURIComponent(name)}`,
   };
   ctx._cleanup = () => {
     own.off.forEach(f => f()); own.timers.forEach(t => { clearInterval(t); clearTimeout(t); });
@@ -118,6 +118,7 @@ function addonUnmount(id) {
 }
 function addonRefresh(id) { if (ADDONS.loaded[id]) { addonUnmount(id); addonMount(id); } }
 function addonLoad(entry) {
+  if (entry.dir) ADDONS.dirs = { ...(ADDONS.dirs || {}), [entry.id]: entry.dir };  // its folder, for ownFiles/fileUrl
   if (ADDONS.defs[entry.id]) return addonMount(entry.id);
   const s = document.createElement('script');
   s.src = entry.script;

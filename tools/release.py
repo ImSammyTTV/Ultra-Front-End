@@ -123,6 +123,8 @@ def verify(py, version):
     embedded = run(py, "-c", EMBEDDED_VERSION, BUILT).stdout.strip()
     if embedded != version:
         sys.exit(f"The exe says VERSION {embedded or '(none found)'}, but the tag is v{version}.")
+    if sys.platform == "win32":  # it starts and its helper answers, as nightly and dev builds are checked before publishing
+        run(py, os.path.join(ROOT, "tools", "nightly.py"), "smoke", BUILT)
 
 
 def mac_assets(folder, version, out):

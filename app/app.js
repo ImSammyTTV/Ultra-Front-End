@@ -2673,7 +2673,7 @@ async function updateNow(action) {
     || (u.latest ? `Version ${u.latest} is available` : 'Couldn’t reach GitHub just now. Try again in a minute'), 5000);
 }
 // After an update, once: which version this is now
-if (API) api('/api/update').then(u => {
+if (API && !WALLPAPER) api('/api/update').then(u => {  // (the frontend shows it, not the wallpaper)
   if (!u.updated) return;
   toast(`Updated to version ${u.updated.version}. See what’s new in News`, 6000);
   api('/api/update', { action: 'seen' }).catch(() => {});
@@ -2684,7 +2684,9 @@ if (API) api('/api/whatsnew/unseen').then(r => { if (r.unseen) { NEWS_DOT = true
 let readyShown = '', lastActive = Date.now();
 ['pointerdown', 'pointermove', 'keydown', 'wheel'].forEach(t => addEventListener(t, () => { lastActive = Date.now(); }, { passive: true }));
 if (API) setInterval(async () => {
-  if (RUN.size) return;  // never over a game
+  // never over a game, never from the wallpaper (it's always idle), and only while the frontend is in front: left alone
+  // behind another app, the user is busy with that app
+  if (RUN.size || WALLPAPER || document.hidden || !document.hasFocus()) return;
   try {
     const u = await api('/api/update');
     if (u.state !== 'ready' || !u.latest) return;
