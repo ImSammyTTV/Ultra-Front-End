@@ -31,8 +31,7 @@ jobs:
         run: |
           last=$(gh release view nightly --json targetCommitish -q .targetCommitish 2>/dev/null || true)
           echo "last=$last" >> "$GITHUB_OUTPUT"
-          # the daily usage tally (stats/) doesn't count as a change
-          if [ "${{ github.event_name }}" != "workflow_dispatch" ] && { [ "$last" = "$(git rev-parse HEAD)" ] || { git cat-file -e "$last" 2>/dev/null && git diff --quiet "$last" HEAD -- . ':!stats'; }; }; then
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ] && { [ "$last" = "$(git rev-parse HEAD)" ] || { git cat-file -e "$last" 2>/dev/null && git diff --quiet "$last" HEAD; }; }; then
             echo "build=no" >> "$GITHUB_OUTPUT"
             echo "Nothing new since the last nightly build"
           else
@@ -74,9 +73,9 @@ jobs:
             echo
             echo "Changes since the last nightly build:"
             if [ -n "$last" ] && git cat-file -e "$last" 2>/dev/null; then
-              git log --no-merges --invert-grep --grep='^Changelog: skip$' --format='- %s' "$last..HEAD" | grep -v '^- Usage: ' || true
+              git log --no-merges --invert-grep --grep='^Changelog: skip$' --format='- %s' "$last..HEAD"
             else
-              git log --no-merges --invert-grep --grep='^Changelog: skip$' --format='- %s' -40 | grep -v '^- Usage: ' | head -15 || true
+              git log --no-merges --invert-grep --grep='^Changelog: skip$' --format='- %s' -15
             fi
           } > notes.md
           # GitHub sometimes answers a release request with a server error (HTTP 500): a few tries, a minute apart

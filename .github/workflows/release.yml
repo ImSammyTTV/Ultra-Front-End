@@ -38,3 +38,11 @@ jobs:
           [ -f "$notes" ] || { echo "No release notes at $notes"; exit 1; }
           [ -f "assets/whatsnew/$version.jpg" ] || { echo "No What's new picture at assets/whatsnew/$version.jpg"; exit 1; }
           python tools/release.py "$notes"
+
+      - name: Remove the old usage count
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # The "usage" release held the file copies up to 1.2.10 downloaded once a day to be counted. The count is gone:
+        # so is the release (those copies' daily download then just fails, quietly). Nothing to do once it's gone.
+        run: gh release delete usage --cleanup-tag --yes --repo "$GITHUB_REPOSITORY" || true

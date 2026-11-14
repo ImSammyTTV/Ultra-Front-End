@@ -12,7 +12,7 @@ name: Dev build
 on:
   push:
     branches: [dev]
-    paths-ignore: ["stats/**", "**.md"]
+    paths-ignore: ["**.md"]
   workflow_dispatch:
 
 permissions:
