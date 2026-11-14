@@ -4451,6 +4451,29 @@ def video_encoder(ffmpeg):
     return None
 
 
+EXPORT_ENCODER = {}  # ffmpeg path -> the encoder export uses with it (found once)
+
+
+def export_encoder(ffmpeg, crf):
+    """The encoder for exporting a video, with the preset's quality (crf) in that encoder's terms. The app's own FFmpeg
+    is the LGPL build, which has no libx264: then the graphics card's encoder, or Windows' own (Media Foundation)."""
+    if ffmpeg not in EXPORT_ENCODER:
+        EXPORT_ENCODER[ffmpeg] = None
+        for name in ("libx264", "h264_nvenc", "h264_amf", "h264_qsv", "h264_mf"):
+            probe = subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=black:s=320x240:d=0.1", "-c:v", name, "-f", "null", "-"],
+                                   capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            if probe.returncode == 0:
+                EXPORT_ENCODER[ffmpeg] = name
+                break
+    name = EXPORT_ENCODER[ffmpeg]
+    if not name:
+        raise ValueError("The video couldn't be exported: this PC's video recorder has no H.264 encoder")
+    rate = f"{max(3, min(24, round(24 * 0.82 ** (crf - 18))))}M"  # (Media Foundation takes a bit rate: crf 18 about 24 Mb/s, 28 about 3.3)
+    return ["-c:v", name] + {"libx264": ["-preset", "medium", "-crf", str(crf)], "h264_nvenc": ["-preset", "p5", "-cq", str(crf)],
+                             "h264_amf": ["-quality", "quality", "-qp_i", str(crf), "-qp_p", str(crf)],
+                             "h264_qsv": ["-preset", "medium", "-global_quality", str(crf)], "h264_mf": ["-b:v", rate]}[name]
+
+
 def add_capture(entry):
     store("captures.json", load("captures.json", []) + [entry])
 
@@ -5045,7 +5068,7 @@ def export_capture(capture_id, preset="original", start=None, end=None):
         cmd += ["-vf", vf + ",format=yuv420p"]
     else:
         cmd += ["-vf", "format=yuv420p"]
-    cmd += ["-c:v", "libx264", "-preset", "medium", "-crf", str(crf), "-c:a", "aac", "-b:a", "160k" if crf < 26 else "128k",
+    cmd += [*export_encoder(ffmpeg, crf), "-c:a", "aac", "-b:a", "160k" if crf < 26 else "128k",
             "-movflags", "+faststart", out]
     r = subprocess.run(cmd, capture_output=True, timeout=1800, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     if r.returncode or not os.path.isfile(out):
