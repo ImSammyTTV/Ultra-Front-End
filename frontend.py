@@ -460,14 +460,14 @@ def spawn_games():
                 job = json.load(r)
             if not job:
                 continue
-            pid = 0
+            pid, error = 0, ""
             try:
                 if "dolphin" in str(job["cmd"]).lower():
                     server.dolphin_shake_key()  # only with Wii motion on
-                pid = server.local_spawn(job["cmd"], job["cwd"]).pid
-            except Exception:
-                pass
-            body = json.dumps({"id": job["id"], "pid": pid}).encode()
+                pid = server.local_spawn(job["cmd"], job["cwd"], bool(job.get("console"))).pid
+            except Exception as e:  # (the prompt cancelled, say): said as it is, so the helper doesn't try again itself
+                error = str(e) or "The game didn't start"
+            body = json.dumps({"id": job["id"], "pid": pid, "error": error}).encode()
             urllib.request.urlopen(urllib.request.Request(URL + "/api/spawn/done", data=body, headers={"Content-Type": "application/json", "X-Frontend": "1"}), timeout=5)
         except Exception:  # a bad reply as well: this thread must keep going for the rest of the session
             time.sleep(2)

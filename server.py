@@ -607,6 +607,29 @@ def epic_token(form):
                      headers={"Authorization": f"Basic {auth}", "Content-Type": "application/x-www-form-urlencoded", "User-Agent": EPIC_UA})
 
 
+EPIC_LOCK, EPIC_ACCESS = threading.Lock(), {}
+
+
+def epic_access():
+    """A current Epic access token, refreshing it at most once at a time. Epic's refresh tokens rotate: two refreshes
+    at once (a scan and the Friends panel) would leave one holding a token Epic has already replaced. The settings file
+    is read again just before, and only the Epic sign-in written back, so nothing added meanwhile is stored over."""
+    with EPIC_LOCK:
+        accounts = load("accounts.json", {})
+        acc = accounts.get("epic")
+        if not acc:
+            raise ValueError("Epic isn't connected")
+        if EPIC_ACCESS.get("refresh") == acc["refresh_token"] and time.time() < EPIC_ACCESS.get("until", 0):
+            return EPIC_ACCESS["tok"]
+        tok = epic_token({"grant_type": "refresh_token", "refresh_token": acc["refresh_token"]})
+        accounts = load("accounts.json", {})
+        if accounts.get("epic"):
+            accounts["epic"]["refresh_token"] = tok["refresh_token"]
+            store("accounts.json", accounts)
+        EPIC_ACCESS.update(tok=tok, refresh=tok["refresh_token"], until=time.time() + min(int(tok.get("expires_in") or 0), 7200) - 300)
+        return tok
+
+
 def epic_login(code_text):
     m = re.search(r"[0-9a-f]{32}", code_text)
     if not m:
@@ -629,10 +652,7 @@ def epic_installed():
 
 
 def scan_epic(accounts):
-    acc = accounts["epic"]
-    tok = epic_token({"grant_type": "refresh_token", "refresh_token": acc["refresh_token"]})
-    acc["refresh_token"] = tok["refresh_token"]  # refresh tokens rotate
-    store("accounts.json", accounts)
+    tok = epic_access()
     auth = {"Authorization": f"Bearer {tok['access_token']}", "User-Agent": EPIC_UA}
     records, cursor = [], None
     while True:
@@ -1092,12 +1112,23 @@ def port_release_ok(repo, release):
                                              or "sha256" in a["name"].lower() for a in release.get("assets", []))
 
 
+def github_api(url):
+    """GitHub's API, with its hourly limit for computers that aren't signed in (60 requests) said in words, not as
+    "HTTP Error 403"."""
+    try:
+        return http_json(url, timeout=30)
+    except urllib.error.HTTPError as e:
+        if e.code in (403, 429):
+            raise ValueError("GitHub is limiting how often this PC can ask for downloads. Try again in an hour") from e
+        raise
+
+
 def github_latest(name):
     """The newest Windows download of a GitHub emulator: (asset, published) or (None, "")."""
     repo, pattern, program_name = GITHUB_EMUS[name]
-    releases = http_json(f"https://api.github.com/repos/{repo}/releases?per_page=30", timeout=30)
+    releases = github_api(f"https://api.github.com/repos/{repo}/releases?per_page=30")
     try:  # the list isn't always newest first (RPCS3's is by tag name), so the newest full release goes in too
-        releases = [http_json(f"https://api.github.com/repos/{repo}/releases/latest", timeout=30)] + releases
+        releases = [github_api(f"https://api.github.com/repos/{repo}/releases/latest")] + releases
     except (urllib.error.URLError, ValueError):  # none yet: Eglantine only makes pre-releases
         pass
     if name in PORT_NAMES:
@@ -2145,8 +2176,12 @@ def shortcut_targets(paths):
         except OSError:  # gone since the folder was listed
             return None
     todo = [p for p in paths if stamp(p) is not None and (p, stamp(p)) not in LNK_CACHE]
-    for i in range(0, len(todo) if WIN else 0, 40):  # 40 at a time: the paths travel on PowerShell's command line
-        batch = todo[i:i + 40]
+    batches = []
+    for p in todo if WIN else []:  # the paths travel on PowerShell's command line (32,767 characters at most): batched by length
+        if not batches or len(json.dumps(batches[-1] + [p])) > 6000:
+            batches.append([])
+        batches[-1].append(p)
+    for batch in batches:
         code = LNK_SCRIPT.replace("{paths}", base64.b64encode(json.dumps(batch).encode("utf-8")).decode())
         try:
             r = subprocess.run([POWERSHELL, "-NoProfile", "-NonInteractive", "-EncodedCommand", base64.b64encode(code.encode("utf-16-le")).decode()],
@@ -2209,7 +2244,7 @@ def shortcut_games(folder, group, cfg):
                 g["launch"]["cwd"] = link["dir"]
             if g["launch"]["args"]:  # an emulator or launcher given a game: its folder says nothing about which game is running
                 g["launch"]["noFolder"] = True
-        elif target:
+        elif target or f.lower().endswith(".lnk"):  # (one with no file target, like a Microsoft Store or Game Pass game's: opened as it is)
             folder_of = os.path.dirname(target) if os.path.isfile(target) and not os.path.normcase(target).startswith(windows) else None
             img = find_image([folder_of], {"cover", "boxart", "poster", title}) if folder_of else None
             g_id = gid("lnk", path)
@@ -4191,7 +4226,7 @@ def scan_all():
         except Exception as e:
             programs = []
             errors.append(f"Installed programs: {e}")
-        for prov, fn in (("ea", scan_ea), ("ubisoft", scan_ubisoft), ("gog", scan_gog), ("battlenet", scan_battlenet)):
+        for prov, fn in (("ea", scan_ea), ("ubisoft", scan_ubisoft), ("gog", scan_gog), ("battlenet", scan_battlenet), ("rockstar", scan_rockstar)):
             if cfg.get(prov + "Local", True):
                 add(f"{LOCAL_PROVIDERS[prov]} (installed)", lambda fn=fn: fn(programs, cfg))
     if "epic" in accounts:
@@ -4528,6 +4563,7 @@ def still_library():
 
 CAPTURES = os.path.join(DATA, "captures")
 RECORD = {"proc": None, "entry": None}
+RECORD_LOCK = threading.Lock()
 ENCODER = [None]
 
 
@@ -4591,7 +4627,14 @@ def take_capture(mode):
     if not session:
         return
     if mode == "record":
-        return stop_recording() if RECORD["proc"] else start_recording(session["game"])
+        # one start or stop at a time: a second press while the recorder is still starting (it waits up to 1.5 s for the
+        # sound) would otherwise start a second recorder, or stop one that isn't running yet
+        if not RECORD_LOCK.acquire(blocking=False):
+            return
+        try:
+            return stop_recording() if RECORD["proc"] else start_recording(session["game"])
+        finally:
+            RECORD_LOCK.release()
     from PIL import ImageGrab
     import ctypes
     ctypes.windll.user32.SetProcessDPIAware()
@@ -5416,7 +5459,7 @@ PORT_DIRS = {}  # launched pid -> the folder of a PC port
 
 # Games should be started by the frontend window when it's open: Steam only gives a Steam Controller to programs it started
 # itself and their children, and the helper in the tray isn't one. The window asks for work at /api/spawn/next.
-SPAWN = {"cond": threading.Condition(), "jobs": [], "seen": 0.0, "done": {}, "next": 0}
+SPAWN = {"cond": threading.Condition(), "jobs": [], "seen": 0.0, "done": {}, "next": 0, "taken": set()}
 
 
 class WindowProcess:
@@ -5432,16 +5475,25 @@ class WindowProcess:
             time.sleep(1)
 
 
-def spawn_via_window(cmd, cwd):
+def spawn_via_window(cmd, cwd, console=False):
     with SPAWN["cond"]:
         if time.time() - SPAWN["seen"] > 25:
             return None
         SPAWN["next"] += 1
         job = SPAWN["next"]
-        SPAWN["jobs"].append({"id": job, "cmd": cmd, "cwd": cwd})
+        SPAWN["jobs"].append({"id": job, "cmd": cmd, "cwd": cwd, "console": console})
         SPAWN["cond"].notify_all()
-        SPAWN["cond"].wait_for(lambda: job in SPAWN["done"], timeout=6)
-        pid = SPAWN["done"].pop(job, 0)
+        SPAWN["cond"].wait_for(lambda: job in SPAWN["done"] or job in SPAWN["taken"], timeout=6)
+        if job not in SPAWN["done"] and job not in SPAWN["taken"]:  # the window didn't come for it: started here instead,
+            SPAWN["jobs"] = [j for j in SPAWN["jobs"] if j["id"] != job]  # and taken back so the window can't start it too
+            return None
+        # The window has it. A game that needs administrator rights waits on Windows' prompt for as long as it's up:
+        # waited for, never started a second time from here (two prompts, two copies)
+        SPAWN["cond"].wait_for(lambda: job in SPAWN["done"], timeout=900)
+        SPAWN["taken"].discard(job)
+        pid, error = SPAWN["done"].pop(job, (0, "The game didn't start: Windows didn't answer"))
+    if error:
+        raise ValueError(error)
     return WindowProcess(pid) if pid else None
 
 
@@ -5451,29 +5503,50 @@ def spawn_next():
         SPAWN["seen"] = time.time()
         SPAWN["cond"].wait_for(lambda: SPAWN["jobs"], timeout=20)
         SPAWN["seen"] = time.time()
-        return SPAWN["jobs"].pop(0) if SPAWN["jobs"] else {}
+        if not SPAWN["jobs"]:
+            return {}
+        job = SPAWN["jobs"].pop(0)
+        SPAWN["taken"].add(job["id"])
+        SPAWN["cond"].notify_all()
+        return job
 
 
-def spawn_done(job, pid):
+def spawn_done(job, pid, error=""):
     with SPAWN["cond"]:
-        SPAWN["done"][job] = pid
+        SPAWN["done"][job] = (pid, error or ("" if pid else "The game didn't start"))
         SPAWN["cond"].notify_all()
 
 
-def spawn(cmd, cwd, window=True):
+def spawn(cmd, cwd, window=True, console=False):
     window = window and not re.search(r"azahar", os.path.basename(cmd[0]), re.I)  # it freezes at start under Steam's overlay
-    proc = spawn_via_window(cmd, cwd) if WIN and window else None
-    return proc or local_spawn(cmd, cwd)
+    proc = spawn_via_window(cmd, cwd, console) if WIN and window else None
+    return proc or local_spawn(cmd, cwd, console)
 
 
-def local_spawn(cmd, cwd):
+def console_program(path):
+    """A game that runs in a console window (a .bat or .cmd, or a console program such as a roguelike): it starts with
+    its console showing. Every other child of the helper starts without one, so no console flashes over the screen."""
+    if not WIN:
+        return False
+    if path.lower().endswith((".bat", ".cmd")):
+        return True
+    try:
+        with open(path, "rb") as f:
+            head = f.read(4096)
+        pe = int.from_bytes(head[0x3C:0x40], "little")
+        return head[:2] == b"MZ" and head[pe:pe + 4] == b"PE\0\0" and int.from_bytes(head[pe + 0x5C:pe + 0x5E], "little") == 3  # IMAGE_SUBSYSTEM_WINDOWS_CUI
+    except (OSError, ValueError):
+        return False
+
+
+def local_spawn(cmd, cwd, console=False):
     """Start a game. The packaged exe's unpack folder is on its DLL search path and children inherit it, so an emulator would
     load our vcruntime140.dll instead of the system's (RPCS3 refuses to run on it): clear that for the moment of starting."""
     bundle = getattr(sys, "_MEIPASS", None)
     if POSIX:
         return subprocess.Popen(cmd, cwd=cwd, env=PLAT.child_env() if bundle else None)
     if not (WIN and bundle):
-        return start_program(cmd, cwd)
+        return start_program(cmd, cwd, console=console)
     import ctypes
     # nor where it was unpacked: Steam started from here would hand that on to the frontend it launches, which would then run
     # from this copy's unpack folder and lose it when this copy goes
@@ -5484,16 +5557,16 @@ def local_spawn(cmd, cwd):
     with SPAWN_LOCK:
         set_dir(None)
         try:
-            return start_program(cmd, cwd, env)
+            return start_program(cmd, cwd, env, console)
         finally:
             set_dir(bundle)
 
 
-def start_program(cmd, cwd, env=None):
+def start_program(cmd, cwd, env=None, console=False):
     """Popen, or for a program that insists on running as administrator (Windows refuses it with error 740), Windows'
     "Run as administrator", which asks first. Either way the game is followed while it runs."""
     try:
-        return subprocess.Popen(cmd, cwd=cwd, env=env)
+        return subprocess.Popen(cmd, cwd=cwd, env=env, **({"creationflags": 0x10} if console else {}))  # CREATE_NEW_CONSOLE
     except OSError as e:
         if not WIN or getattr(e, "winerror", 0) != 740:
             raise
@@ -5827,6 +5900,13 @@ def hold_steam_launch(game_id, timeout=30):
         k32.CloseHandle(h)
         return buf.value.lower() if ok else ""
 
+    # this game's own install folder, so another Steam game that's still open isn't taken for it
+    try:
+        own = tuple(d for d, g in game_folders().items() if g == game_id)
+    except Exception:
+        own = ()
+    mine = (lambda path: path.startswith(own)) if own else (lambda path: "steamapps" in path)
+
     def game_window():
         found = []
 
@@ -5834,7 +5914,7 @@ def hold_steam_launch(game_id, timeout=30):
             p, r = ctypes.c_ulong(), W.RECT()
             user32.GetWindowThreadProcessId(ctypes.c_void_p(hwnd), ctypes.byref(p))
             user32.GetWindowRect(ctypes.c_void_p(hwnd), ctypes.byref(r))
-            if user32.IsWindowVisible(ctypes.c_void_p(hwnd)) and r.right - r.left >= 600 and r.bottom - r.top >= 300 and "steamapps" in image(p.value):
+            if user32.IsWindowVisible(ctypes.c_void_p(hwnd)) and r.right - r.left >= 600 and r.bottom - r.top >= 300 and mine(image(p.value)):
                 found.append(hwnd)
             return True
         user32.EnumWindows(proto(cb), 0)
@@ -7126,12 +7206,103 @@ def xinput_off(slot):
     raise OSError("This controller can't be turned off from here: hold its own button")
 
 
+def wlan_native():
+    """Windows' own Wi-Fi API (wlanapi.dll): the same answers in every Windows language, unlike netsh's text.
+    Returns (status, networks) for the first Wi-Fi adapter, or None on a PC without one."""
+    import ctypes
+    from ctypes import wintypes as W
+
+    class GUID(ctypes.Structure):
+        _fields_ = [("a", ctypes.c_ubyte * 16)]
+
+    class IFACE(ctypes.Structure):
+        _fields_ = [("guid", GUID), ("desc", ctypes.c_wchar * 256), ("state", ctypes.c_int)]
+
+    class IFACES(ctypes.Structure):
+        _fields_ = [("count", W.DWORD), ("index", W.DWORD), ("items", IFACE * 1)]
+
+    class SSID(ctypes.Structure):
+        _fields_ = [("length", W.ULONG), ("ssid", ctypes.c_ubyte * 32)]
+
+    class ASSOC(ctypes.Structure):
+        _fields_ = [("ssid", SSID), ("bss", ctypes.c_int), ("mac", ctypes.c_ubyte * 6), ("phy", ctypes.c_int), ("phyIndex", W.ULONG),
+                    ("quality", W.ULONG), ("rx", W.ULONG), ("tx", W.ULONG)]
+
+    class CONN(ctypes.Structure):
+        _fields_ = [("state", ctypes.c_int), ("mode", ctypes.c_int), ("profile", ctypes.c_wchar * 256), ("assoc", ASSOC)]
+
+    class RADIO(ctypes.Structure):
+        _fields_ = [("count", W.DWORD), ("phys", (W.DWORD * 3) * 64)]  # index, software state, hardware state (1 on, 2 off)
+
+    class NET(ctypes.Structure):
+        _fields_ = [("profile", ctypes.c_wchar * 256), ("ssid", SSID), ("bss", ctypes.c_int), ("bssids", W.ULONG), ("connectable", W.BOOL),
+                    ("reason", W.DWORD), ("phyCount", W.ULONG), ("phys", ctypes.c_int * 8), ("morePhys", W.BOOL), ("quality", W.ULONG),
+                    ("secure", W.BOOL), ("auth", ctypes.c_int), ("cipher", ctypes.c_int), ("flags", W.DWORD), ("reserved", W.DWORD)]
+
+    class NETS(ctypes.Structure):
+        _fields_ = [("count", W.DWORD), ("index", W.DWORD), ("items", NET * 1)]
+
+    api = ctypes.WinDLL("wlanapi")
+    handle, version = W.HANDLE(), W.DWORD()
+    if api.WlanOpenHandle(2, None, ctypes.byref(version), ctypes.byref(handle)):
+        raise OSError("Wi-Fi service unavailable")
+    name = lambda x: bytes(x.ssid[:min(x.length, 32)]).decode("utf-8", "replace")
+    try:
+        ifaces = ctypes.POINTER(IFACES)()
+        if api.WlanEnumInterfaces(handle, None, ctypes.byref(ifaces)):
+            raise OSError("Wi-Fi adapters unreadable")
+        try:
+            if not ifaces.contents.count:
+                return None
+            iface = ctypes.cast(ctypes.addressof(ifaces.contents.items), ctypes.POINTER(IFACE))[0]
+            guid = GUID.from_buffer_copy(iface.guid)
+            connected = iface.state == 1  # wlan_interface_state_connected
+        finally:
+            api.WlanFreeMemory(ifaces)
+        status = {"connected": connected, "name": "", "signal": None}
+        size, data = W.DWORD(), ctypes.c_void_p()
+        if not api.WlanQueryInterface(handle, ctypes.byref(guid), 4, None, ctypes.byref(size), ctypes.byref(data), None):  # radio state
+            radio = ctypes.cast(data, ctypes.POINTER(RADIO)).contents
+            if radio.count and all(radio.phys[i][1] == 2 or radio.phys[i][2] == 2 for i in range(min(radio.count, 64))):
+                status = {"connected": False, "name": "", "signal": None, "off": True}
+            api.WlanFreeMemory(data)
+        if connected and not api.WlanQueryInterface(handle, ctypes.byref(guid), 7, None, ctypes.byref(size), ctypes.byref(data), None):
+            conn = ctypes.cast(data, ctypes.POINTER(CONN)).contents
+            status.update(name=name(conn.assoc.ssid), signal=int(conn.assoc.quality))
+            api.WlanFreeMemory(data)
+        nets = {}
+        lst = ctypes.POINTER(NETS)()
+        if not status.get("off") and not api.WlanGetAvailableNetworkList(handle, ctypes.byref(guid), 0, None, ctypes.byref(lst)):
+            try:
+                items = ctypes.cast(ctypes.addressof(lst.contents.items), ctypes.POINTER(NET))
+                for i in range(lst.contents.count):
+                    n = items[i]
+                    ssid = name(n.ssid)
+                    if not ssid:
+                        continue  # a hidden network
+                    e = nets.setdefault(ssid, {"ssid": ssid, "signal": 0, "secure": bool(n.secure), "saved": False, "on": False,
+                                               "auth": "wpa3" if n.auth in (8, 9, 11) else "wpa2"})  # WPA3 (enterprise, SAE)
+                    e["signal"] = max(e["signal"], int(n.quality))
+                    e["saved"] = e["saved"] or bool(n.flags & 2)  # WLAN_AVAILABLE_NETWORK_HAS_PROFILE
+                    e["on"] = e["on"] or bool(n.flags & 1)  # ..._CONNECTED
+            finally:
+                api.WlanFreeMemory(lst)
+        return status, sorted(nets.values(), key=lambda n: (not n["on"], not n["saved"], -n["signal"]))
+    finally:
+        api.WlanCloseHandle(handle, None)
+
+
 def wifi_status():
     """The Wi-Fi network this PC is on and its signal (0-100), or None on a PC without Wi-Fi."""
     if not WIN:
         return None
     try:
-        r = subprocess.run(["netsh", "wlan", "show", "interfaces"], capture_output=True, text=True, timeout=5, creationflags=0x08000000)
+        native = wlan_native()
+        return native and native[0]
+    except Exception:
+        pass  # (the API itself unavailable: netsh's English text, below)
+    try:
+        r = subprocess.run(["netsh", "wlan", "show", "interfaces"], capture_output=True, encoding="oem", errors="replace", timeout=5, creationflags=0x08000000)
     except (OSError, subprocess.SubprocessError):
         return None
     info = {}
@@ -7152,7 +7323,12 @@ def wifi_networks():
     """Wi-Fi networks in range, strongest first: [{"ssid", "signal", "secure", "saved", "on"}]. Saved ones connect with one press."""
     if not WIN:
         return []
-    run = lambda *a: subprocess.run(["netsh", "wlan", *a], capture_output=True, text=True, timeout=10, creationflags=0x08000000).stdout
+    try:
+        native = wlan_native()
+        return native[1] if native else []
+    except Exception:
+        pass
+    run = lambda *a: subprocess.run(["netsh", "wlan", *a], capture_output=True, encoding="oem", errors="replace", timeout=10, creationflags=0x08000000).stdout
     try:
         listing, profiles = run("show", "networks", "mode=bssid"), run("show", "profiles")
     except (OSError, subprocess.SubprocessError):
@@ -7830,9 +8006,7 @@ def epic_friends():
         return []
     if time.time() - EPIC_FRIENDS[0] < 120:
         return EPIC_FRIENDS[1]
-    tok = epic_token({"grant_type": "refresh_token", "refresh_token": acc["refresh_token"]})
-    acc["refresh_token"] = tok["refresh_token"]  # refresh tokens rotate
-    store("accounts.json", accounts)
+    tok = epic_access()
     me, auth = tok["account_id"], {"Authorization": f"bearer {tok['access_token']}", "User-Agent": EPIC_UA}
     ids = [f["accountId"] for f in http_json(f"https://friends-public-service-prod.ol.epicgames.com/friends/api/v1/{me}/summary", headers=auth).get("friends", [])]
     names = {}
@@ -8397,7 +8571,7 @@ def start_game(game, L):
             threading.Thread(target=unpack_and_run, daemon=True).start()
             return "unpacking"
         return run_emulator(game, L, rom)
-    proc = spawn(cmd, cwd)
+    proc = spawn(cmd, cwd, console=console_program(L["exe"]))
     RUNNING[game["id"]] = proc
     if WIN and re.search(r"[\\/]Ports[\\/]", L["exe"]):  # a port's folder is its own, unlike an emulator's shared install
         PORT_DIRS[proc.pid] = cwd
@@ -8476,13 +8650,14 @@ LOCAL_PROVIDERS = {"ea": "EA app", "ubisoft": "Ubisoft Connect", "gog": "GOG", "
 # None of them share your owned-games list without their own sign-in, so (like "Installed Steam games") this finds what
 # each launcher has installed on this PC from the entries it writes to Windows' installed-programs list, and starts
 # games through the launcher so sign-in, updates and cloud saves still work.
-SERVICE_SCANS = ("ea", "ubisoft", "gog", "battlenet")   # each has an on/off option "<id>Local" (on by default)
-OPTION_KEYS = ("steamLocal", "onlineCovers", "showUninstalled", "artBackground", "guideOpens", "wiiMotion", "keepOnScreen", "usageCheckin", "dndWhilePlaying", "wallpaperKeys") + tuple(p + "Local" for p in SERVICE_SCANS)
+SERVICE_SCANS = ("ea", "ubisoft", "gog", "battlenet", "rockstar")   # each has an on/off option "<id>Local" (on by default)
+OPTION_KEYS = ("steamLocal", "onlineCovers", "showUninstalled", "artBackground", "guideOpens", "wiiMotion", "keepOnScreen", "dndWhilePlaying", "wallpaperKeys") + tuple(p + "Local" for p in SERVICE_SCANS)
 SERVICE_APPS = {
     "ea": [r"C:\Program Files\Electronic Arts\EA Desktop\EA Desktop\EADesktop.exe"],
     "ubisoft": [r"C:\Program Files (x86)\Ubisoft\Ubisoft Game Launcher\UbisoftConnect.exe", r"C:\Program Files (x86)\Ubisoft\Ubisoft Game Launcher\upc.exe"],
     "battlenet": [r"C:\Program Files (x86)\Battle.net\Battle.net.exe", r"C:\Program Files\Battle.net\Battle.net.exe"],
     "gog": [r"C:\Program Files (x86)\GOG Galaxy\GalaxyClient.exe", r"C:\Program Files\GOG Galaxy\GalaxyClient.exe"],
+    "rockstar": [r"C:\Program Files\Rockstar Games\Launcher\Launcher.exe", r"C:\Program Files (x86)\Rockstar Games\Launcher\Launcher.exe"],
 }
 # Battle.net starts a game by its product code; games not listed here start from their own launcher program instead.
 BNET_CODES = {"wow": "WoW", "d3": "D3", "pro": "Pro", "hs_beta": "WTCG", "heroes": "Hero", "s1": "S1", "s2": "S2", "w3": "W3",
@@ -8633,6 +8808,38 @@ def scan_gog(programs, cfg):
                         continue
                     launch = {"type": "exe", "exe": found, "args": []}
                 games.append(service_game("gog", game_id, clean_title(title), folder, launch, cfg))
+    return games
+
+
+def scan_rockstar(programs, cfg):
+    """Rockstar Games Launcher games: each installed one is listed under Rockstar Games in the registry with its folder. A
+    game starts from its own program, which goes through the launcher (sign-in, updates) and hands over to the game, so
+    it's followed by its folder like Battle.net's."""
+    import winreg
+    games = []
+    for path in (r"SOFTWARE\WOW6432Node\Rockstar Games", r"SOFTWARE\Rockstar Games"):
+        try:
+            root = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, path)
+        except OSError:
+            continue
+        with root:
+            for i in range(winreg.QueryInfoKey(root)[0]):
+                try:
+                    name = winreg.EnumKey(root, i)
+                    with winreg.OpenKey(root, name) as k:
+                        folder = str(winreg.QueryValueEx(k, "InstallFolder")[0] or "")
+                except OSError:
+                    continue
+                if re.search(r"launcher|social ?club", name, re.I) or not os.path.isdir(folder):
+                    continue
+                key = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+                if any(g["id"] == gid("rockstar", key) for g in games):
+                    continue
+                play = [f for f in glob.glob(os.path.join(folder, "Play*.exe"))]  # GTA V's PlayGTAV.exe
+                exe = play[0] if play else best_exe(folder)
+                if not exe:
+                    continue
+                games.append(service_game("rockstar", key, clean_title(name), folder, {"type": "exe", "exe": exe, "args": [], "handoff": True}, cfg))
     return games
 
 
@@ -10252,11 +10459,13 @@ def check_emulator_updates():
     """Which of the app's own emulators have something newer (GitHub downloads by release date, installers by winget)."""
     refind_moved(list(config().get("emulators") or {}))  # any whose program has moved since (an update, or by hand)
     cfg, versions = config(), load("emu-versions.json", {})
-    github = {}
+    github, before = {}, EMU_UPDATES.get("github") or {}
     for name, (folder, systems) in own_github_emus(cfg).items():
         try:
             asset, published = github_latest(name)
         except (urllib.error.URLError, ValueError, KeyError, TimeoutError):
+            if name in before:  # couldn't ask (offline, or GitHub's hourly limit): what was found last time still holds
+                github[name] = before[name]
             continue
         if not asset:
             continue
@@ -10282,6 +10491,7 @@ def check_emulator_updates():
         installed = EMU_UPDATES.get("installed") or {}
     EMU_UPDATES.update(checked=time.time(), github=github, winget=winget, installed=installed, error="")
     EMU_VERSIONS.clear()
+    versions = load("emu-versions.json", {})  # read again: an update that finished meanwhile wrote its version there
     versions["_checked"] = time.time()
     store("emu-versions.json", versions)
 
@@ -11336,7 +11546,7 @@ class Handler(SimpleHTTPRequestHandler):
                                                           or (path == "/api/update" and body.get("action") == "install")):  # (it closes the frontend)
                 raise ValueError("That can't be done from the wallpaper: open Ultra Front End for it")
             if path == "/api/spawn/done":
-                spawn_done(body.get("id"), int(body.get("pid") or 0))
+                spawn_done(body.get("id"), int(body.get("pid") or 0), str(body.get("error") or "")[:300])
                 return self.reply({"ok": True})
             if path in ("/api/broker/out", "/api/broker/done"):  # the elevated install helper's output and result
                 if not BROKER["token"] or not secrets_equal(str(body.get("token") or ""), BROKER["token"]):
@@ -12341,28 +12551,6 @@ def clean_after_update():
             pass  # still running (a window from before the update) or already gone
 
 
-USAGE_URL = f"https://github.com/{UPDATE_REPO}/releases/download/usage/checkin.txt"
-
-
-def watch_usage():
-    """Once a day, while the helper runs, this copy downloads a tiny file from the project's GitHub page, so GitHub's
-    download count shows how many copies are in use (a daily job writes the totals to stats/usage.csv). Nothing about
-    the person or their games is sent. Off in Settings › About; never from a test copy on another port or a source run."""
-    if PORT != 8137 or not getattr(sys, "frozen", False) or updates_off():
-        return
-    while True:
-        today = time.strftime("%Y-%m-%d", time.gmtime())
-        if config().get("usageCheckin", True) and load("usage.json", {}).get("day") != today:
-            try:
-                req = urllib.request.Request(USAGE_URL, headers={"User-Agent": "UltraFrontEnd"})
-                with urllib.request.urlopen(req, timeout=20) as r:
-                    r.read(64)
-                store("usage.json", {"day": today})
-            except (urllib.error.URLError, OSError, ValueError, TimeoutError):
-                pass  # offline: tried again within the hour
-        time.sleep(3600)
-
-
 def watch_updates():
     """In the helper, once it has the port: finish an update that just went in, then look for the next one now and then."""
     if updates_off():
@@ -12968,7 +13156,6 @@ def main():
         return
     print(f"Game frontend on http://127.0.0.1:{PORT}")
     threading.Thread(target=watch_updates, daemon=True).start()  # once this copy really has the port
-    threading.Thread(target=watch_usage, daemon=True).start()
     server.serve_forever()
 
 
