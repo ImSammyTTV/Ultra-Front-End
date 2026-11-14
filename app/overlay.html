@@ -272,6 +272,7 @@ async function wake() {
   $('#title').textContent = s.title || '';
   $('#tip').textContent = s.tip || ''; $('#tip').style.display = s.tip ? '' : 'none';  // once per game, then not again
   $('#stats').textContent = s.session >= 0 ? `This session ${hm(s.session)}` + (s.minutes ? ` · Total ${hm(s.minutes)}` : '') : '';
+  $('#cover').style.display = $('#game').style.display = '';  // (shown again: this menu is kept for the whole game)
   if (s.cover) $('#cover').src = s.cover; else $('#cover').style.display = 'none';
   if (!s.title) $('#game').style.display = 'none';
   battery = s.battery ?? null;

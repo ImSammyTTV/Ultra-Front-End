@@ -1137,6 +1137,7 @@ function mediaItems() {
     ...shots.map(s => ({ kind: 'image', thumb: s.thumb, src: s.full, label: '' }))];
 }
 function renderActions() {
+  D.a = Math.max(0, Math.min(D.a, detailActions().length - 1));  // a button went (the game closed): the highlight stays on one
   $('#details .d-actions').innerHTML = detailActions().map((b, i) => `<div class="d-btn${b.primary ? ' primary' : ''}${b.more ? ' more' : ''}" data-i="${i}">${b.html || ''}${b.label ? `<span>${esc(b.label)}</span>` : ''}${
     b.more && D.menu ? `<div class="d-menu">${moreItems().map((m, j) => `<div class="d-mi" data-j="${j}">${esc(m.label)}</div>`).join('')}</div>` : ''}</div>`).join('');
   // The column scrolls, so it clips the menu: below the buttons when it fits, else on the side with more room, scrolling
@@ -1196,20 +1197,22 @@ async function openDetails(g, from = null) {  // from: the Library or Search pag
   else if (g.cover) heroLayer(g.cover, true);
   renderDetails();
   if (!c) return;
+  // still this game's page: by id, as a library reload (a rescan, Add to favourites) puts a new copy of the game in D.game
+  const still = () => D.open && D.game?.id === g.id;
   c.info.then(d => {
-    if (D.game !== g) return;
+    if (!still()) return;
     const had = D.data;
     D.data = { ...d, news: D.data?.news ?? d.news };
     const same = had && had.hero === d.hero && had.description === d.description;  // drawn with these already: not again
-    if (d.hero && !had?.hero) { const im = new Image(); im.onload = () => D.game === g && heroLayer(d.hero, !!d.heroSoft); im.src = d.hero; }
+    if (d.hero && !had?.hero) { const im = new Image(); im.onload = () => still() && heroLayer(d.hero, !!d.heroSoft); im.src = d.hero; }
     if (!same) renderDetails();
     if (d.achPending) api('/api/game/achievements?id=' + encodeURIComponent(g.id)).then(r => {
       d.achPending = false; d.achievements = r.achievements;
-      if (D.game === g) { D.data.achievements = r.achievements; D.data.achPending = false; renderStats(); renderNews(); }
+      if (still()) { D.data.achievements = r.achievements; D.data.achPending = false; renderStats(); renderNews(); }
     }).catch(() => {});
   }).catch(e => toast(e.message));
   c.news.then(news => {
-    if (D.game !== g || D.data?.news === news) return;  // drawn with this news already
+    if (!still() || D.data?.news === news) return;  // drawn with this news already
     D.data = { ...(D.data || {}), news };
     renderNews();
   });
@@ -1226,7 +1229,7 @@ function renderDetails() {
     if (im?.complete && im.naturalWidth) { logo.innerHTML = ''; logo.appendChild(im); }  // already loaded: straight in
     else {
       logo.innerHTML = `<h1>${esc(g.title)}</h1>`;
-      if (im) im.onload = () => { if (D.game === g && logo.dataset.for === g.id + '|' + wantLogo) { logo.innerHTML = ''; logo.appendChild(im); } };
+      if (im) im.onload = () => { if (D.game?.id === g.id && logo.dataset.for === g.id + '|' + wantLogo) { logo.innerHTML = ''; logo.appendChild(im); } };
     }
   }
   root.querySelector('.d-meta').textContent = [g.system || g.group, ...(d?.genres || []), d?.developer, g.egg && eggLeft(g, true)].filter(Boolean).join('   ·   ');
@@ -1343,7 +1346,7 @@ function backTo(from) {
     if (r >= 0) { SR.zone = 'res'; SR.r = r; searchFocus(); }
   }
 }
-const lpState = () => ({ page: 'lib', mode: LP.mode, cat: LP.cats[LP.cat]?.name, sort: LP.sort, id: lpItems()[LP.i]?.id });
+const lpState = () => ({ page: 'lib', mode: LP.mode, cat: LP.cats[LP.cat]?.name, sort: LP.sort, id: (LP.shown || lpItems())[LP.i]?.id });
 // Posts without a picture borrow one of the game's screenshots.
 function newsImage(n, i) {
   const shots = D.data?.screenshots || [];
@@ -1433,7 +1436,8 @@ function loadYouTubePlayer() {
   if (!youtubeReady) youtubeReady = new Promise((resolve, reject) => {
     window.onYouTubeIframeAPIReady = resolve;
     const script = document.createElement('script');
-    script.src = 'https://www.youtube.com/iframe_api'; script.onerror = reject;
+    script.src = 'https://www.youtube.com/iframe_api';
+    script.onerror = e => { youtubeReady = null; script.remove(); reject(e); };  // offline for a moment: tried again next time
     document.head.appendChild(script);
   });
   return youtubeReady;
@@ -1603,7 +1607,7 @@ async function loadNewsTab() {
     try {
       newsReq ??= api('/api/news').finally(() => setTimeout(() => newsReq = null, 600000));
       NP.games = (await newsReq).news;
-    } catch (e) { NP.games ??= []; toast(e.message); }
+    } catch (e) { NP.games ??= []; newsReq = null; toast(e.message); }  // (asked again next time, not in ten minutes)
   }
   if (NP.open && NP.tab === tab) renderNewsPage();
 }
@@ -1689,6 +1693,7 @@ function kbDraw() {
 function closeSearch() {
   const entry = SR.entry;
   SR.open = false; SR.prompt = null; SR.entry = null; document.body.classList.remove('search-open'); tick(420, .06);
+  $('#srq').blur();  // (left focused, the hidden box would keep taking Left, Right and letter keys from the home screen)
   watchAnims($('#search .sr-results'), false);  // hidden, not gone: its animated covers would keep playing
   if (entry) renderPanel();  // back on the field's row
 }
@@ -1836,7 +1841,7 @@ function lpCat(dir) {
 }
 function lpSort() { LP.sort = (LP.sort + 1) % LP_SORTS.length; LP.i = 0; tick(680, .04); renderLibraryPage(); toast(`Sorted: ${LP_SORTS[LP.sort][0]}`, 1400); }
 function renderLibraryPage() {
-  const items = lpItems(), cat = LP.cats[LP.cat];
+  const items = LP.shown = lpItems(), cat = LP.cats[LP.cat];  // (LP.shown: what's drawn, which a rescan doesn't change)
   $('#libpage .lp-head').innerHTML = `<div><h1>${LP.mode === 'emu' ? 'Emulators' : 'Library'}</h1>
       <div class="np-sub">${items.length} game${items.length === 1 ? '' : 's'}${cat && cat.name !== 'All' ? ` · ${esc(cat.name)}` : ''} · LB and RB change category</div></div>
     <div class="lp-btns"><div class="lp-btn lp-find">${icon('search')}Search</div><div class="lp-btn lp-sort"><b>Y</b> Sort: ${LP_SORTS[LP.sort][0]}</div></div>`;
@@ -1913,7 +1918,7 @@ function lpMove(dx, dy) {
 function lpOpen() {
   if (LP.zone === 'head') return LP.h === 0 ? openSearch(LP.mode) : lpSort();
   if (LP.zone === 'cats') { LP.zone = 'grid'; tick(700, .03); return lpFocus(); }
-  const g = lpItems()[LP.i];
+  const g = (LP.shown || lpItems())[LP.i];  // the game drawn there, even if the library reloaded since
   if (!g) return;
   const from = lpState();
   closeLibraryPage();
@@ -1940,7 +1945,7 @@ async function openAlbum() {
   AL.open = true; AL.i = 0;
   document.body.classList.add('album-open');
   tick(600, .07);
-  try { const r = await api('/api/album'); AL.all = r.captures; AL.still = r.still; } catch (e) { return toast(e.message); }
+  try { const r = await api('/api/album'); AL.all = r.captures; AL.still = r.still; } catch (e) { AL.all = []; toast(e.message); }  // (not the last visit's captures)
   if (AL.open) renderAlbum();
 }
 function closeAlbum() { AL.open = false; document.body.classList.remove('album-open'); tick(420, .06); }
@@ -2541,7 +2546,7 @@ $('#syspanel').addEventListener('wheel', e => {
 }, { passive: false });  // the mouse wheel moves like up and down
 $('#syspanel').addEventListener('click', e => {
   const r = e.target.closest('.sp-row');
-  const pw = e.target.closest('.sp-pw'), bar = e.target.closest('.sp-vol') && !e.target.closest('svg') && $('#syspanel .sp-vol .hub-bar').getBoundingClientRect();
+  const pw = e.target.closest('.sp-pw'), bar = e.target.closest('.sp-vol:not(.sp-mix)') && !e.target.closest('svg') && $('#syspanel .sp-vol:not(.sp-mix) .hub-bar')?.getBoundingClientRect();  // (the mixer's rows do their own thing on A)
   if (pw) SP.p = +pw.dataset.j;
   const mb = e.target.closest('.sp-mb');
   if (mb) SP.m = +mb.dataset.j;
@@ -3173,6 +3178,7 @@ async function openGame(g, view) {
   document.body.classList.add('panel-open');
   tick(640, .06);
   try { P.data = await api('/api/settings'); } catch (e) { toast(e.message); }
+  if (!P.open || P.game !== g) return;  // closed (or opened for another game) while it loaded
   if (view === 'cover' || view === 'hero' || view === 'logo') return artOrConnect(view);
   renderPanel();
 }
@@ -3447,7 +3453,7 @@ function uninstallRow(key, wipe, label, sub) {
     } };
 }
 async function work(promise, okMsg, nextView) {
-  P.working = true; renderPanel();
+  P.working = true; P.workingAt = Date.now(); renderPanel();
   try {
     const r = await promise;
     P.data = r && r.options ? r : await api('/api/settings');
@@ -3518,7 +3524,7 @@ function renderPanel() {
   else { list.innerHTML = draw(selI); P.listPlain = plain; }
   $('#panel .pbusy').classList.toggle('on', P.working);
   // on the page's own clock (startTime 0), so the bar slides on smoothly when the rows are drawn again
-  document.querySelectorAll('#panel .pbar.busy i').forEach(i => { i.animate([{ transform: 'translateX(-100%)' }, { transform: 'translateX(334%)' }], { duration: 1400, iterations: Infinity, easing: 'ease-in-out' }).startTime = 0; });
+  document.querySelectorAll('#panel .pbar.busy i').forEach(i => { if (!i.getAnimations().length) i.animate([{ transform: 'translateX(-100%)' }, { transform: 'translateX(334%)' }], { duration: 1400, iterations: Infinity, easing: 'ease-in-out' }).startTime = 0; });  // (once per bar: a bar kept between draws keeps its own)
   const cur = $('#panel .plist .sel');
   // only when the highlight moved: an install's progress redraws twice a second, and scrolling back each time held the
   // list on its row so it couldn't be scrolled with the mouse or by touch
@@ -3591,7 +3597,7 @@ function panelActivate() {
   Promise.resolve(it.act?.()).catch(e => toast(e.message, 4000));
 }
 function panelBack() {
-  if (P.working) return;
+  if (P.working && Date.now() - P.workingAt < 30000) return;  // (a helper that hangs mid-request doesn't keep you here)
   if (P.mapping) { P.mapping = false; return renderPanel(); }
   if (P.confirm) { P.confirm = null; return renderPanel(); }
   if (P.setup && P.view === 'setup-welcome' && PROFILE.setupDone) {  // run again from About: Settings as it was
