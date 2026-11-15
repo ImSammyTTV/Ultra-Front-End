@@ -193,6 +193,24 @@ you expected and what happened, and attach `errors.log` if there is one.
 
 ---
 
+## Code signing policy
+
+<details>
+<summary>How Windows downloads are signed</summary>
+
+Windows releases will be signed once the project's application to SignPath Foundation is approved.
+When they are:
+
+- Free code signing is provided by [SignPath.io](https://about.signpath.io), with the certificate by [SignPath Foundation](https://signpath.org).
+- Only builds made by this repository's [GitHub Actions release workflow](.github/workflows/release.yml) from its public source code are signed.
+- **Committers and reviewers:** [ImSammyTTV](https://github.com/ImSammyTTV)
+- **Approver:** [ImSammyTTV](https://github.com/ImSammyTTV). Every signing request is approved manually.
+- **Privacy:** the frontend downloads game covers from Steam and libretro, connects to SteamGridDB only if you add
+  your own API key, and checks GitHub for updates. It does not send information anywhere else.
+</details>
+
+---
+
 ## License
 
 [MIT](LICENSE) © ImSammyTTV. Third-party software and artwork: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
