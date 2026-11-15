@@ -12,6 +12,7 @@ import glob
 import hashlib
 import html
 import json
+import math
 import os
 import re
 import calendar
@@ -159,6 +160,7 @@ os.makedirs(DATA, exist_ok=True)
 
 
 # ---------------------------------------------------------------- storage
+OVERRIDES_LOCK = threading.RLock()  # around each read-change-write of overrides.json (your renames, art, hidden games)
 KEEP = {"config.json", "accounts.json", "overrides.json", "playlog.json", "sessions.json"}  # files with a .bak copy
 
 
@@ -234,12 +236,20 @@ def config():
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) GameFrontend/0.1"
 
 
+NET_DOWN = [0.0]  # the last time a site couldn't be reached at all (no internet, DNS, a timeout)
+
+
 def http_json(url, data=None, headers=None, timeout=15):
     req = urllib.request.Request(url, data=data, headers={"User-Agent": UA, **(headers or {})})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read().decode("utf-8"))
+    except urllib.error.URLError as e:
+        if not isinstance(e, urllib.error.HTTPError):
+            NET_DOWN[0] = time.time()
+        raise
     except (http.client.HTTPException, ConnectionError, TimeoutError) as e:
+        NET_DOWN[0] = time.time()
         # the connection dropped part way (reset, cut off, timed out reading): the same "couldn't reach it" every caller handles
         raise urllib.error.URLError(e) from e
 
@@ -1602,7 +1612,16 @@ def broker_loop(port, token):
                 post("/out", {"job": job_id, "text": decoder.decode(chunk)})
         reader = threading.Thread(target=pump, daemon=True)
         reader.start()
-        code = watch_install(proc, last_output, hint=False)
+        running = threading.Event()
+
+        def heartbeat():  # an installer quiet for a while (no output) isn't this helper gone: it says so every 15 s
+            while not running.wait(15):
+                post("/out", {"job": None})
+        threading.Thread(target=heartbeat, daemon=True).start()
+        try:
+            code = watch_install(proc, last_output, hint=False)
+        finally:
+            running.set()
         reader.join(30)
         post("/done", {"job": job["id"], "exit": WINGET_STALLED if code is None else code & 0xffffffff})
         last_answer = last_job = time.time()  # a long install isn't the helper going quiet
@@ -2551,16 +2570,17 @@ def set_art(game_id, url, kind="cover"):
     name = stem + {"image/png": ".png", "image/webp": ".webp", "image/gif": ".gif"}.get(ctype, ".jpg")
     with open(os.path.join(ART_DIR, name), "wb") as f:
         f.write(data)
-    overrides = load("overrides.json", {})
-    o = overrides.setdefault(game_id, {})
-    o[kind if kind in ("hero", "logo") else "cover"] = name
-    if kind not in ("hero", "logo"):
-        still = still_frame(os.path.join(ART_DIR, name))
-        if still:
-            o["coverStill"] = os.path.basename(still)
-        else:
-            o.pop("coverStill", None)
-    store("overrides.json", overrides)
+    with OVERRIDES_LOCK:  # (one change at a time: two at once would lose one)
+        overrides = load("overrides.json", {})
+        o = overrides.setdefault(game_id, {})
+        o[kind if kind in ("hero", "logo") else "cover"] = name
+        if kind not in ("hero", "logo"):
+            still = still_frame(os.path.join(ART_DIR, name))
+            if still:
+                o["coverStill"] = os.path.basename(still)
+            else:
+                o.pop("coverStill", None)
+        store("overrides.json", overrides)
     DETAILS.pop(game_id, None)
     HEROES.pop(game_id, None)
 
@@ -2582,19 +2602,20 @@ def still_frame(path):
 
 
 def reset_art(game_id, kind="cover"):
-    overrides = load("overrides.json", {})
-    o = overrides.get(game_id, {})
-    name = o.pop(kind if kind in ("hero", "logo") else "cover", None)
-    for old in [name, o.pop("coverStill", None) if kind not in ("hero", "logo") else None]:
-        if not old:
-            continue
-        try:
-            os.remove(os.path.join(ART_DIR, old))
-        except OSError:
-            pass
-    if not o:
-        overrides.pop(game_id, None)
-    store("overrides.json", overrides)
+    with OVERRIDES_LOCK:  # (one change at a time: two at once would lose one)
+        overrides = load("overrides.json", {})
+        o = overrides.get(game_id, {})
+        name = o.pop(kind if kind in ("hero", "logo") else "cover", None)
+        for old in [name, o.pop("coverStill", None) if kind not in ("hero", "logo") else None]:
+            if not old:
+                continue
+            try:
+                os.remove(os.path.join(ART_DIR, old))
+            except OSError:
+                pass
+        if not o:
+            overrides.pop(game_id, None)
+        store("overrides.json", overrides)
     DETAILS.pop(game_id, None)
     HEROES.pop(game_id, None)
 
@@ -3230,10 +3251,15 @@ def youtube_search(query, limit=8):
 # Off unless the person turns it on. The audio of a theme the add-on picked is saved once with yt-dlp (fetched from its
 # own GitHub releases into data/tools the first time, checked against GitHub's checksum), then played from the PC.
 THEME_CACHE = os.path.join(DATA, "theme-cache")
-THEME_JOBS = {}
+THEME_JOBS, THEME_LOCK, YT_DLP_LOCK = {}, threading.Lock(), threading.Lock()
 
 
 def yt_dlp_path():
+    with YT_DLP_LOCK:  # (two songs saved at once: one download of the downloader, not two writing the same file)
+        return yt_dlp_fetch()
+
+
+def yt_dlp_fetch():
     folder = os.path.join(DATA, "tools")
     exe = os.path.join(folder, "yt-dlp.exe")
     if os.path.isfile(exe) and time.time() - os.path.getmtime(exe) < 14 * 86400:
@@ -3268,11 +3294,14 @@ def theme_file(video_id):
 
 def theme_save(video_id):
     """Saves one theme's audio in the background (once): its state is in THEME_JOBS until the file is there."""
-    if not re.fullmatch(r"[A-Za-z0-9_-]{11}", str(video_id or "")) or theme_file(video_id) or THEME_JOBS.get(video_id) == "saving":
+    if not re.fullmatch(r"[A-Za-z0-9_-]{11}", str(video_id or "")) or theme_file(video_id):
         return
+    with THEME_LOCK:  # marked before its thread starts: asked twice at once, it's still saved once
+        if THEME_JOBS.get(video_id) == "saving":
+            return
+        THEME_JOBS[video_id] = "saving"
 
     def run():
-        THEME_JOBS[video_id] = "saving"
         try:
             os.makedirs(THEME_CACHE, exist_ok=True)
             subprocess.run([yt_dlp_path(), "-f", "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio", "--no-playlist", "--no-progress",
@@ -3636,7 +3665,7 @@ def info_fresh(hit, g):
     return (bool(hit) and hit.get("title", g["title"]) == g["title"] and hit.get("wiki", "") == g.get("wikiPage", "")
             and (hit.get("version") == 10 or (hit.get("version") in (7, 8, 9) and g.get("source") != "Emulators")
                  or (hit.get("version") in (5, 6) and g.get("source") != "Emulators" and hit["d"].get("developer") and hit["d"].get("screenshots")))
-            and time.time() - hit["t"] < (INFO_TTL if hit.get("d", {}).get("description") else 60))
+            and time.time() - hit["t"] < (INFO_TTL if hit.get("d", {}).get("description") else min(3 * 86400, 60 * 6 ** max(0, hit.get("tries", 1) - 1))))
 
 
 def remote_info(g, appid, local):
@@ -3647,6 +3676,7 @@ def remote_info(g, appid, local):
     hit = cache.get(g["id"])
     if info_fresh(hit, g):
         return hit["d"]
+    started = time.time()
     cfg, accounts = config(), load("accounts.json", {})
     cdn = f"https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/" if appid else ""
     store_f = POOL.submit(steam_store_info, appid) if appid and g.get("source") != "Emulators" else None  # not a PC port's page
@@ -3685,7 +3715,12 @@ def remote_info(g, appid, local):
     if not d["hero"] and "hero" not in local and d["screenshots"]:  # no background art anywhere: a screenshot, shown softened
         d["hero"], d["heroSoft"] = d["screenshots"][0]["full"], True
     cache = load("info-cache.json", {})
-    cache[g["id"]] = {"t": time.time(), "d": d, "version": 10, "title": g["title"], **({"wiki": g["wikiPage"]} if g.get("wikiPage") else {})}
+    # Nothing found: asked again in a minute, then less and less often (6 minutes, half an hour… three days at most), so
+    # a game nobody has written about isn't looked up at every start. A lookup made while offline doesn't count.
+    prev = cache.get(g["id"]) or {}
+    tries = 0 if d["description"] else prev.get("tries", 0) + (0 if NET_DOWN[0] >= started else 1)
+    cache[g["id"]] = {"t": time.time(), "d": d, "version": 10, "title": g["title"], **({"wiki": g["wikiPage"]} if g.get("wikiPage") else {}),
+                      **({"tries": tries} if tries else {})}
     store("info-cache.json", cache)
     return d
 
@@ -4440,7 +4475,7 @@ def tidy_genres(raw):
 
 def public_games():
     cfg, info = config(), load("info-cache.json", {})
-    return [{**{k: v for k, v in g.items() if k not in ("launch", "fallbackCover", "epic", "folder")},
+    return [{**{k: v for k, v in list(g.items()) if k not in ("launch", "fallbackCover", "epic", "folder")},  # (list: a request may add a key meanwhile)
              "genres": tidy_genres(((info.get(g["id"]) or {}).get("d") or {}).get("genres"))}
             for g in STATE["games"] if cfg["showUninstalled"] or g["installed"]]
 
@@ -5597,6 +5632,12 @@ def run_as_admin(cmd, cwd):
     return WindowProcess(pid)
 
 
+def exe_processes(path):
+    """Running copies of one program file (Windows): their process ids."""
+    want = os.path.normcase(os.path.abspath(path))
+    return {pid for pid in folder_processes(os.path.dirname(want)) if os.path.normcase(process_image(pid)) == want}
+
+
 def folder_processes(folder):
     """Running programs whose exe lives in this folder or below it."""
     if POSIX:
@@ -6042,27 +6083,47 @@ def hud_alive():
     return HUD["proc"] is not None and HUD["proc"].poll() is None
 
 
+def fresh_env():
+    """The environment for starting this app's own exe again: told to unpack itself afresh (PyInstaller would otherwise
+    run it on this copy's unpacked files, which after an update are an older version's)."""
+    return dict(os.environ, PYINSTALLER_RESET_ENVIRONMENT="1")
+
+
+def step(v, limit=100):
+    """A volume step from a request: a whole number from -limit to limit (anything else, like 1e400, is 0 or the limit)."""
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return 0
+    return 0 if v != v else int(max(-limit, min(limit, v)))
+
+
 def hud_set(addon_id, item):
     """One add-on's card: {icon, text, sub, progress 0-100}, or None to take it away."""
     addon_id = str(addon_id or "")[:40]
+    if item and not isinstance(item, dict):
+        raise ValueError("A card is an object: {icon, text, sub, progress}")
     if not item:
         HUD["items"].pop(addon_id, None)
     else:
         prog = item.get("progress")
+        prog = prog if isinstance(prog, (int, float)) and not isinstance(prog, bool) and math.isfinite(prog) else None  # (Infinity breaks the card's page)
         image = str(item.get("image") or "")
         HUD["items"][addon_id] = {"icon": str(item.get("icon") or "")[:20], "text": str(item.get("text") or "")[:80],
                                   "image": image[:300] if image.startswith("/api/") else "",
                                   "place": item.get("place") if item.get("place") in HUD_PLACES else "top-left",
                                   "sub": str(item.get("sub") or "")[:100], "t": time.time(),
-                                  "progress": max(0, min(100, float(prog))) if isinstance(prog, (int, float)) else None}
+                                  "progress": max(0, min(100, float(prog))) if prog is not None else None}
     hud_start()
 
 
 def hud_items():
     now = time.time()
-    for k in [k for k, v in HUD["items"].items() if now - v["t"] > 120]:  # an add-on that stopped telling: its card goes
+    items = dict(HUD["items"])  # (a copy: add-ons change theirs from other requests meanwhile)
+    for k in [k for k, v in items.items() if now - v["t"] > 120]:  # an add-on that stopped telling: its card goes
         HUD["items"].pop(k, None)
-    return [{k: v for k, v in it.items() if k != "t"} for it in HUD["items"].values()]
+        items.pop(k)
+    return [{k: v for k, v in it.items() if k != "t"} for it in items.values()]
 
 
 def hud_start():
@@ -6070,7 +6131,7 @@ def hud_start():
         return
     with HUD_LOCK:
         if not hud_alive():
-            HUD["proc"] = subprocess.Popen([frontend_exe(), "--hud"], cwd=os.path.dirname(frontend_exe()))
+            HUD["proc"] = subprocess.Popen([frontend_exe(), "--hud"], cwd=os.path.dirname(frontend_exe()), env=fresh_env())
 
 
 def hud_view():
@@ -6109,7 +6170,7 @@ def overlay_process(warm):
     with OVERLAY_LOCK:
         if overlay_alive():
             return OVERLAY["proc"]
-        proc = subprocess.Popen([frontend_exe(), "--overlay", *(["--warm"] if warm else [])], cwd=os.path.dirname(frontend_exe()))
+        proc = subprocess.Popen([frontend_exe(), "--overlay", *(["--warm"] if warm else [])], cwd=os.path.dirname(frontend_exe()), env=fresh_env())
         OVERLAY["proc"] = proc
 
     def wait():
@@ -6518,9 +6579,25 @@ def start_alone(args):
     try:
         r = subprocess.run([POWERSHELL, "-NoProfile", "-NonInteractive", "-EncodedCommand", base64.b64encode(START_ALONE.encode("utf-16-le")).decode()],
                            capture_output=True, timeout=60, env=env, creationflags=0x08000000)
-        return r.returncode == 0
+        if r.returncode == 0:
+            return True
+    except subprocess.TimeoutExpired:
+        return False  # (it may still have started: never a second copy)
     except (OSError, subprocess.SubprocessError):
-        return False
+        pass
+    # PowerShell or WMI not allowed on this PC (antivirus, a work PC's rules): started directly instead, on its own
+    # (detached, and out of any job Steam holds this process in), unpacking itself afresh
+    try:
+        subprocess.Popen([frontend_exe()] + list(args), cwd=os.path.dirname(frontend_exe()), env=fresh_env(), close_fds=True,
+                         creationflags=0x00000008 | 0x00000200 | 0x01000000)  # DETACHED_PROCESS | NEW_PROCESS_GROUP | BREAKAWAY_FROM_JOB
+        return True
+    except OSError:
+        try:  # (a job that doesn't allow breaking away)
+            subprocess.Popen([frontend_exe()] + list(args), cwd=os.path.dirname(frontend_exe()), env=fresh_env(), close_fds=True,
+                             creationflags=0x00000008 | 0x00000200)
+            return True
+        except OSError:
+            return False
 
 
 def own_window(hwnd):
@@ -6710,7 +6787,7 @@ def open_frontend():
         game_id = steam_shortcut_id()
         button_log(f"  opening through {'Steam' if game_id else 'the exe'}")
         if not game_id:  # with its own unpacked copy: this helper's goes when the helper does, and a newer build replaces it
-            proc = subprocess.Popen([frontend_exe()], cwd=os.path.dirname(frontend_exe()), env=dict(os.environ, PYINSTALLER_RESET_ENVIRONMENT="1"))
+            proc = subprocess.Popen([frontend_exe()], cwd=os.path.dirname(frontend_exe()), env=fresh_env())
             return focus_process(proc.pid, timeout=30)
         black_cover()
         time.sleep(0.05)  # on screen before Steam's popup can be
@@ -7543,17 +7620,17 @@ def bt_scan():
 BT_PAIR_PS1 = r"""param([string]$Address)
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
 $asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
-function Await($op, $type) { $t = $asTask.MakeGenericMethod($type).Invoke($null, @($op)); $t.Wait(-1) | Out-Null; $t.Result }
+function Await($op, $type, $ms) { $t = $asTask.MakeGenericMethod($type).Invoke($null, @($op)); if (-not $t.Wait($ms)) { 'timeout'; exit 2 }; $t.Result }
 [Windows.Devices.Bluetooth.BluetoothDevice, Windows.Devices.Bluetooth, ContentType = WindowsRuntime] | Out-Null
 [Windows.Devices.Enumeration.DeviceInformation, Windows.Devices.Enumeration, ContentType = WindowsRuntime] | Out-Null
-$dev = Await ([Windows.Devices.Bluetooth.BluetoothDevice]::FromBluetoothAddressAsync([Convert]::ToUInt64($Address, 16))) ([Windows.Devices.Bluetooth.BluetoothDevice])
+$dev = Await ([Windows.Devices.Bluetooth.BluetoothDevice]::FromBluetoothAddressAsync([Convert]::ToUInt64($Address, 16))) ([Windows.Devices.Bluetooth.BluetoothDevice]) 8000
 if (-not $dev) { 'nodevice'; exit 1 }
 $pairing = $dev.DeviceInformation.Pairing
 if ($pairing.IsPaired) { 'paired-already'; exit 0 }
 $custom = $pairing.Custom
 $null = $custom.add_PairingRequested({ param($s, $e) $e.Accept() })
 $kinds = [Windows.Devices.Enumeration.DevicePairingKinds]'ConfirmOnly, ConfirmPinMatch, DisplayPin, ProvidePin'
-$res = Await ($custom.PairAsync($kinds)) ([Windows.Devices.Enumeration.DevicePairingResult])
+$res = Await ($custom.PairAsync($kinds)) ([Windows.Devices.Enumeration.DevicePairingResult]) 25000
 "$($res.Status)"
 """
 
@@ -7567,10 +7644,14 @@ def bt_pair_windows(addr):
         f.write(BT_PAIR_PS1)
     try:
         r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", path, addr],
-                           capture_output=True, text=True, timeout=60, creationflags=0x08000000)
+                           capture_output=True, text=True, timeout=45, creationflags=0x08000000)
+    except subprocess.TimeoutExpired:
+        raise ValueError("It didn't answer. Put it in pairing mode and try again") from None
     except (OSError, subprocess.SubprocessError):
         return False
     out = r.stdout.strip().splitlines()[-1:] or [""]
+    if out[0] == "timeout":  # (not tried the other way too: it would wait on the same silent device)
+        raise ValueError("It didn't answer. Put it in pairing mode and try again")
     return out[0] in ("Paired", "AlreadyPaired", "paired-already")
 
 
@@ -8413,13 +8494,17 @@ def played_seconds(p, game_id, sessions=None):
     return p["seconds"]
 
 
+PLAYLOG_LOCK = threading.Lock()  # a game ending while another starts: both their times kept
+
+
 def record_play(game_id, seconds=0):
-    log = load("playlog.json", {})
-    p = log.setdefault(game_id, {"lastPlayed": 0, "minutes": 0, "seconds": 0})
-    p["lastPlayed"] = int(time.time())
-    p["seconds"] = played_seconds(p, game_id) + int(seconds)
-    p["minutes"] = p["seconds"] // 60
-    store("playlog.json", log)
+    with PLAYLOG_LOCK:
+        log = load("playlog.json", {})
+        p = log.setdefault(game_id, {"lastPlayed": 0, "minutes": 0, "seconds": 0})
+        p["lastPlayed"] = int(time.time())
+        p["seconds"] = played_seconds(p, game_id) + int(seconds)
+        p["minutes"] = p["seconds"] // 60
+        store("playlog.json", log)
     g = STATE["byId"].get(game_id)
     if g:
         g["lastPlayed"] = p["lastPlayed"]
@@ -8429,12 +8514,39 @@ def record_play(game_id, seconds=0):
 UNPACK_ERRORS, UNPACKING = {}, set()  # read by the page through /api/unpack while it waits for a zipped game
 
 
+def clean_unpacked(days=30):
+    """data/unpacked holds a copy of each zipped game played with an emulator that can't open archives. A copy goes when
+    its game has left the library or hasn't been played for a month (it's unpacked again next time it's played)."""
+    root = os.path.join(DATA, "unpacked")
+    if not os.path.isdir(root):
+        return
+    keep = {safe_name(g["id"]) for g in STATE["games"]}
+    busy = {safe_name(g) for g in set(RUN_NOW) | UNPACKING | LAUNCHING}
+    for name in os.listdir(root):
+        path = os.path.join(root, name)
+        base = name[:-5] if name.endswith(".done") else name
+        if base in busy:
+            continue
+        marker = os.path.join(root, base + ".done")
+        try:
+            old = time.time() - os.path.getmtime(marker) > days * 86400 if os.path.isfile(marker) else True
+        except OSError:
+            continue
+        if base not in keep or old:
+            (shutil.rmtree(path, ignore_errors=True) if os.path.isdir(path) else os.remove(path)) if os.path.exists(path) else None
+
+
 def unpacked_rom(game, L):
     """Unpack a zipped game into data/unpacked (once; reused while the archive is unchanged) and return the game file inside."""
     src = L["rom"]
     dest = os.path.join(DATA, "unpacked", safe_name(game["id"]))
     stamp = f"{os.path.getsize(src)}:{int(os.path.getmtime(src))}"
     marker = dest + ".done"
+    if os.path.isfile(marker):
+        try:
+            os.utime(marker)  # played now: kept by clean_unpacked for another month
+        except OSError:
+            pass
     if not (os.path.isdir(dest) and os.path.isfile(marker) and read(marker) == stamp):
         shutil.rmtree(dest, ignore_errors=True)
         os.makedirs(dest)
@@ -8591,15 +8703,16 @@ def change_app_location(game_id, reset=False):
         raise ValueError("Choose a program (an AppImage, a game's start script or its program)")
     if not reset and WIN and (not os.path.isfile(exe) or not exe.lower().endswith(".exe")):
         raise ValueError("Choose an existing Windows program (.exe)")
-    overrides = load("overrides.json", {})
-    entry = overrides.setdefault(game_id, {})
-    if reset:
-        entry.pop("appPath", None)
-        if not entry:
-            overrides.pop(game_id, None)
-    else:
-        entry["appPath"] = os.path.abspath(exe)
-    store("overrides.json", overrides)
+    with OVERRIDES_LOCK:  # (one change at a time: two at once would lose one)
+        overrides = load("overrides.json", {})
+        entry = overrides.setdefault(game_id, {})
+        if reset:
+            entry.pop("appPath", None)
+            if not entry:
+                overrides.pop(game_id, None)
+        else:
+            entry["appPath"] = os.path.abspath(exe)
+        store("overrides.json", overrides)
     scan()
     return {"ok": True}
 
@@ -8922,12 +9035,13 @@ def add_library(kind, provider=None):
         lib["provider"] = provider
     lib["id"] = gid("lib", lib["type"] + lib["path"])
     if kind == "game":  # adding a game means seeing it: one hidden earlier (by this name or another) is shown again
-        overrides = load("overrides.json", {})
-        o = overrides.get(gid("pc", path))
-        if o and o.pop("hidden", None):
-            if not o:
-                overrides.pop(gid("pc", path))
-            store("overrides.json", overrides)
+        with OVERRIDES_LOCK:  # (one change at a time: two at once would lose one)
+            overrides = load("overrides.json", {})
+            o = overrides.get(gid("pc", path))
+            if o and o.pop("hidden", None):
+                if not o:
+                    overrides.pop(gid("pc", path))
+                store("overrides.json", overrides)
             if any(x["id"] == lib["id"] for x in cfg["libraries"]):
                 return next(x for x in cfg["libraries"] if x["id"] == lib["id"])
     if any(x["id"] == lib["id"] for x in cfg["libraries"]):
@@ -10002,6 +10116,17 @@ BIOS_APPLY = {
     "Atari Lynx": alias("lynxboot.img", "Mednafen"), "PC-FX": alias("pcfx.rom", "Mednafen"),
     "ColecoVision": apply_openmsx, "MSX": apply_openmsx, "N-Gage": apply_ngage,
 }
+BIOS_EMUS = {apply_duckstation: ("duckstation",), apply_pcsx2: ("pcsx2",), apply_rpcs3: ("rpcs3",), apply_shadps4: ("shadps4",),
+             apply_vita3k: ("vita3k",), apply_eden: ("eden", "citron", "sudachi", "suyu", "yuzu"), apply_cemu: ("cemu",),
+             apply_dolphin: ("dolphin",), apply_azahar: ("azahar", "lime3ds", "citra"), apply_melonds: ("melonds",), apply_xemu: ("xemu",),
+             apply_ymir: ("ymir",), apply_mesen: ("mesen",), apply_mame: ("mame",), apply_openmsx: ("openmsx",)}
+
+
+def bios_emulator(system):
+    """Names the program of the emulator this console's BIOS set-up is written for (None: any, as it's done at launch)."""
+    return ("mgba",) if system in MGBA_KEYS else BIOS_EMUS.get(BIOS_APPLY.get(system))
+
+
 APPLIED = {}  # system -> {"msg": what happened last, "ok": False when something is left to do}
 APPLY_LOCKS = {}  # one per emulator program: an installer run (RPCS3, Vita3K firmware) holds up only that emulator's systems
 APPLY_LOCK = threading.Lock()  # guards APPLY_LOCKS and APPLY_SOON
@@ -10022,6 +10147,15 @@ def apply_bios(system, wait=True):
     name = emulator_for(system) or "its emulator"
     if not os.path.isfile(exe):
         APPLIED[system] = {"msg": f"Install {name} to use these files", "ok": False}
+        return
+    # Each set-up writes one emulator's own settings: only for that emulator. RetroArch is given the folder at each
+    # launch (launch_args); another emulator chosen by hand keeps its own BIOS settings.
+    program, wants = os.path.basename(exe).lower(), bios_emulator(system)
+    if wants and not any(t in program for t in wants):
+        if "retroarch" in program:
+            APPLIED[system] = {"msg": "RetroArch gets these files each time a game starts", "ok": True}
+        else:
+            APPLIED[system] = {"msg": f"Add these files in {os.path.splitext(os.path.basename(exe))[0]}’s own settings", "ok": False}
         return
     if emu_running(exe):
         APPLIED[system] = {"msg": f"Close {name} so the frontend can set these files up", "ok": False}
@@ -10165,6 +10299,12 @@ def launch_args(game, L, rom):
         if folders:  # a game at the top of its ROMs folder: that folder once
             a = ";".join(dict.fromkeys(a.split(";")))
         out.append(a)
+    # RetroArch chosen for a console whose BIOS files are in its BIOS folder: RetroArch is told where they are, whichever
+    # console it is (its cores read them from its "system" folder, which this sets for the one launch)
+    if ("retroarch" in os.path.basename(L.get("emu") or "").lower() and "--appendconfig" not in out and rom in out
+            and os.path.isdir(bios) and any(not n.lower().startswith("readme") for n in os.listdir(bios))):
+        i = out.index(rom)
+        out[i:i] = ["--appendconfig", retroarch_cfg(system, bios)]
     return out
 
 
@@ -10512,19 +10652,26 @@ def emulator_running(folder):
 def refind_moved(systems):
     """Systems whose emulator program isn't where it was any more (an update moved it): found again and set, keeping
     their arguments. Returns the systems fixed."""
-    cfg = config()
-    emus = cfg.get("emulators") or {}
+    emus = config().get("emulators") or {}
     gone = [s for s in systems if emus.get(s, {}).get("path") and not os.path.exists(emus[s]["path"])]
     if not gone:
         return []
-    found = find_emulators()
+    found = find_emulators()  # (slow: before the settings are read to change them)
     fixed = []
-    for s in gone:
-        if found.get(s):
-            emus[s]["path"] = found[s]
-            fixed.append(s)
+    with CONFIG_LOCK:
+        cfg = config()
+        emus = cfg.get("emulators") or {}
+        for s in gone:
+            if found.get(s) and emus.get(s, {}).get("path") and not os.path.exists(emus[s]["path"]):
+                old, new = os.path.dirname(emus[s]["path"]), os.path.dirname(found[s])
+                emus[s]["path"] = found[s]
+                # arguments that name files in its old folder (RetroArch's core, "-L ...\cores\x_libretro.dll") move with it
+                emus[s]["args"] = [new + a[len(old):] if old and a.lower().startswith(old.lower() + os.sep.lower()) else a
+                                   for a in emus[s].get("args") or []] or emus[s].get("args")
+                fixed.append(s)
+        if fixed:
+            store("config.json", cfg)
     if fixed:
-        store("config.json", cfg)
         EMU_VERSIONS.clear()
     return fixed
 
@@ -11204,6 +11351,9 @@ class Handler(SimpleHTTPRequestHandler):
 
     def end_headers(self):
         self.send_header("Cache-Control", getattr(self, "cache", "no-store"))
+        if "wallpaper=1" not in (self.path or ""):  # never inside another site's page (only the wallpaper frames it, and it can't shut down or delete)
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
         super().end_headers()
 
     def revalidate(self, f):
@@ -11291,6 +11441,11 @@ class Handler(SimpleHTTPRequestHandler):
         if not self.local_host():
             return self.send_error(403)
         path = urllib.parse.urlparse(self.path).path
+        # Another website's page can't use the API through its own requests (an image tag or fetch to this address): it
+        # could use your accounts' keys or tell the helper a wallpaper is showing. Its pings are answered and change nothing.
+        cross = self.headers.get("Sec-Fetch-Site", "") in ("cross-site", "same-site")
+        if cross and path.startswith("/api/") and path != "/api/ping":
+            return self.send_error(403)
         LAST_PING[0] = time.time()
         if path == "/api/library":
             if not STATE["scanned"]:
@@ -11313,7 +11468,7 @@ class Handler(SimpleHTTPRequestHandler):
                                "desktopInFrontAgo": ago(WALLPAPER["desk"]), "desktopInFrontNow": DESK[0],
                                "windowsInFront": WALLPAPER["fronts"], "wheelWatching": bool(WALLPAPER.get("wheel")), "controllers": PAD["pads"]})
         if path == "/api/ping":
-            if "wallpaper=1" in (urllib.parse.urlparse(self.path).query or ""):
+            if "wallpaper=1" in (urllib.parse.urlparse(self.path).query or "") and not cross:
                 WALLPAPER["seen"] = time.time()  # a wallpaper is showing: it gets the controller and keys on the desktop
                 if WIN and not WALLPAPER.get("wheel"):  # and the mouse wheel, from the first time one shows
                     WALLPAPER["wheel"] = True
@@ -11622,15 +11777,16 @@ class Handler(SimpleHTTPRequestHandler):
                 g = STATE["byId"].get(body.get("id"))
                 if not g:
                     raise ValueError("Game not found")
-                overrides = load("overrides.json", {})
-                o = overrides.setdefault(g["id"], {})
-                if body.get("hidden"):
-                    o["hidden"] = True
-                else:
-                    o.pop("hidden", None)
-                    if not o:
-                        overrides.pop(g["id"])
-                store("overrides.json", overrides)
+                with OVERRIDES_LOCK:  # (one change at a time: two at once would lose one)
+                    overrides = load("overrides.json", {})
+                    o = overrides.setdefault(g["id"], {})
+                    if body.get("hidden"):
+                        o["hidden"] = True
+                    else:
+                        o.pop("hidden", None)
+                        if not o:
+                            overrides.pop(g["id"])
+                    store("overrides.json", overrides)
                 g["hidden"] = bool(body.get("hidden"))
                 return self.reply({"ok": True})
             if path == "/api/wallpaper":  # Settings › General: the frontend as a Wallpaper Engine wallpaper
@@ -11651,35 +11807,37 @@ class Handler(SimpleHTTPRequestHandler):
                     raise ValueError("Game not found")
                 title = " ".join(str(body.get("title") or "").split())[:120]
                 page = " ".join(str(body.get("wiki") or "").split())[:200]
-                overrides = load("overrides.json", {})
-                o = overrides.setdefault(g["id"], {})
-                if page and title:
-                    o["wiki"] = page  # picked from Wikipedia's games: its details come from that article
-                else:
-                    o.pop("wiki", None)
-                if title:
-                    o["title"] = title
-                else:
-                    o.pop("title", None)
-                    if not o:
-                        overrides.pop(g["id"])
-                store("overrides.json", overrides)
+                with OVERRIDES_LOCK:  # (one change at a time: two at once would lose one)
+                    overrides = load("overrides.json", {})
+                    o = overrides.setdefault(g["id"], {})
+                    if page and title:
+                        o["wiki"] = page  # picked from Wikipedia's games: its details come from that article
+                    else:
+                        o.pop("wiki", None)
+                    if title:
+                        o["title"] = title
+                    else:
+                        o.pop("title", None)
+                        if not o:
+                            overrides.pop(g["id"])
+                    store("overrides.json", overrides)
                 scan()
                 return self.reply({"ok": True, "title": title})
             if path == "/api/game/favorite":
                 g = STATE["byId"].get(body.get("id"))
                 if not g:
                     raise ValueError("Game not found")
-                overrides = load("overrides.json", {})
-                o = overrides.setdefault(g["id"], {})
-                if body.get("favorite"):
-                    o["favorite"] = g["favorite"] = True
-                else:
-                    o.pop("favorite", None)
-                    g.pop("favorite", None)
-                    if not o:
-                        overrides.pop(g["id"])
-                store("overrides.json", overrides)
+                with OVERRIDES_LOCK:  # (one change at a time: two at once would lose one)
+                    overrides = load("overrides.json", {})
+                    o = overrides.setdefault(g["id"], {})
+                    if body.get("favorite"):
+                        o["favorite"] = g["favorite"] = True
+                    else:
+                        o.pop("favorite", None)
+                        g.pop("favorite", None)
+                        if not o:
+                            overrides.pop(g["id"])
+                    store("overrides.json", overrides)
                 return self.reply({"ok": True})
             if path == "/api/game/collection":
                 g, name = STATE["byId"].get(body.get("id")), str(body.get("name") or "").strip()[:40]
@@ -11687,17 +11845,18 @@ class Handler(SimpleHTTPRequestHandler):
                     raise ValueError("Game not found")
                 if not name:
                     raise ValueError("Type a name for the collection")
-                overrides = load("overrides.json", {})
-                o = overrides.setdefault(g["id"], {})
-                names = [n for n in o.get("collections", []) if n != name] + ([name] if body.get("member") else [])
-                if names:
-                    o["collections"] = g["collections"] = names
-                else:
-                    o.pop("collections", None)
-                    g.pop("collections", None)
-                    if not o:
-                        overrides.pop(g["id"])
-                store("overrides.json", overrides)
+                with OVERRIDES_LOCK:  # (one change at a time: two at once would lose one)
+                    overrides = load("overrides.json", {})
+                    o = overrides.setdefault(g["id"], {})
+                    names = [n for n in o.get("collections", []) if n != name] + ([name] if body.get("member") else [])
+                    if names:
+                        o["collections"] = g["collections"] = names
+                    else:
+                        o.pop("collections", None)
+                        g.pop("collections", None)
+                        if not o:
+                            overrides.pop(g["id"])
+                    store("overrides.json", overrides)
                 return self.reply({"ok": True})
             if path == "/api/friends/message":  # Steam's own chat window: its Web API can't send messages
                 sid = str(body.get("id") or "")
@@ -11775,7 +11934,7 @@ class Handler(SimpleHTTPRequestHandler):
                 system_power(body.get("action"))
                 return self.reply({"ok": True})
             if path == "/api/volume":
-                return self.reply(audio_volume(delta=body.get("delta"), mute=body.get("mute")))
+                return self.reply(audio_volume(delta=None if body.get("delta") is None else step(body.get("delta")), mute=body.get("mute")))
             if path == "/api/qa":
                 act = body.get("action")
                 if act == "output":
@@ -11799,7 +11958,7 @@ class Handler(SimpleHTTPRequestHandler):
                 elif act == "btscan":
                     return self.reply({**qa_view(), "found": bt_scan()})
                 elif act == "mix":
-                    return self.reply({"mixer": mixer_set(str(body.get("group")), int(body.get("delta", 0)))})  # quick: only the mixer
+                    return self.reply({"mixer": mixer_set(str(body.get("group")), step(body.get("delta", 0)))})  # quick: only the mixer
                 elif act == "btforget":
                     bt_forget(str(body.get("addr") or ""))
                 elif act == "btpair":
@@ -12445,11 +12604,17 @@ def install_update(ready, version, reopen=False):
     store("update.json", {**load("update.json", {}), "installing": version, "from": VERSION, "reopen": reopen})
     since = time.time()
     if start_alone(["--background"] + (["--port", str(PORT)] if PORT != 8137 else [])):
-        for _ in range(180):  # counted, not timed: a PC that sleeps meanwhile doesn't make the new copy look dead
+        for waited in range(900):  # counted, not timed: a PC that sleeps meanwhile doesn't make the new copy look dead
             time.sleep(1)
             if started_since(version, since):
                 UPDATE["done"], UPDATE["state"] = version, "installed"  # it's taking over now, or will once the game ends
                 return
+            # three minutes, or longer while the new copy is still running (antivirus checking a new exe on a slow
+            # handheld can hold its start for minutes): put back while it's coming up, it would take over anyway
+            if waited >= 180 and not exe_processes(exe):
+                break
+        for pid in exe_processes(exe):  # still not up after 15 minutes: stopped before the old version goes back
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True, creationflags=0x08000000)
     fail_version(version)  # first, so it isn't tried again straight away whatever happens below
     try:
         os.replace(exe, f"{base}.bad-{int(time.time())}.exe")
@@ -13126,6 +13291,8 @@ def main():
         except Exception:
             log_error()  # the next scan (a folder change, or the page asking) tries again
         keep_running(watch_folders)
+        if STATE["scanned"]:  # (only with the library known: a game's copy is never taken for one that left it)
+            threading.Thread(target=lambda: (time.sleep(120), clean_unpacked()), daemon=True).start()
         if PORT == 8137 and (MAC or LINUX):
             sync_autostart()
         if PORT == 8137 and WIN:

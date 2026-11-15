@@ -274,10 +274,23 @@ class Api:
             pass
         if wipe:
             self._say("Deleting your settings…", 0.75)
+            # the settings can live outside the app's folder (an older download's, or the user's app data when the
+            # folder wasn't writable): wherever the note says, and the app-data one, go too. Only a folder that is
+            # this app's settings (named data, with its config.json in it) is ever deleted.
+            places = [os.path.join(LOCAL, NAME, "data")]
             try:
                 with open(NOTE, encoding="utf-8") as f:
-                    if os.path.normcase(os.path.abspath(f.read().strip())) == os.path.normcase(os.path.abspath(os.path.join(folder, "data"))):
-                        os.remove(NOTE)
+                    places.append(f.read().strip())
+            except OSError:
+                pass
+            own = os.path.normcase(os.path.abspath(os.path.join(folder, "data")))
+            for d in places:
+                d = os.path.abspath(d) if d else ""
+                if (d and os.path.normcase(d) != own and os.path.basename(d).lower() == "data"
+                        and os.path.isfile(os.path.join(d, "config.json"))):
+                    shutil.rmtree(d, ignore_errors=True)
+            try:
+                os.remove(NOTE)
             except OSError:
                 pass
         self.work.kept = not wipe

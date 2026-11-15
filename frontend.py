@@ -96,13 +96,14 @@ def replace_old_helper():
     ping = helper_get("/api/ping")
     if not ping or ping.get("build") in (server.BUILD, "source"):
         return False
-    if (server.version_key(ping.get("version") or "0") > server.version_key(server.VERSION)
+    leaving_dev = server.is_dev(ping.get("version") or "") and not server.is_dev(server.VERSION)  # a release downloaded over a dev build: back to Main
+    if (server.version_key(ping.get("version") or "0") > server.version_key(server.VERSION) and not leaving_dev
             and server.load("update.json", {}).get("installing") != server.VERSION):
         return False  # a newer version than this one: an old download opened by mistake uses it (unless the update put this
         # one in: going back from a nightly build to the main release)
     pid = ping.get("pid") or port_owner(server.PORT)
     image = server.process_image(pid) if pid else ""
-    older = server.version_key(ping.get("version") or "0") < server.version_key(server.VERSION)
+    older = server.version_key(ping.get("version") or "0") < server.version_key(server.VERSION) or leaving_dev
     if not image or (os.path.normcase(os.path.dirname(image)) != os.path.normcase(server.ROOT) and not older):
         # a copy somewhere else of the same version (dist\, another download) keeps its own helper: this one uses it. An
         # older version's helper is replaced wherever it is: the installed app (Setup) next to an old download started
