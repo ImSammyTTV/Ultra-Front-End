@@ -205,8 +205,11 @@ When they are:
 - Only builds made by this repository's [GitHub Actions release workflow](.github/workflows/release.yml) from its public source code are signed.
 - **Committers and reviewers:** [ImSammyTTV](https://github.com/ImSammyTTV)
 - **Approver:** [ImSammyTTV](https://github.com/ImSammyTTV). Every signing request is approved manually.
-- **Privacy:** the frontend downloads game covers from Steam and libretro, connects to SteamGridDB only if you add
-  your own API key, and checks GitHub for updates. It does not send information anywhere else.
+- **Privacy:** there is no account, analytics or tracking, and your library stays on your PC. To show artwork and
+  details, the frontend looks up your games' names on Steam, libretro, Wikipedia and Wikidata, and plays trailers from
+  YouTube (turn off **Find artwork & info online** in Settings to skip the artwork and description lookups). It downloads emulators and
+  RetroArch cores from their official sources (winget, libretro, Dolphin, GitHub) only when you install one, connects to SteamGridDB
+  and RetroAchievements only if you add your own API key, and checks GitHub for updates.
 </details>
 
 ---
