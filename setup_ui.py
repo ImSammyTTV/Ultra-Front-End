@@ -135,6 +135,21 @@ def desktop():
     return os.path.join(os.path.expanduser("~"), "Desktop")
 
 
+def clear_keep_on_screen():
+    """Uninstall: takes away the SDL switch Settings › General › Keep games on screen put in the account's environment
+    (server.keep_on_screen), only when it still holds the app's own "0", and tells Windows."""
+    name = "SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS"
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0, winreg.KEY_READ | winreg.KEY_SET_VALUE) as k:
+            if str(winreg.QueryValueEx(k, name)[0]) != "0":
+                return
+            winreg.DeleteValue(k, name)
+    except OSError:
+        return
+    result = ctypes.c_size_t()
+    ctypes.windll.user32.SendMessageTimeoutW(ctypes.c_void_p(0xFFFF), 0x001A, 0, "Environment", 0x0002, 3000, ctypes.byref(result))
+
+
 class Work:
     """What the page shows while Setup or Uninstall runs."""
     def __init__(self):
@@ -272,6 +287,8 @@ class Api:
             winreg.DeleteKey(winreg.HKEY_CURRENT_USER, KEY)
         except OSError:
             pass
+        self._say("Undoing Keep games on screen…", 0.68)
+        clear_keep_on_screen()
         if wipe:
             self._say("Deleting your settings…", 0.75)
             # the settings can live outside the app's folder (an older download's, or the user's app data when the

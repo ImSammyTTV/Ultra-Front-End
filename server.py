@@ -5365,8 +5365,9 @@ def keep_on_screen(on):
 
 
 def sync_keep_on_screen():
-    """At start: the account's setting follows Settings (on unless turned off)."""
-    if WIN and getattr(sys, "frozen", False) and "--port" not in sys.argv:
+    """At start: the account's setting follows Settings (on unless turned off). Not before the setup guide has shown the
+    choice: until then the PC is left as it is (finishing setup applies it, skipped or not)."""
+    if WIN and getattr(sys, "frozen", False) and "--port" not in sys.argv and profile().get("setupDone"):
         keep_on_screen(config().get("keepOnScreen", True))
 
 

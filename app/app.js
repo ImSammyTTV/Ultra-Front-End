@@ -2743,7 +2743,7 @@ function panelItems() {
     { kind: 'info', label: 'Trademarks', sub: 'All product names, logos and brands are the property of their owners and are used only to name platforms and stores. Ultra Front End is not affiliated with or endorsed by any of them. Valve, Steam and the Steam logo are trademarks of Valve Corporation.' },
     { kind: 'info', label: 'Open-source licences', sub: ON_ANDROID ? 'MIT. Built with AndroidX (Apache-2.0): see THIRD_PARTY_NOTICES.md and the licenses folder on the project’s GitHub page' : 'MIT. Built with Python, pywebview, Pillow and pystray (LGPL-3.0), among others: see THIRD_PARTY_NOTICES.md and the licenses folder on the project’s GitHub page' },
     { kind: 'info', label: 'Helper', sub: API ? `Running on ${HERE} (${location.host})` : 'Not running: start the frontend with Start Frontend.bat' },
-    ...(API ? [{ kind: 'row', label: 'Run the setup guide again', sub: 'Name, icon, time zone, accounts and games', act: openSetup }] : []),
+    ...(API ? [{ kind: 'row', label: 'Run the setup guide again', sub: 'Privacy choices, name, icon, time zone, accounts and games', act: openSetup }] : []),
     ...(API && ON_MAC ? [  // on Windows this is in Settings › Apps (the installer registers it)
       { kind: 'head', label: 'Uninstall' },
       uninstallRow('uninstall-keep', false, 'Uninstall Ultra Front End', 'Moves the app to the Trash. Your settings, artwork and captures are kept, for if you install it again'),
@@ -3235,9 +3235,9 @@ async function chooseRomRoot(useDefault) {
 // ---------- first-time setup guide ----------
 // Runs inside the panel as a centred card: welcome, profile, time zone, accounts, games, done.
 // a Mac has no Windows-only extras (the performance overlay) or start-with-Windows step
-const SETUP_STEPS = ['setup-welcome', 'setup-profile', 'setup-time', ...(ON_ANDROID ? [] : ['setup-accounts']), 'setup-games', 'setup-systems',
+const SETUP_STEPS = ['setup-welcome', 'setup-privacy', 'setup-profile', 'setup-time', ...(ON_ANDROID ? [] : ['setup-accounts']), 'setup-games', 'setup-systems',
   ...(UNIX || ON_ANDROID ? [] : ['setup-extras', 'setup-startup']), 'setup-done'];
-const SETUP_TITLES = { 'setup-welcome': 'Ultra Front End', 'setup-profile': 'Your profile', 'setup-time': 'Time zone', 'setup-accounts': 'Accounts',
+const SETUP_TITLES = { 'setup-welcome': 'Ultra Front End', 'setup-privacy': 'Privacy & your PC', 'setup-profile': 'Your profile', 'setup-time': 'Time zone', 'setup-accounts': 'Accounts',
   'setup-games': 'Emulators & games', 'setup-systems': 'Your systems', 'setup-extras': 'Extras', 'setup-startup': 'Starting up', 'setup-done': 'All done' };
 // Start with Windows: the choices, in Settings and in the setup guide
 const STARTUP = [
@@ -3291,7 +3291,8 @@ function setupGo(dir) {
 const setupBack = () => setupGo(-1);
 async function finishSetup(skipped) {
   const mode = startupMode(P.data);
-  if (API) await api('/api/options', { startup: mode }).catch(() => {});  // skipped or not, the choice (or the default) applies
+  // skipped or not, the choices (or the defaults) apply; Keep games on screen changes nothing on the PC before this
+  if (API) await api('/api/options', { startup: mode, keepOnScreen: P.data?.options?.keepOnScreen !== false }).catch(() => {});
   await saveProfile({ setupDone: true });
   P.setup = false;
   document.body.classList.remove('setup-mode');
@@ -3306,8 +3307,21 @@ function setupItems(d, prof) {
     case 'setup-welcome': return [
       { kind: 'html', html: '<div class="sw-hero"><div class="sw-big">Welcome</div><p>Let’s set up your game library. It takes a minute, and you can change everything later in Settings.</p></div>' },
       { kind: 'row', label: 'Get started', primary: true, act: () => setupGo(1) },
-      { kind: 'row', label: 'Skip setup', sub: 'Go straight to your games', act: () => finishSetup(true) },
+      { kind: 'row', label: 'Skip setup', sub: 'Go straight to your games with the recommended settings', act: () => finishSetup(true) },
     ];
+    // what reaches the internet and what changes on the PC, before any of it happens (SignPath's code signing terms ask for both)
+    case 'setup-privacy': {
+      const WINDOWS = /Windows/.test(navigator.userAgent);
+      return [
+        { kind: 'note', label: 'No account, ads or tracking: your library stays on this device. Press A to turn a choice on or off. You can change them later in Settings.' },
+        { kind: 'row', label: 'Find artwork & info online', value: d.options.onlineCovers ? '✓' : '', act: () => setOpt('onlineCovers'),
+          sub: 'Covers, logos, backgrounds and descriptions, looked up by your games’ names on Steam, libretro, Wikipedia and Wikidata' },
+        ...(WINDOWS ? [{ kind: 'row', label: 'Keep games on screen', value: d.options.keepOnScreen !== false ? '✓' : '', act: () => setOpt('keepOnScreen'),
+          sub: 'Adds SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS=0 to your Windows account’s settings, so SDL games stay on screen when the in-game menu opens. Turning it off removes it' }] : []),
+        { kind: 'note', label: 'Also: trailers play from YouTube when you open a game, updates come from GitHub and install when you’re not playing, emulators download from their own projects only when you choose to install them, and accounts you connect (Steam, Epic, SteamGridDB, RetroAchievements) are only contacted for your own library and artwork.' },
+        next,
+      ];
+    }
     case 'setup-profile': return [
       { kind: 'html', html: `<div class="pprofile"><span class="avatar big">${avatarHTML(prof)}</span><div><div class="pp-name">${esc(prof.name || 'Your name')}</div><div class="pp-sub">Shown in the top corner</div></div></div>` },
       { kind: 'input', id: 'pname', label: 'What should we call you?', value: prof.name || '', placeholder: 'Your name', max: NAME_MAX },

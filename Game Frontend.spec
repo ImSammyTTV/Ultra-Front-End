@@ -1,6 +1,31 @@
 # PyInstaller build for Game Frontend.exe:  python -m PyInstaller "Game Frontend.spec"
 import importlib.util
 import os
+import re
+
+from PyInstaller.utils.win32.versioninfo import (FixedFileInfo, StringFileInfo, StringStruct, StringTable,
+                                                 VarFileInfo, VarStruct, VSVersionInfo)
+
+# The exe's Details tab (product name and version), read from server.py like the Mac spec. Code signing (SignPath)
+# requires the product name to be the project's name and the version to be set on every build.
+VERSION = re.search(r'^VERSION = "([^"]+)"', open("server.py", encoding="utf-8").read(), re.M).group(1)
+_nums = tuple((list(map(int, re.findall(r"\d+", VERSION)))[:4] + [0, 0, 0, 0])[:4])
+VERSION_INFO = VSVersionInfo(
+    ffi=FixedFileInfo(filevers=_nums, prodvers=_nums),
+    kids=[
+        StringFileInfo([StringTable("040904B0", [
+            StringStruct("CompanyName", "ImSammyTTV"),
+            StringStruct("FileDescription", "Ultra Front End"),
+            StringStruct("FileVersion", VERSION),
+            StringStruct("InternalName", "Game Frontend"),
+            StringStruct("LegalCopyright", "Copyright (c) 2026 ImSammyTTV. MIT License."),
+            StringStruct("OriginalFilename", "Game Frontend.exe"),
+            StringStruct("ProductName", "Ultra Front End"),
+            StringStruct("ProductVersion", VERSION),
+        ])]),
+        VarFileInfo([VarStruct("Translation", [0x0409, 1200])]),
+    ],
+)
 
 # Windows Graphics Capture for the in-game menu's live backdrop (frontend.py wgc_module): the windows-capture project's
 # native module on its own, so its Python wrapper's OpenCV and numpy stay out of the exe.
@@ -31,6 +56,7 @@ exe = EXE(
     a.datas,
     name="Game Frontend",
     icon="app/icon.ico",
+    version=VERSION_INFO,
     console=False,
     upx=False,
 )

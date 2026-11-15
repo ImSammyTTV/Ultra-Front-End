@@ -193,6 +193,36 @@ you expected and what happened, and attach `errors.log` if there is one.
 
 ---
 
+## Code signing policy
+
+<details>
+<summary>How Windows downloads are signed</summary>
+
+Windows releases will be signed once the project's application to SignPath Foundation is approved.
+When they are:
+
+- Free code signing is provided by [SignPath.io](https://about.signpath.io), with the certificate by [SignPath Foundation](https://signpath.org).
+- Only builds made by this repository's [GitHub Actions release workflow](.github/workflows/release.yml) from its public source code are signed.
+- **Committers and reviewers:** [ImSammyTTV](https://github.com/ImSammyTTV)
+- **Approver:** [ImSammyTTV](https://github.com/ImSammyTTV). Every signing request is approved manually.
+- **Privacy:** there is no account, analytics or tracking, and your library stays on your PC. To show artwork and
+  details, the frontend looks up your games' names on Steam, libretro, Wikipedia and Wikidata, and plays trailers from
+  YouTube (turn off **Find artwork & info online** in Settings to skip the artwork and description lookups). It downloads emulators and
+  RetroArch cores from their official sources (winget, libretro, Dolphin, GitHub) only when you install one, connects to SteamGridDB
+  and RetroAchievements only if you add your own API key, to Epic Games only if you sign in to your Epic account
+  (for your library, its artwork and friends), and checks GitHub for updates. The setup guide shows this
+  when you first open the app, with **Find artwork & info online** as a choice.
+- **Changes to your PC:** Setup installs for your Windows account only (no administrator prompt) and adds Start menu
+  shortcuts and an entry in Settings › Apps. The setup guide then asks about starting with Windows and about
+  **Keep games on screen**, which adds `SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS=0` to your account's environment; nothing is
+  changed before you've seen those choices. When you install emulators or game launchers, Windows asks once for
+  administrator permission and a helper runs `winget install` for those packages only, then closes. Uninstall (Settings ›
+  Apps) removes the app, its shortcuts, its start-up entry and the Keep games on screen variable; emulators stay in `C:\Ultra-Front-End\Emulators` and
+  installed launchers stay in Settings › Apps, where each can be removed on its own.
+</details>
+
+---
+
 ## License
 
 [MIT](LICENSE) © ImSammyTTV. Third-party software and artwork: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
