@@ -2743,7 +2743,7 @@ function panelItems() {
     { kind: 'info', label: 'Trademarks', sub: 'All product names, logos and brands are the property of their owners and are used only to name platforms and stores. Ultra Front End is not affiliated with or endorsed by any of them. Valve, Steam and the Steam logo are trademarks of Valve Corporation.' },
     { kind: 'info', label: 'Open-source licences', sub: ON_ANDROID ? 'MIT. Built with AndroidX (Apache-2.0): see THIRD_PARTY_NOTICES.md and the licenses folder on the project’s GitHub page' : 'MIT. Built with Python, pywebview, Pillow and pystray (LGPL-3.0), among others: see THIRD_PARTY_NOTICES.md and the licenses folder on the project’s GitHub page' },
     { kind: 'info', label: 'Helper', sub: API ? `Running on ${HERE} (${location.host})` : 'Not running: start the frontend with Start Frontend.bat' },
-    ...(API ? [{ kind: 'row', label: 'Run the setup guide again', sub: 'Name, icon, time zone, accounts and games', act: openSetup }] : []),
+    ...(API ? [{ kind: 'row', label: 'Run the setup guide again', sub: 'Privacy choices, name, icon, time zone, accounts and games', act: openSetup }] : []),
     ...(API && ON_MAC ? [  // on Windows this is in Settings › Apps (the installer registers it)
       { kind: 'head', label: 'Uninstall' },
       uninstallRow('uninstall-keep', false, 'Uninstall Ultra Front End', 'Moves the app to the Trash. Your settings, artwork and captures are kept, for if you install it again'),
@@ -3318,7 +3318,7 @@ function setupItems(d, prof) {
           sub: 'Covers, logos, backgrounds and descriptions, looked up by your games’ names on Steam, libretro, Wikipedia and Wikidata' },
         ...(WINDOWS ? [{ kind: 'row', label: 'Keep games on screen', value: d.options.keepOnScreen !== false ? '✓' : '', act: () => setOpt('keepOnScreen'),
           sub: 'Adds SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS=0 to your Windows account’s settings, so SDL games stay on screen when the in-game menu opens. Turning it off removes it' }] : []),
-        { kind: 'note', label: 'Also: trailers play from YouTube when you open a game, updates come from GitHub and install when you’re not playing, and emulators download from their own projects only when you choose to install them.' },
+        { kind: 'note', label: 'Also: trailers play from YouTube when you open a game, updates come from GitHub and install when you’re not playing, emulators download from their own projects only when you choose to install them, and accounts you connect (Steam, Epic, SteamGridDB, RetroAchievements) are only contacted for your own library and artwork.' },
         next,
       ];
     }

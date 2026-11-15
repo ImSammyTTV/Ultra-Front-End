@@ -209,7 +209,8 @@ When they are:
   details, the frontend looks up your games' names on Steam, libretro, Wikipedia and Wikidata, and plays trailers from
   YouTube (turn off **Find artwork & info online** in Settings to skip the artwork and description lookups). It downloads emulators and
   RetroArch cores from their official sources (winget, libretro, Dolphin, GitHub) only when you install one, connects to SteamGridDB
-  and RetroAchievements only if you add your own API key, and checks GitHub for updates. The setup guide shows this
+  and RetroAchievements only if you add your own API key, to Epic Games only if you sign in to your Epic account
+  (for your library, its artwork and friends), and checks GitHub for updates. The setup guide shows this
   when you first open the app, with **Find artwork & info online** as a choice.
 - **Changes to your PC:** Setup installs for your Windows account only (no administrator prompt) and adds Start menu
   shortcuts and an entry in Settings › Apps. The setup guide then asks about starting with Windows and about
