@@ -209,7 +209,15 @@ When they are:
   details, the frontend looks up your games' names on Steam, libretro, Wikipedia and Wikidata, and plays trailers from
   YouTube (turn off **Find artwork & info online** in Settings to skip the artwork and description lookups). It downloads emulators and
   RetroArch cores from their official sources (winget, libretro, Dolphin, GitHub) only when you install one, connects to SteamGridDB
-  and RetroAchievements only if you add your own API key, and checks GitHub for updates.
+  and RetroAchievements only if you add your own API key, and checks GitHub for updates. The setup guide shows this
+  when you first open the app, with **Find artwork & info online** as a choice.
+- **Changes to your PC:** Setup installs for your Windows account only (no administrator prompt) and adds Start menu
+  shortcuts and an entry in Settings › Apps. The setup guide then asks about starting with Windows and about
+  **Keep games on screen**, which adds `SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS=0` to your account's environment; nothing is
+  changed before you've seen those choices. When you install emulators or game launchers, Windows asks once for
+  administrator permission and a helper runs `winget install` for those packages only, then closes. Uninstall (Settings ›
+  Apps) removes the app, its shortcuts, its start-up entry and the Keep games on screen variable; emulators stay in `C:\Ultra-Front-End\Emulators` and
+  installed launchers stay in Settings › Apps, where each can be removed on its own.
 </details>
 
 ---
