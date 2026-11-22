@@ -2627,7 +2627,7 @@ def sgdb_fill_missing(key, games):
     misses = load("sgdb-misses.json", {})  # title -> when SteamGridDB last had nothing for it (a miss from before this was kept: 0)
     reachable = True
     for g in games:
-        if g["cover"] or g.get("isFolder") or g.get("egg"):  # (a folder tile named "Movies" isn't a game called Movies)
+        if g["cover"] or g.get("isFolder"):  # (a folder tile named "Movies" isn't a game called Movies)
             continue
         k = norm(g["title"])
         if reachable and lookups < 40 and (k not in cache or not cache[k] and time.time() - misses.get(k, 0) > SGDB_RETRY):
@@ -2884,132 +2884,8 @@ def wiki_game_choices(query):
     return [{"page": page, "title": re.sub(r"\s*\([^)]*\)$", "", page), "about": found[page][1]} for page in sorted(found, key=close)[:8]]
 
 
-def egg_info():
-    """Its Wikipedia article, read straight from the page it is (no search to match)."""
-    return wiki_page_info(EGG["wiki"].replace("_", " "))
-
-
-EGG_GALLERY = "https://www.rockstargames.com/VI/launch-gallery"
-# its gallery's screenshots by their names (the codes after them change whenever the site is rebuilt): not the editions'
-# extras, the box art or the phone-sized copies
-EGG_SHOT = re.compile(r"/VI/_next/static/media/((?:Jason_and_Lucia|Jason_Duval|Lucia_Caminos|Vice_City|Port_Gellhorn|Leonida_Keys|Grassrivers)_\d+)\.[A-Za-z0-9_.~-]+\.jpg")
-EGG_SHOTS_LOCK = threading.Lock()
-
-
-def egg_shots():
-    """The official screenshots, read off the game's gallery page once a week, as [{thumb, full}] served from here: each
-    picture (4K, a megabyte) is fetched once when it's first shown and kept, with a small copy for the strip. [] while
-    the page can't be read (the trailer frames stand in)."""
-    saved = load("egg.json", {})
-    urls = saved.get("shots") or []
-    if not urls or time.time() - saved.get("shotsT", 0) > 7 * 86400:
-        try:
-            req = urllib.request.Request(EGG_GALLERY, headers={"User-Agent": UA})
-            with urllib.request.urlopen(req, timeout=15) as r:
-                page = r.read(8 << 20).decode("utf-8", "replace")
-            found = list(dict.fromkeys("https://www.rockstargames.com" + m.group(0) for m in EGG_SHOT.finditer(page)))
-            if found:
-                urls = found
-                store("egg.json", {**load("egg.json", {}), "shots": urls, "shotsT": time.time()})
-        except (urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError, ValueError):
-            pass  # last week's list will do
-    return [{"thumb": f"/api/egg/shot?i={i}&small=1", "full": f"/api/egg/shot?i={i}"} for i in range(len(urls))]
-
-
-def egg_shot_file(i, small):
-    """One screenshot on disk (fetched the first time), or its small copy for the strip; None if it can't be had."""
-    urls = load("egg.json", {}).get("shots") or []
-    if not 0 <= i < len(urls) or not urls[i].startswith("https://www.rockstargames.com/VI/_next/static/media/"):
-        return None
-    folder = os.path.join(ART_DIR, "egg")
-    name = EGG_SHOT.search(urls[i]).group(1)
-    full, thumb = os.path.join(folder, name + ".jpg"), os.path.join(folder, name + "-small.jpg")
-    with EGG_SHOTS_LOCK:  # (the strip asks for several at once: each is fetched once)
-        if not os.path.isfile(full):
-            os.makedirs(folder, exist_ok=True)
-            try:
-                with urllib.request.urlopen(urllib.request.Request(urls[i], headers={"User-Agent": UA}), timeout=60) as r:
-                    data = r.read(20 << 20)
-                    if not (r.headers.get("Content-Type") or "").startswith("image/"):
-                        return None
-            except (urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError):
-                return None
-            with open(full + ".part", "wb") as f:
-                f.write(data)
-            os.replace(full + ".part", full)
-        if small and not os.path.isfile(thumb):
-            try:
-                from PIL import Image
-                with Image.open(full) as im:
-                    im.thumbnail((640, 360))
-                    im.convert("RGB").save(thumb, "JPEG", quality=82)
-            except Exception:
-                return full  # the big one will do
-    return thumb if small else full
-
-
-EGG_PAGE = "https://www.rockstargames.com/VI"
-EGG_ART = re.compile(r"/VI/_next/static/media/featured\.[A-Za-z0-9_.~-]+\.jpg")  # the official key art, 4K
-EGG_ART_LOOKUP = [False]
-
-
-def egg_hero():
-    """The background: Rockstar's own key art (looked up on the game's page once a week, in the background, and kept on
-    this PC), or the picture from SteamGridDB until that's known."""
-    saved = load("egg.json", {})
-    if time.time() - saved.get("artT", 0) > 7 * 86400 and not EGG_ART_LOOKUP[0]:
-        EGG_ART_LOOKUP[0] = True
-        def look():
-            try:
-                with urllib.request.urlopen(urllib.request.Request(EGG_PAGE, headers={"User-Agent": UA}), timeout=15) as r:
-                    m = EGG_ART.search(r.read(8 << 20).decode("utf-8", "replace"))
-                if m:
-                    store("egg.json", {**load("egg.json", {}), "art": "https://www.rockstargames.com" + m.group(0), "artT": time.time()})
-                egg_art_file()  # fetched now, so it's on this PC before it's shown
-            except (urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError, ValueError):
-                pass
-            finally:
-                EGG_ART_LOOKUP[0] = False
-        threading.Thread(target=look, daemon=True).start()
-    art = saved.get("art", "")
-    on_disk = art and os.path.isfile(egg_art_path(art))
-    return f"/api/egg/art?v={hashlib.sha1(art.encode()).hexdigest()[:8]}" if on_disk else EGG["hero"]
-
-
-def egg_art_path(url):
-    return os.path.join(ART_DIR, "egg", "art-" + hashlib.sha1(url.encode()).hexdigest()[:8] + ".jpg")
-
-
-def egg_art_file():
-    """The key art on disk, fetched the first time it's asked for; None if it can't be had."""
-    url = load("egg.json", {}).get("art", "")
-    if not EGG_ART.search(url) or not url.startswith("https://www.rockstargames.com/"):
-        return None
-    f = egg_art_path(url)
-    with EGG_SHOTS_LOCK:
-        if not os.path.isfile(f):
-            os.makedirs(os.path.dirname(f), exist_ok=True)
-            try:
-                with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=60) as r:
-                    if not (r.headers.get("Content-Type") or "").startswith("image/"):
-                        return None
-                    data = r.read(30 << 20)
-            except (urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError):
-                return None
-            for old in glob.glob(os.path.join(os.path.dirname(f), "art-*.jpg")):  # a newer key art replaces the last
-                os.remove(old)
-            with open(f + ".part", "wb") as out:
-                out.write(data)
-            os.replace(f + ".part", f)
-    return f
-
-
 def hero_for(g):
     """A wide background for a game, without the slower details lookup (news, store text)."""
-    if g.get("egg"):
-        custom = load("overrides.json", {}).get(g["id"], {}).get("hero")
-        if not (custom and os.path.isfile(os.path.join(ART_DIR, custom))):
-            return egg_hero()
     if g["id"] in HEROES:
         return HEROES[g["id"]]
     hit = DETAILS.get(g["id"])
@@ -3967,7 +3843,7 @@ def game_details(g):
     """Everything the details screen shows except news (fetched separately so the screen fills in at once)."""
     cfg = config()
     look = g
-    appid = steam_appid_for(look) if g.get("appid") or (cfg["onlineCovers"] and not g.get("isFolder") and not g.get("egg")) else None
+    appid = steam_appid_for(look) if g.get("appid") or (cfg["onlineCovers"] and not g.get("isFolder")) else None
     local = local_steam_art(g, appid)
     ach_f = POOL.submit(achievements, g)
     d = dict(remote_info(look, appid, local))
@@ -3991,21 +3867,6 @@ def game_details(g):
     d["news"] = news[1] if news and time.time() - news[0] < 1800 else None
     if g.get("source") == "Emulators":
         d["raConnected"] = bool(ra_account())
-    if g.get("egg"):  # the official trailers first (what YouTube's search found too, after them), and its own background
-        pinned = [{"youtube": v, "name": f"{g['title']} — Trailer {i + 1}", "thumb": f"https://i.ytimg.com/vi/{v}/hqdefault.jpg"} for i, v in enumerate(EGG["trailers"])]
-        d["trailers"] = pinned + [t for t in d.get("trailers") or [] if t.get("youtube") not in EGG["trailers"]][:2]
-        # Rockstar's own screenshots (its launch gallery); while that can't be read, frames from its trailers (three from
-        # each), not a fan video's
-        d["screenshots"] = egg_shots() or [shot for v in EGG["trailers"] for shot in trailer_stills([{"youtube": v}])]
-        if not custom:
-            d["hero"], d["heroSoft"] = egg_hero(), False
-        d["egg"] = g["egg"]
-        info = egg_info()  # its own article, whatever the search for its name found (or didn't)
-        for field in ("description", "descSource", "sourceTitle", "developer"):
-            if info.get(field):
-                d[field] = info[field]
-        if info.get("genres"):  # shown as "Action-adventure", like Wikipedia's other games
-            d["genres"] = list(dict.fromkeys((tidy_genres([x]) or [(lambda y: y[:1].upper() + y[1:])(re.sub(r"\s+video games?$", "", x, flags=re.I))])[0] for x in info["genres"]))
     DETAILS[g["id"]] = (time.time(), d)
     return d
 
@@ -4157,46 +4018,6 @@ def game_news(g):
 
 
 # ---------------------------------------------------------------- library scan
-# A tile for a game that's nearly out, at the front of the row with a countdown. Left out of every changelog on purpose.
-EGG = {"id": "egg-gta6", "title": "Grand Theft Auto VI", "release": "2026-11-19", "wiki": "Grand_Theft_Auto_VI",
-       "theme": "O3vUm7ftFR0", "play": "K3kFQHKE0LA", "trailers": ["QdBZY2fkU-0", "VQRLujxTm3c"], "platforms": "PS5 · Xbox Series X|S",
-       "hero": "https://cdn2.steamgriddb.com/hero_thumb/2bb2d7cd82fbb47f72d832d9500a3751.jpg"}
-EGG_DAYS_AFTER = 2  # it stays this long once it's out ("Out now"), then goes by itself
-
-
-def egg_game():
-    out = calendar.timegm(time.strptime(EGG["release"], "%Y-%m-%d"))
-    if time.time() > out + (EGG_DAYS_AFTER + 1) * 86400:
-        return None
-    return {"id": EGG["id"], "title": EGG["title"], "group": EGG["platforms"], "source": "Coming soon", "installed": True,
-            "minutes": 0, "lastPlayed": 0, "added": 0, "cover": egg_cover(),
-            "launch": {"type": "none", "message": ""}, "egg": {k: EGG[k] for k in ("release", "theme", "play")}}
-
-
-def egg_cover():
-    """The game's official cover, as its Wikipedia article shows it: looked up once a week, in the background."""
-    saved = load("egg.json", {})
-    if time.time() - saved.get("t", 0) > 7 * 86400 and not EGG_LOOKUP[0]:
-        EGG_LOOKUP[0] = True
-        def look():
-            try:
-                page = wiki_json("https://en.wikipedia.org/api/rest_v1/page/summary/" + EGG["wiki"], timeout=10)
-                url = (page.get("originalimage") or page.get("thumbnail") or {}).get("source", "")
-                if url.startswith("https://upload.wikimedia.org/"):
-                    store("egg.json", {"t": time.time(), "cover": url})
-                    g = STATE["byId"].get(EGG["id"])
-                    if g and not g.get("custom") and g["cover"] != url:  # on the tile now, not at the next scan
-                        g["cover"] = url
-                        STATE["scanned"] = time.time()
-            except (urllib.error.URLError, ValueError, KeyError, TimeoutError, OSError):
-                pass
-            finally:
-                EGG_LOOKUP[0] = False
-        threading.Thread(target=look, daemon=True).start()
-    return saved.get("cover", "")
-
-
-EGG_LOOKUP = [False]
 STATE = {"games": [], "byId": {}, "errors": [], "counts": {}, "scanned": 0}
 SCAN_LOCK = threading.Lock()
 # How far a scan has got, for the app's progress window (a big batch of ROMs can take a while to read and find covers for):
@@ -4281,10 +4102,6 @@ def scan_all():
             add(f"ROMs/{s['system']}", lambda lib=lib: scan_library(lib, cfg))
     elif root:
         errors.append(f"ROMs folder {root} isn't available")
-
-    egg = egg_game()
-    if egg:
-        games[egg["id"]] = egg
 
     remote = [g for g in games.values() if g.get("appid") and g["cover"].startswith(STEAM_CDN.split("{")[0])]
     if remote:
@@ -11643,18 +11460,6 @@ class Handler(SimpleHTTPRequestHandler):
             cid = (urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("id") or [""])[0]
             f = album_file(cid) if path.endswith("file") else album_thumb(cid)
             return self.send_path(f) if f else self.send_error(404)
-        if path == "/api/egg/art":  # the nearly-out game's key art, its background
-            f = egg_art_file()
-            return self.send_path(f) if f else self.send_error(404)
-        if path == "/api/egg/shot":  # ?i=&small=: one of the nearly-out game's official screenshots
-            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-            try:
-                f = egg_shot_file(int((q.get("i") or ["-1"])[0]), bool(q.get("small")))
-            except ValueError:
-                f = None
-            if not f:
-                return self.send_error(404)
-            return self.send_path(f)
         if path.startswith("/api/art/"):
             key = path.rsplit("/", 1)[-1]
             f = ART.get(key) or DETAIL_ART.get(key)
@@ -13292,6 +13097,11 @@ def main():
         except Exception:
             log_error()  # the next scan (a folder change, or the page asking) tries again
         keep_running(watch_folders)
+        try:  # the countdown tile's saved pictures (the tile is gone)
+            shutil.rmtree(os.path.join(ART_DIR, "egg"), ignore_errors=True)
+            os.remove(os.path.join(DATA, "egg.json"))
+        except OSError:
+            pass
         if STATE["scanned"]:  # (only with the library known: a game's copy is never taken for one that left it)
             threading.Thread(target=lambda: (time.sleep(120), clean_unpacked()), daemon=True).start()
         if PORT == 8137 and (MAC or LINUX):

@@ -150,7 +150,7 @@ const PLATFORM_ORDER = ['PC', 'PS5', 'PS4', 'PS3', 'PS2', 'PS1', 'PSP', 'PS Vita
   'PC Engine', 'PC Engine CD', 'PC-FX', 'Neo Geo', 'Neo Geo CD', 'Neo Geo Pocket', 'Atari Jaguar', 'Atari Lynx', 'Atari 7800', 'Atari 5200', 'Atari 2600',
   'Atari ST', 'Atari 8-bit', 'WonderSwan', 'Arcade', '3DO', 'CD-i', 'ColecoVision', 'Intellivision', 'Vectrex', 'Odyssey 2', 'N-Gage',
   'DOS', 'ScummVM', 'C64', 'VIC-20', 'Amiga', 'ZX Spectrum', 'Amstrad CPC', 'MSX', 'Apple II', 'Flash'];
-const platformOf = g => g.egg ? '' : g.source === 'Emulators' ? (g.system || g.group) : g.source === 'Android' ? 'Android' : 'PC';
+const platformOf = g => g.source === 'Emulators' ? (g.system || g.group) : g.source === 'Android' ? 'Android' : 'PC';
 // Platform logos (Simple Icons, Wikimedia Commons) for the tab bar; consoles without a free logo of their own use their maker's.
 const SGDB_LOGO = 'steamgriddb.png';  // white-on-transparent version of SteamGridDB's logo
 const PLATFORM_LOGO = { PC: 'windows11', PS5: 'playstation5', PS4: 'playstation4', PS3: 'playstation3', PS2: 'playstation2', PS1: 'playstation',
@@ -183,14 +183,14 @@ function tabIcon(name) {
 async function loadLibrary() {
   if (API) {
     // (the tile for a game that's nearly out goes once it's been out two days, even with the app left open)
-    try { const r = await api('/api/library'); LIB = r.games.filter(g => !g.egg || Date.now() < eggOut(g).getTime() + 3 * 864e5); libStamp = r.scanned; window.addonEmit?.('library', LIB.length); } catch (e) { toast(e.message); }
+    try { const r = await api('/api/library'); LIB = r.games; libStamp = r.scanned; window.addonEmit?.('library', LIB.length); } catch (e) { toast(e.message); }
   } else {
     LIB = (window.LIBRARY || []).map(g => ({ ...g, group: g.source === 'Ports' ? 'PC Ports' : g.source, installed: true, lastPlayed: Date.now() / 1000 - g.lastPlayed * 86400 }));
   }
   // Tabs are platforms, in console-family order; only platforms with games get a tab.
   // Hidden games stay out of every tab; they're listed under Settings > Hidden games.
   const rank = n => (PLATFORM_ORDER.indexOf(n) + 1) || 99;
-  const platforms = [...new Set(LIB.filter(g => !g.hidden && !g.egg).map(platformOf))].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+  const platforms = [...new Set(LIB.filter(g => !g.hidden).map(platformOf))].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
   TABS = [{ name: 'All Games', has: g => !g.hidden },
     ...(LIB.some(g => !g.hidden && g.favorite) ? [{ name: 'Favourites', has: g => !g.hidden && g.favorite }] : []),
     ...platforms.map(n => ({ name: n, has: g => !g.hidden && platformOf(g) === n }))];
@@ -384,7 +384,7 @@ const strip = $('#strip');
 // played since counts as played when it arrived, so new games show at the front.
 const NEW_FOR = 3 * 86400;
 const recency = g => Math.max(g.lastPlayed || 0, g.added && Date.now() / 1000 - g.added < NEW_FOR ? g.added : 0);
-const byRecent = (a, b) => !!b.egg - !!a.egg || recency(b) - recency(a) || (b.installed !== false) - (a.installed !== false) || a.title.localeCompare(b.title);
+const byRecent = (a, b) => recency(b) - recency(a) || (b.installed !== false) - (a.installed !== false) || a.title.localeCompare(b.title);
 // ---------- games that are already running ----------
 let RUN = new Set();
 async function watchRunning() {
@@ -446,7 +446,7 @@ function tileHTML(g, i, animate) {
     <div class="art"><div class="ph"><span>${esc(g.title)}</span></div>
     ${g.cover ? `<img src="${esc(g.cover)}" alt="" draggable="false" loading="lazy" onerror="coverRetry(this)">` : ''}</div>
     ${g.coverAnim ? `<img class="anim-cover" data-anim="${esc(g.coverAnim)}" alt="" draggable="false" onerror="this.remove()">` : ''}
-    ${g.favorite ? `<i class="fav">${icon('star')}</i>` : ''}${RUN.has(g.id) ? '<i class="runtag">Running</i>' : ''}${g.egg ? `<i class="egg-count">${esc(eggLeft(g))}</i>` : ''}<div class="frame"></div></div>`;
+    ${g.favorite ? `<i class="fav">${icon('star')}</i>` : ''}${RUN.has(g.id) ? '<i class="runtag">Running</i>' : ''}<div class="frame"></div></div>`;
 }
 let rowKey = '';
 function buildRow(animate) {
@@ -607,7 +607,6 @@ const heroOf = g => HERO_CACHE[g.id] ??= (API ? api('/api/hero?id=' + encodeURIC
 let animTimer = 0;
 function animateBackground(g) {
   clearTimeout(animTimer);
-  if (g?.egg) return;  // its background is a still picture
   if (!g || !HERO_ANIM[g.id]) return;
   animTimer = setTimeout(() => {
     if (game()?.id !== g.id || !S.artBg) return;
@@ -890,7 +889,6 @@ async function openEmulatorFor(g) {
 }
 async function launchGame(g) {
   if (S.busy || !g) return;
-  if (g.egg) return eggPlay(g);
   if (RUN.has(g.id)) return resumeGame(g);  // never a second copy
   window.addonEmit?.('game:start', { game: { id: g.id, title: g.title, platform: g.platform, cover: g.cover } });
   // The game's own logo alone in the middle, over its art dimmed behind; its name in large type until (or unless) a
@@ -1185,8 +1183,7 @@ function schedulePrefetch(g) { clearTimeout(prefetchTimer); prefetchTimer = setT
 async function openDetails(g, from = null) {  // from: the Library or Search page it was opened on, which B goes back to
   if (!g) return;
   Object.assign(D, { open: true, game: g, data: null, col: 0, row: 0, a: 0, m: 0, n: 0, menu: false, mi: 0, from });
-  if (g.egg) eggDetails(g);  // its own theme (an add-on's theme music doesn't pick one for it)
-  else window.addonEmit?.('game:details', { game: { id: g.id, title: g.title, platform: g.platform, cover: g.cover } });
+  window.addonEmit?.('game:details', { game: { id: g.id, title: g.title, platform: g.platform, cover: g.cover } });
   document.body.classList.add('details-open');
   tick(520, .09);
   const c = detailsFor(g);
@@ -1217,7 +1214,7 @@ async function openDetails(g, from = null) {  // from: the Library or Search pag
     renderNews();
   });
 }
-function closeDetails() { eggStop(); if (D.open) window.addonEmit?.('game:details:close', { game: D.game ? { id: D.game.id, title: D.game.title } : null }); D.open = false; document.body.classList.remove('details-open'); tick(420, .06); }
+function closeDetails() { if (D.open) window.addonEmit?.('game:details:close', { game: D.game ? { id: D.game.id, title: D.game.title } : null }); D.open = false; document.body.classList.remove('details-open'); tick(420, .06); }
 function renderDetails() {
   const g = D.game, d = D.data, root = $('#details');
   const logo = root.querySelector('.d-logo');
@@ -1232,7 +1229,7 @@ function renderDetails() {
       if (im) im.onload = () => { if (D.game?.id === g.id && logo.dataset.for === g.id + '|' + wantLogo) { logo.innerHTML = ''; logo.appendChild(im); } };
     }
   }
-  root.querySelector('.d-meta').textContent = [g.system || g.group, ...(d?.genres || []), d?.developer, g.egg && eggLeft(g, true)].filter(Boolean).join('   ·   ');
+  root.querySelector('.d-meta').textContent = [g.system || g.group, ...(d?.genres || []), d?.developer].filter(Boolean).join('   ·   ');
   root.querySelector('.d-desc').textContent = d?.description || '';
   const shots = mediaItems().map((m, i) => `<div class="d-media${m.kind === 'video' ? ' video' : ''}" data-i="${i}"><img src="${esc(m.thumb)}" alt="" loading="lazy">${m.kind === 'video' ? `<span class="pb">${ICON_PLAY}</span>` : ''}</div>`).join('');
   if (root.querySelector('.d-shots').dataset.html !== shots) { root.querySelector('.d-shots').dataset.html = shots; root.querySelector('.d-shots').innerHTML = shots; }  // unchanged: left alone
@@ -1483,14 +1480,12 @@ function stopVideo() {
   if (v) { v.onerror = null; v.pause(); v.removeAttribute('src'); v.load(); }
 }
 function closeViewer() { stopVideo(); $('#viewer .v-stage').innerHTML = ''; V.open = false; document.body.classList.remove('viewer-open'); themesQuiet(false); tick(420, .06); }
-// Theme music (the add-on's, and the nearly-out tile's) is silent while a video plays here or while any game is running
+// Theme music (the add-on's) is silent while a video plays here or while any game is running
 function themesQuiet(video) {
   const was = document.body.classList.contains('video-playing');
   document.body.classList.toggle('video-playing', video);
   if (was !== video) window.addonEmit?.(video ? 'video:start' : 'video:stop');
-  eggCheck();
 }
-const musicMayPlay = () => !document.body.classList.contains('video-playing') && !RUN.size;
 function viewerToggle() { if (V.youtube?.getPlayerState) { V.youtube.getPlayerState() === 1 ? V.youtube.pauseVideo() : V.youtube.playVideo(); return; } const v = $('#viewer video'); if (v) v.paused ? v.play() : v.pause(); }
 $('#viewer').addEventListener('click', e => {
   const th = e.target.closest('.v-thumb');
@@ -3797,7 +3792,6 @@ function input(action) {
   if (window.addonEmit?.('input', action)) return;  // an add-on took this press
   if (action.startsWith('zoom') && !R.open) return;  // the right stick only zooms a post; elsewhere it does nothing
   if (INTRO.open) return endIntro(true);  // any button skips the intro
-  if (action === 'back' && $('#egg-wasted')) return eggDone(LIB.find(g => g.egg));  // B: over sooner
   // The launch screen is over everything: B takes it down; nothing else may reach the menus hidden under it
   if (S.busy) return action === 'back' ? cancelLaunch() : undefined;
   if (PT.open) return action === 'back' && !PT.live ? closePadTester() : undefined;  // a controller in use is being tested: its B is held 2 s instead
@@ -4089,122 +4083,6 @@ requestAnimationFrame(poll);
 // The helper quits a while after the UI is closed (when started by Start Frontend.bat); the ping also picks up new games.
 if (API) setInterval(watchLibrary, 5000);
 
-// ---------- a tile for a game that's nearly out ----------
-// At the front of the row with a countdown to its release (local midnight). Its page plays its theme; Play has a sound
-// of its own.
-const EGG = { theme: null, sound: null };
-function eggOut(g) { const [y, m, d] = g.egg.release.split('-').map(Number); return new Date(y, m - 1, d); }
-function eggLeft(g, long) {
-  const ms = eggOut(g) - Date.now();
-  if (ms <= 0) return 'Out now';
-  const s = Math.floor(ms / 1000), d = Math.floor(s / 86400), pad = n => String(n).padStart(2, '0');
-  const clock = `${pad(Math.floor(s / 3600) % 24)}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`;
-  const when = eggOut(g).toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
-  return long ? `Out ${when} · ${d ? `${d} day${d === 1 ? '' : 's'} ` : ''}${clock}` : `${d ? `${d}d ` : ''}${clock}`;
-}
-setInterval(() => {
-  const g = LIB.find(x => x.egg);
-  if (!g) return;
-  eggCheck();  // (a game started or ended meanwhile)
-  if (Date.now() >= eggOut(g).getTime() + 3 * 864e5 && !D.open && !P.open) { loadLibrary().then(() => buildRow(false)); return; }  // its time is up: off the row
-  document.querySelectorAll('.egg-count').forEach(el => { el.textContent = eggLeft(g); });
-  if (D.open && D.game?.egg) { const d = D.data; $('#details .d-meta').textContent = [g.system || g.group, ...(d?.genres || []), d?.developer, eggLeft(g, true)].filter(Boolean).join('   ·   '); }
-}, 1000);
-// one hidden YouTube player: a song or a sound, faded in, and faded out when stopped
-function eggAudio(id, { volume, loop, start = 0, fadeIn = true }) {
-  const host = document.createElement('div');
-  host.style.cssText = 'position:fixed;left:-9999px;top:0;width:200px;height:120px;opacity:0;pointer-events:none';
-  document.body.appendChild(host);
-  const slot = document.createElement('div');
-  host.appendChild(slot);
-  const it = { host, player: null, gone: false, fade: 0 };
-  loadYouTubePlayer().then(() => {
-    if (it.gone) return;
-    it.player = new YT.Player(slot, { host: 'https://www.youtube-nocookie.com', videoId: id, width: 200, height: 120,
-      playerVars: { autoplay: 1, controls: 0, disablekb: 1, playsinline: 1, rel: 0, start, origin: location.origin, ...(loop ? { loop: 1, playlist: id } : {}) },
-      events: { onReady: e => { if (it.gone) return e.target.destroy(); e.target.setVolume(fadeIn ? 0 : volume); e.target.playVideo(); if (fadeIn) eggRamp(it, 0, volume); } } });
-  }).catch(() => {});
-  return it;
-}
-function eggRamp(it, from, to, done) {
-  clearInterval(it.fade);
-  let i = 0;
-  it.fade = setInterval(() => {
-    i++;
-    try { it.player?.setVolume(from + (to - from) * Math.min(1, i / 20)); } catch {}
-    if (i >= 20) { clearInterval(it.fade); done?.(); }
-  }, 50);
-}
-function eggQuiet(it, fast) {
-  if (!it) return;
-  it.gone = true;
-  const end = () => { try { it.player?.destroy(); } catch {} it.host.remove(); };
-  if (fast || !it.player) return end();
-  let v = 30; try { v = it.player.getVolume(); } catch {}
-  eggRamp(it, v, 0, end);
-}
-function eggDetails(g) {
-  eggStop();
-  new Image().src = 'assets/wasted.png';  // the banner, ready before Play
-  if (musicMayPlay()) EGG.theme = eggAudio(g.egg.theme, { volume: 30, loop: true });
-}
-// quiet while a video plays or a game runs; back once neither is so (and Play's moment is over)
-function eggCheck() {
-  const here = D.open && D.game?.egg;
-  if (EGG.theme && (!here || !musicMayPlay())) { eggQuiet(EGG.theme); EGG.theme = null; }
-  else if (!EGG.theme && here && musicMayPlay() && !$('#egg-wasted')) EGG.theme = eggAudio(D.game.egg.theme, { volume: 30, loop: true });
-}
-function eggStop() {
-  eggQuiet(EGG.theme); EGG.theme = null;
-}
-// Play: it isn't out (and not on a PC). The screen drains of colour and slowly pushes in, a banner drops in with the
-// sound, and a line underneath ribs you for trying: a different one each press.
-const EGG_LINES = [
-  d => `Nice try. It's out in ${d}.`,
-  d => `Still ${d} to go. Maybe touch some grass?`,
-  d => `Pressing Play harder won't make it come out sooner. ${d} left.`,
-  d => `You've waited this long. What's another ${d}?`,
-  () => `Also, it's PS5 and Xbox only. This is a PC.`,
-  d => `Loading Vice City… please wait ${d}.`,
-  () => `Rockstar has been notified of your impatience.`,
-];
-const EGG_OUT_LINES = [
-  () => `It's out! Just… not on PC.`,
-  () => `Wrong machine, pal. Try the PS5 or the Xbox.`,
-  () => `PC version: sometime. Probably. Maybe.`,
-  () => `Same time next year?`,
-];
-let eggPress = 0, eggTimer = 0;
-function eggJoke(g) {
-  const ms = eggOut(g) - Date.now(), days = Math.floor(ms / 864e5), hours = Math.floor(ms / 36e5), mins = Math.max(1, Math.floor(ms / 6e4));
-  const left = days >= 1 ? `${days} day${days === 1 ? '' : 's'}` : hours >= 1 ? `${hours} hour${hours === 1 ? '' : 's'}` : `${mins} minute${mins === 1 ? '' : 's'}`;  // as the countdown counts
-  const lines = ms > 0 ? EGG_LINES : EGG_OUT_LINES;
-  return lines[eggPress++ % lines.length](left);
-}
-function eggPlay(g) {
-  eggQuiet(EGG.theme, true); EGG.theme = null;
-  eggQuiet(EGG.sound, true);
-  clearTimeout(eggTimer);
-  $('#egg-wasted')?.remove();
-  EGG.sound = eggAudio(g.egg.play, { volume: 80, loop: false, fadeIn: false });  // a sound hits at once (a song fades in)
-  const box = document.createElement('div');
-  box.id = 'egg-wasted';
-  box.innerHTML = `<div class="ew-band"><img class="ew-big" src="assets/wasted.png" alt="wasted" draggable="false"><div class="ew-line">${esc(eggJoke(g))}</div></div>`;
-  box.addEventListener('click', () => eggDone(g));
-  document.body.appendChild(box);
-  document.body.classList.remove('egg-wasted'); void document.body.offsetWidth;  // (pressed again: the push-in starts over)
-  document.body.classList.add('egg-wasted');
-  raf2(() => box.classList.add('on'));
-  eggTimer = setTimeout(() => eggDone(g), 6000);
-}
-function eggDone(g) {
-  clearTimeout(eggTimer);
-  document.body.classList.remove('egg-wasted');
-  const box = $('#egg-wasted');
-  if (box) { box.classList.remove('on'); setTimeout(() => box.remove(), 500); }
-  eggQuiet(EGG.sound); EGG.sound = null;
-  eggCheck();  // and the theme again
-}
 if (API) setInterval(watchRunning, 3000);
 // A quiet warning when the controller runs low, once per charge
 let lowWarned = false;
